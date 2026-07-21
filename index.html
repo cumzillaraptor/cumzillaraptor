@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#202320">
+  <meta name="description" content="cumzillaraptor — 💦ing fall 2026">
+  <title>cumzillaraptor — 💦ing fall 2026</title>
+  <style>
+    @font-face {
+      font-family: "Chewy";
+      src: url("assets/Chewy-Regular.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+
+    :root {
+      --green: #6dfe41;
+      --charcoal: #000000;
+      --panel: #0b0c0b;
+      --ink: #f4f6ef;
+      --muted: #aab1a7;
+      --line: rgba(109, 254, 65, .22);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      color: var(--ink);
+      background: var(--charcoal);
+      font-family: "Chewy", system-ui, sans-serif;
+    }
+
+    button, a { -webkit-tap-highlight-color: transparent; }
+
+    .menu-button {
+      position: fixed;
+      top: clamp(20px, 3vw, 34px);
+      left: clamp(20px, 3vw, 34px);
+      z-index: 40;
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      color: var(--green);
+      background: rgba(32, 35, 32, .86);
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: transform 180ms ease, background 180ms ease;
+    }
+
+    .menu-button:hover { background: #111411; transform: scale(1.04); }
+    .menu-button:focus-visible, .menu-link:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+
+    .hamburger,
+    .hamburger::before,
+    .hamburger::after {
+      width: 22px;
+      height: 2px;
+      display: block;
+      background: var(--green);
+      box-shadow: 0 0 9px rgba(109, 254, 65, .3);
+      transition: transform 180ms ease, opacity 180ms ease;
+      transform-origin: center;
+    }
+
+    .hamburger { position: relative; }
+    .hamburger::before, .hamburger::after { content: ""; position: absolute; left: 0; top: 0; }
+    .hamburger::before { transform: translateY(-7px); }
+    .hamburger::after { transform: translateY(7px); }
+    .menu-button[aria-expanded="true"] .hamburger { background: transparent; box-shadow: none; }
+    .menu-button[aria-expanded="true"] .hamburger::before { transform: translateY(0) rotate(45deg); }
+    .menu-button[aria-expanded="true"] .hamburger::after { transform: translateY(0) rotate(-45deg); }
+
+    .menu-panel {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 30;
+      width: min(440px, 92vw);
+      display: flex;
+      align-items: center;
+      padding: 105px clamp(26px, 5vw, 48px) 42px;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      transform: translateX(-102%);
+      visibility: hidden;
+      transition: transform 420ms cubic-bezier(.16, 1, .3, 1), visibility 420ms;
+    }
+
+    .menu-panel[data-open="true"] { transform: translateX(0); visibility: visible; }
+    .menu-list { width: 100%; margin: 0; padding: 0; list-style: none; }
+    .menu-list li { border-top: 1px solid var(--line); }
+    .menu-list li:last-child { border-bottom: 1px solid var(--line); }
+
+    .menu-link {
+      position: relative;
+      min-height: 84px;
+      display: flex;
+      align-items: center;
+      padding: 18px 2px;
+      color: var(--green);
+      font-size: clamp(20px, 5vw, 29px);
+      font-weight: 400;
+      letter-spacing: .01em;
+      text-decoration: none;
+      transition: color 150ms ease, transform 150ms ease;
+    }
+
+    .menu-link:not(.disabled)::after { content: "↗"; margin-left: auto; color: var(--green); font-size: .7em; }
+    .menu-link:not(.disabled):hover { color: var(--ink); transform: translateX(7px); }
+
+    .menu-link.disabled {
+      color: #687066;
+      cursor: not-allowed;
+      user-select: none;
+    }
+
+    .scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      border: 0;
+      background: rgba(0, 0, 0, .48);
+      opacity: 0;
+      visibility: hidden;
+      cursor: pointer;
+      transition: opacity 280ms ease, visibility 280ms;
+    }
+
+    .scrim[data-open="true"] { opacity: 1; visibility: visible; }
+
+    main {
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: clamp(40px, 5vh, 64px) 22px clamp(32px, 5vh, 56px);
+    }
+
+    .hero {
+      width: min(100%, 860px);
+      display: grid;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .art-stage {
+      position: relative;
+      width: min(64vw, 490px);
+      aspect-ratio: 1 / 1.02;
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+    }
+
+    .splash {
+      position: absolute;
+      z-index: -1;
+      inset: 5%;
+      opacity: 0;
+      will-change: transform, opacity;
+      backface-visibility: hidden;
+      filter: drop-shadow(0 0 38px rgba(109, 254, 65, .15));
+      transform: scale(.45) rotate(-15deg);
+      animation: splash-enter 920ms cubic-bezier(.16, 1, .3, 1) 500ms forwards;
+    }
+
+    .splash svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .mascot-wrap {
+      width: 42%;
+      opacity: 0;
+      will-change: transform, opacity;
+      backface-visibility: hidden;
+      transform: translateY(40px) scale(.88);
+      animation: mascot-enter 1000ms cubic-bezier(.16, 1, .3, 1) 500ms forwards;
+    }
+
+    .mascot {
+      display: block;
+      width: 100%;
+      height: auto;
+      will-change: transform;
+      backface-visibility: hidden;
+      filter: drop-shadow(0 28px 22px rgba(0, 0, 0, .26));
+    }
+
+    .caption {
+      position: relative;
+      z-index: 3;
+      margin: clamp(-8px, -0.5vh, 4px) 0 0;
+      opacity: 0;
+      color: var(--ink);
+      font-family: "Chewy", system-ui, sans-serif;
+      font-size: clamp(40px, 6.7vw, 72px);
+      font-weight: 400;
+      font-style: normal;
+      line-height: .95;
+      letter-spacing: -.055em;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, .55);
+      text-transform: lowercase;
+      animation: caption-enter 720ms cubic-bezier(.16, 1, .3, 1) 820ms forwards;
+    }
+
+    .caption .date { color: var(--green); text-shadow: 0 2px 0 rgba(0, 0, 0, .72); }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: clamp(10px, 2vw, 18px);
+      justify-content: center;
+      margin: clamp(28px, 4vh, 44px) 0 0;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: clamp(10px, 1.2vw, 14px) clamp(22px, 3vw, 36px);
+      background: var(--green);
+      color: var(--charcoal);
+      font-family: "Chewy", system-ui, sans-serif;
+      font-size: clamp(16px, 2.2vw, 24px);
+      font-weight: 400;
+      line-height: 1;
+      text-decoration: none;
+      border-radius: 50px;
+      opacity: 0;
+      transition: transform 180ms ease, opacity 180ms ease;
+    }
+
+    .action-btn:nth-child(1) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1400ms forwards; }
+    .action-btn:nth-child(2) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1550ms forwards; }
+
+    .action-btn:hover { transform: scale(1.06); }
+    .action-btn:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+
+    @keyframes splash-enter {
+      0% { opacity: 0; transform: scale(.45) rotate(-15deg); }
+      70% { opacity: 1; transform: scale(1.04) rotate(2deg); }
+      100% { opacity: 1; transform: scale(1) rotate(0); }
+    }
+
+    @keyframes mascot-enter {
+      0% { opacity: 0; transform: translateY(40px) scale(.88) rotate(-2deg); }
+      65% { opacity: 1; transform: translateY(-7px) scale(1.02) rotate(.7deg); }
+      100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+    }
+
+    @keyframes caption-enter {
+      0% { opacity: 0; transform: translateY(24px) scale(.96); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes credit-enter {
+      0% { opacity: 0; transform: translateY(12px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 560px) {
+      main { padding: 76px 16px 30px; }
+      .art-stage { width: min(92vw, 420px); }
+      .splash { inset: 4%; }
+      .mascot-wrap { width: 45%; }
+      .caption { margin-top: 2px; font-size: clamp(37px, 11.5vw, 52px); }
+    }
+
+    @media (max-height: 700px) and (min-width: 561px) {
+      .art-stage { width: min(65vh, 500px); }
+      .caption { margin-top: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-delay: 0ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <button class="menu-button" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="site-menu">
+    <span class="hamburger" aria-hidden="true"></span>
+  </button>
+
+  <nav class="menu-panel" id="site-menu" aria-label="Main navigation" data-open="false">
+    <ul class="menu-list">
+      <li><a class="menu-link" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds">$CUM 💦</a></li>
+      <li><a class="menu-link" href="https://opensea.io/collection/cumzillaraptors">cumzillaraptors 🦖</a></li>
+      <li><span class="menu-link disabled" aria-disabled="true">cumzillaraptor live (18+) ▶️</span></li>
+      <li><span class="menu-link disabled" aria-disabled="true">auction ⚡</span></li>
+      <li><span class="menu-link disabled" aria-disabled="true">merch ☕️</span></li>
+    </ul>
+  </nav>
+  <button class="scrim" type="button" aria-label="Close menu" tabindex="-1" data-open="false"></button>
+
+  <main>
+    <section class="hero" aria-labelledby="launch-title">
+      <div class="art-stage">
+        <div class="splash" aria-hidden="true">
+          <svg viewBox="0 0 600 600" role="presentation">
+            <path fill="var(--green)" d="M297 58C336 58 359 88 389 98C423 109 465 94 489 123C514 153 493 192 507 221C521 251 561 269 559 307C557 342 519 354 503 381C485 411 496 456 465 480C436 502 401 482 368 493C335 504 318 544 280 540C246 537 235 499 206 486C175 472 132 487 108 457C87 430 108 397 98 365C88 333 48 315 53 277C58 244 95 235 110 208C127 178 115 135 145 111C173 89 208 108 239 96C263 87 272 58 297 58Z"/>
+            <path fill="var(--green)" d="M79 174C91 167 107 171 114 184C121 197 116 214 103 221C90 228 74 223 67 210C60 197 66 181 79 174Z"/>
+            <path fill="var(--green)" d="M515 111C524 105 537 108 543 118C549 128 546 142 536 148C526 154 513 151 507 141C501 131 505 117 515 111Z"/>
+            <path fill="var(--green)" d="M539 438C551 434 564 441 568 453C572 466 565 479 553 483C540 487 527 480 523 468C519 455 526 442 539 438Z"/>
+          </svg>
+        </div>
+        <div class="mascot-wrap">
+          <img class="mascot" src="assets/cumzillaraptor116.svg" width="569" height="577" alt="Pixel-art cumzillaraptor">
+        </div>
+      </div>
+      <h1 class="caption" id="launch-title">💦ing <span class="date">soon</span></h1>
+      <div class="actions">
+        <a class="action-btn" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">buy $CUM 💦</a>
+        <a class="action-btn" href="https://opensea.io/collection/cumzillaraptors" target="_blank" rel="noopener noreferrer">buy a cumzillaraptor 🦖</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const menuButton = document.querySelector('.menu-button');
+    const menu = document.querySelector('.menu-panel');
+    const scrim = document.querySelector('.scrim');
+    const firstLink = menu.querySelector('a');
+
+    function setMenu(open) {
+      menuButton.setAttribute('aria-expanded', String(open));
+      menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      menu.dataset.open = String(open);
+      scrim.dataset.open = String(open);
+      scrim.tabIndex = open ? 0 : -1;
+      document.body.style.overflow = open ? 'hidden' : '';
+      if (open) firstLink.focus();
+      else menuButton.focus();
+    }
+
+    menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
+    scrim.addEventListener('click', () => setMenu(false));
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') setMenu(false);
+    });
+  </script>
+</body>
+</html>
