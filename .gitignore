@@ -5,3 +5,4 @@ node_modules/
 nft-data/
 target/
 rustc-ice-*.txt
+programs/**/Cargo.lock
