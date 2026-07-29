@@ -40,10 +40,15 @@ jobs:
           avm use 0.30.1
           PATH="$HOME/.avm/tmp/bin:$PATH" anchor --version
 
+      - name: Verify compatible dependency lockfile
+        run: |
+          test "$(sed -n 's/^version = //p' programs/cumzillaraptors/Cargo.lock | head -1)" = "3"
+          echo "Using committed Cargo.lock v3 (compatible with Solana v1.18's bundled Cargo)."
+
       - name: Build Program
         run: |
-          export PATH="$HOME/.avm/tmp/bin:$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
-          anchor build
+          export PATH="$HOME/.avm/tmp/bin:$HOME/.cargo/bin:/tmp/solana-release/bin:$PATH"
+          anchor build -- --locked
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
