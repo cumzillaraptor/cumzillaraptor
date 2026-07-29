@@ -1,12 +1,6 @@
 name: Build Solana Program
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'programs/**'
-      - 'Anchor.toml'
-      - '.github/workflows/build-program.yml'
   workflow_dispatch:
 
 env:
