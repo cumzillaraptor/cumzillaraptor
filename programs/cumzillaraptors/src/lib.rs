@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program::{self, Transfer};
 
+pub mod core;
+
 // Devnet-only program keypair. Replace only through an explicit upgrade/deployment plan.
 declare_id!("2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2");
 
@@ -273,6 +275,14 @@ pub enum CumzillaraptorsError {
     InvalidNftId,
     #[msg("Arithmetic overflow.")]
     ArithmeticOverflow,
+    #[msg("The supplied Metaplex Core program account is invalid.")]
+    InvalidCoreProgram,
+    #[msg("The supplied Metaplex Core collection does not match configuration.")]
+    InvalidCollection,
+    #[msg("Core asset name must not be empty.")]
+    InvalidCoreAssetName,
+    #[msg("Core asset URI must not be empty.")]
+    InvalidCoreAssetUri,
 }
 
 fn assert_unique_and_in_range(ids: &[u16]) -> Result<()> {
