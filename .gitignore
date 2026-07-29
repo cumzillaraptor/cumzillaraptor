@@ -4,3 +4,4 @@ mobile*.png
 node_modules/
 nft-data/
 target/
+rustc-ice-*.txt
