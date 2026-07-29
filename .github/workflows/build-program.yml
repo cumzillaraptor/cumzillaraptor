@@ -17,15 +17,20 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          # Extract Solana release directly (installer script is broken on anza.xyz)
+          # Download and extract Solana release tarball
           curl -sSfL "https://release.anza.xyz/v1.18.26/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o /tmp/solana.tar.bz2
+          echo "Downloaded $(stat -c%s /tmp/solana.tar.bz2) bytes"
           tar -xjf /tmp/solana.tar.bz2 -C /tmp/
-          mkdir -p "$HOME/.local/share/solana/install/active_release/bin"
-          cp /tmp/solana-release/bin/* "$HOME/.local/share/solana/install/active_release/bin/"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-          solana --version
-          solana-keygen --version
+          echo "Extracted to /tmp/solana-release/"
+          ls /tmp/solana-release/
+          echo "---"
+          ls /tmp/solana-release/bin/
+          # Set PATH globally
+          echo "/tmp/solana-release/bin" >> $GITHUB_PATH
+          echo "PATH=/tmp/solana-release/bin:$PATH" >> $GITHUB_ENV
+          export PATH="/tmp/solana-release/bin:$PATH"
+          /tmp/solana-release/bin/solana --version
+          /tmp/solana-release/bin/solana-keygen --version
 
       - name: Install Anchor CLI
         run: |
