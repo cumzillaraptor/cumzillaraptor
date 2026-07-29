@@ -30,13 +30,13 @@ test('uses the approved palette and exact launch copy', async () => {
 test('contains the complete requested navigation contract', async () => {
   const source = await readHtml();
   assert.match(source, /https:\/\/pump\.fun\/coin\/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds/);
-  assert.match(source, /https:\/\/opensea\.io\/collection\/cumzillaraptors/);
+  assert.match(source, /href="\/cumzillaraptors\/"/);
   assert.match(source, /\$CUM 💦/);
   assert.match(source, /cumzillaraptors 🦖/);
   assert.match(source, /aria-disabled="true"/);
   assert.match(source, /cumzillaraptor live \(18\+\)/);
   assert.doesNotMatch(source, /<span class="soon">/);
-  assert.match(source, /<span class="menu-link disabled" aria-disabled="true">merch<\/span>/);
+  assert.match(source, /<span class="menu-link disabled" aria-disabled="true">merch/);
 });
 
 test('has green splash and staggered entrance motion', async () => {
