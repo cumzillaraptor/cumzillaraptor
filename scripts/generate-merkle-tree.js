@@ -1,96 +1,132 @@
+'use strict';
+
 const fs = require('fs');
 const path = require('path');
-const { keccak256 } = require('@ethersproject/keccak256');
 const { MerkleTree } = require('merkletreejs');
+const { keccak256 } = require('@ethersproject/keccak256');
+const {
+  DOMAIN,
+  buildClaimMessage,
+  claimMessageHash,
+  deterministicNonce,
+  makeClaimLeaf,
+  normalizeEthAddress,
+} = require('./claim-message-v1');
 
-// Config
-const RESERVE_CSV = '/home/raspberrypi/nft-collection/cumzillaraptors_solana/reserve_list.csv';
-const OUTPUT_DIR = '/home/raspberrypi/workspace-cumzillaraptor/nft-data';
+const ROOT = path.resolve(__dirname, '..');
+const DEFAULT_RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || '/home/raspberrypi/nft-collection/cumzillaraptors_solana/reserve_list.csv';
+const OUTPUT_DIR = path.join(ROOT, 'nft-data');
+const DEFAULT_PROGRAM_ID = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
+const VECTOR_RECIPIENT = '8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg';
+const VECTOR_EXPIRY = '2000000000';
 
-// Read reserve list
-const csv = fs.readFileSync(RESERVE_CSV, 'utf-8').trim().split('\n');
-const headers = csv[0].split(',');
-console.log('Headers:', headers);
-
-// Parse rows
-const claims = [];
-for (let i = 1; i < csv.length; i++) {
-    const row = csv[i].split(',');
-    if (row.length < 3) continue;
-    const nftNumber = parseInt(row[0]);
-    const name = row[1];
-    const ethAddress = row[2].trim().toLowerCase();
-    claims.push({ nftNumber, name, ethAddress });
+function fail(message) {
+  throw new Error(message);
 }
 
-console.log(`\nTotal claims: ${claims.length}`);
-
-// Build leaves: keccak256(eth_address (20 bytes) ++ nft_number (2 bytes big-endian))
-function makeLeaf(ethAddress, nftNumber) {
-    // Remove 0x prefix, convert to bytes
-    const addrBytes = Buffer.from(ethAddress.replace('0x', ''), 'hex');
-    const numBytes = Buffer.alloc(2);
-    numBytes.writeUInt16BE(nftNumber);
-    const combined = Buffer.concat([addrBytes, numBytes]);
-    return keccak256(combined);
+function parseArgs(argv) {
+  const args = { v1: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--v1') args.v1 = true;
+    else if (['--cluster', '--program-id', '--reserve-csv', '--output-dir'].includes(argv[index])) args[argv[index].slice(2)] = argv[++index];
+    else fail(`Unknown argument: ${argv[index]}`);
+  }
+  if (!args.v1) fail('Refusing legacy generation. Use --v1 --cluster <tag> --program-id <pubkey>.');
+  if (!args.cluster || !args['program-id']) fail('Usage: node scripts/generate-merkle-tree.js --v1 --cluster <tag> --program-id <pubkey>');
+  return args;
 }
 
-const leaves = claims.map(c => makeLeaf(c.ethAddress, c.nftNumber));
-console.log(`Generated ${leaves.length} leaves`);
-
-// Create merkle tree
-const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
-const root = tree.getRoot().toString('hex');
-console.log('Merkle root:', '0x' + root);
-
-// Generate proofs for each claim
-const proofs = {};
-const leafToClaim = {};
-leaves.forEach((leaf, i) => {
-    leafToClaim[leaf] = claims[i];
-});
-
-for (let i = 0; i < leaves.length; i++) {
-    const leaf = leaves[i];
-    const claim = claims[i];
-    const proof = tree.getProof(leaf);
-    const proofHex = proof.map(p => '0x' + p.data.toString('hex'));
-    proofs[claim.nftNumber] = {
-        nftNumber: claim.nftNumber,
-        ethAddress: claim.ethAddress,
-        leaf: '0x' + Buffer.from(leaf.replace('0x', ''), 'hex').toString('hex'),
-        proof: proofHex,
-    };
+function parseReserveCsv(file) {
+  const lines = fs.readFileSync(file, 'utf8').trim().split(/\r?\n/);
+  if (lines[0] !== 'nft_number,name,wallet') fail('Reserve CSV header must be nft_number,name,wallet.');
+  const claims = lines.slice(1).map((line, index) => {
+    const [idText, name, ethAddress] = line.split(',');
+    if (!/^[1-9]\d*$/.test(idText)) fail(`Reserve CSV row ${index + 2} has non-canonical NFT ID.`);
+    const nftId = Number(idText);
+    if (!Number.isSafeInteger(nftId) || nftId < 1 || nftId > 420) fail(`Reserve CSV row ${index + 2} has invalid NFT ID.`);
+    return { nftId, name, ethAddress: normalizeEthAddress(ethAddress) };
+  });
+  if (claims.length !== 173 || new Set(claims.map((claim) => claim.nftId)).size !== 173) fail('Reserve CSV must contain exactly 173 unique claims.');
+  return claims;
 }
 
-// Save full proofs
-const proofsPath = path.join(OUTPUT_DIR, 'claim-proofs.json');
-fs.writeFileSync(proofsPath, JSON.stringify(proofs, null, 2));
-console.log(`\nProofs saved to: ${proofsPath}`);
+function makeTree(records) {
+  return new MerkleTree(records.map((record) => record.leaf), keccak256, { sortPairs: true });
+}
 
-// Save merkle root
-const configPath = path.join(OUTPUT_DIR, 'merkle-config.json');
-fs.writeFileSync(configPath, JSON.stringify({
-    merkleRoot: '0x' + root,
-    totalClaims: claims.length,
-    rootBytes: Array.from(Buffer.from(root, 'hex')),
-}, null, 2));
-console.log(`Merkle config saved to: ${configPath}`);
+function generateV1({ cluster, programId, reserveCsv, outputDir }) {
+  const claims = parseReserveCsv(reserveCsv).map((claim) => {
+    const nonceHex = deterministicNonce({ programId, clusterTag: cluster, ethAddress: claim.ethAddress, nftId: claim.nftId });
+    const leaf = makeClaimLeaf({ programId, clusterTag: cluster, ethAddress: claim.ethAddress, nftId: claim.nftId, nonceHex });
+    return { ...claim, nonceHex, leaf };
+  });
+  const tree = makeTree(claims);
+  const merkleRoot = `0x${tree.getRoot().toString('hex')}`;
+  const records = claims.map((claim) => ({
+    nftId: claim.nftId,
+    name: claim.name,
+    ethAddress: claim.ethAddress,
+    nonceHex: claim.nonceHex,
+    leaf: claim.leaf,
+    proof: tree.getProof(claim.leaf).map((entry) => `0x${entry.data.toString('hex')}`),
+  }));
+  const first = records.find((record) => record.nftId === 1);
+  if (!first) fail('Expected claim #1 for fixed V1 vector.');
+  const message = buildClaimMessage({
+    cluster,
+    programId,
+    recipient: VECTOR_RECIPIENT,
+    nftId: first.nftId,
+    ethAddress: first.ethAddress,
+    nonceHex: first.nonceHex,
+    expiryUnix: VECTOR_EXPIRY,
+  });
+  const result = {
+    version: DOMAIN,
+    cluster,
+    programId,
+    totalClaims: records.length,
+    merkleRoot,
+    claims: records,
+  };
+  const vectors = {
+    version: DOMAIN,
+    cluster,
+    programId,
+    merkleRoot,
+    fixture: {
+      recipient: VECTOR_RECIPIENT,
+      nftId: first.nftId,
+      ethAddress: first.ethAddress,
+      nonceHex: first.nonceHex,
+      expiryUnix: VECTOR_EXPIRY,
+      message,
+      messageHash: claimMessageHash(message),
+      leaf: first.leaf,
+      proof: first.proof,
+    },
+  };
+  fs.mkdirSync(outputDir, { recursive: true });
+  const claimsFile = `claims-v1.${cluster}.json`;
+  const vectorsFile = `claim-message-vectors.${cluster}.json`;
+  fs.writeFileSync(path.join(outputDir, claimsFile), `${JSON.stringify(result, null, 2)}\n`);
+  fs.writeFileSync(path.join(outputDir, vectorsFile), `${JSON.stringify(vectors, null, 2)}\n`);
+  console.log(`Generated ${records.length} ${DOMAIN} claims.`);
+  console.log(`Merkle root: ${merkleRoot}`);
+  console.log(`Artifacts: ${claimsFile}, ${vectorsFile}`);
+}
 
-// Also create a lookup by ETH address
-const byAddress = {};
-claims.forEach((c, i) => {
-    if (!byAddress[c.ethAddress]) byAddress[c.ethAddress] = [];
-    byAddress[c.ethAddress].push({
-        nftNumber: c.nftNumber,
-        name: c.name,
-        proof: proofs[c.nftNumber].proof,
-    });
-});
+try {
+  const args = parseArgs(process.argv.slice(2));
+  generateV1({
+    cluster: args.cluster,
+    programId: args['program-id'] || DEFAULT_PROGRAM_ID,
+    reserveCsv: args['reserve-csv'] || DEFAULT_RESERVE_CSV,
+    outputDir: args['output-dir'] || OUTPUT_DIR,
+  });
+} catch (error) {
+  console.error(`Error: ${error.message}`);
+  process.exit(1);
+}
 
-const byAddressPath = path.join(OUTPUT_DIR, 'claims-by-address.json');
-fs.writeFileSync(byAddressPath, JSON.stringify(byAddress, null, 2));
-console.log(`Claims by address saved to: ${byAddressPath}`);
-
-console.log('\n--- MERKLE TREE GENERATION COMPLETE ---');
-console.log('Root:', '0x' + root);
+module.exports = { generateV1, makeTree, parseReserveCsv };

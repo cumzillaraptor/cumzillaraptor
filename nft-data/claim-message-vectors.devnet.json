@@ -1,0 +1,26 @@
+{
+  "version": "CUMZILLARAPTORS_CLAIM_V1",
+  "cluster": "devnet",
+  "programId": "2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2",
+  "merkleRoot": "0x6b78a511b9b133ca3182c0a5b3d71f4e33e06ea9298110b31fe8b2973549dba4",
+  "fixture": {
+    "recipient": "8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg",
+    "nftId": 1,
+    "ethAddress": "0xb9b1d4251416066aff6c06e4ab7a8ee4d2312e29",
+    "nonceHex": "0x9f445b1dbd5d5dd3c46a9b0e9046565c8b6591c6e4b2116518ed6e5880818a20",
+    "expiryUnix": "2000000000",
+    "message": "CUMZILLARAPTORS_CLAIM_V1\ncluster: devnet\nprogram: 2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2\nrecipient: 8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg\nnft_id: 1\neth_address: 0xb9b1d4251416066aff6c06e4ab7a8ee4d2312e29\nnonce: 0x9f445b1dbd5d5dd3c46a9b0e9046565c8b6591c6e4b2116518ed6e5880818a20\nexpiry_unix: 2000000000",
+    "messageHash": "0xdd1d6613534a9b4fd81c932e54811eaa26d56f212ba9faf06a05314a2008c2bd",
+    "leaf": "0xc5fb2563c36fde2167a433934c1919b605f30ee01d6d1c2b26260abb50a39f05",
+    "proof": [
+      "0xe4e32e0367989b1e5a7e2d1b35056571c992f2b8cc84122e82c8cb9c5910def8",
+      "0x0b5692ec310f798947a4b4ecead9e2e02fea85bda8dfb2c1c09005d63067d34d",
+      "0x6a362593f6a0fb9813dc822a8af3ea25fdee8a21cc61510ec2a1ab293af90e9c",
+      "0x21fcb2c8670e40b5524b9f4a95a065d5151595b843e19d39e4c3c1aa303e5d67",
+      "0x6cee4d4e0e6b813248550def914f39c061e39b3b0d6e273db7c40b309c60f83c",
+      "0xc991e03c74668507942277386e32a0fa979f53bed0eb4066fc147a7f7bbab6fa",
+      "0x59996e92cce5f15082e804a94f8b2b483b468b0b964ff1cda2a5b5a9535951dc",
+      "0xdf4b326c0816285bbe0369a69318f60fed13accbb9e7fc3dd89d65444c57aed3"
+    ]
+  }
+}
