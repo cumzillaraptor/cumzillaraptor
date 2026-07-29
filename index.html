@@ -114,7 +114,7 @@
       transition: color 150ms ease, transform 150ms ease;
     }
 
-    .menu-link:not(.disabled)::after { content: "↗"; margin-left: auto; color: var(--green); font-size: .7em; }
+    .menu-link[target="_blank"]::after { content: "↗"; margin-left: auto; color: var(--green); font-size: .7em; }
     .menu-link:not(.disabled):hover { color: var(--ink); transform: translateX(7px); }
 
     .menu-link.disabled {
@@ -295,7 +295,7 @@
   <nav class="menu-panel" id="site-menu" aria-label="Main navigation" data-open="false">
     <ul class="menu-list">
       <li><a class="menu-link" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">$CUM 💦</a></li>
-      <li><a class="menu-link" href="https://opensea.io/collection/cumzillaraptors" target="_blank" rel="noopener noreferrer">cumzillaraptors 🦖</a></li>
+      <li><a class="menu-link" href="/cumzillaraptors/">cumzillaraptors 🦖</a></li>
       <li><span class="menu-link disabled" aria-disabled="true">cumzillaraptor live (18+) ▶️</span></li>
       <li><span class="menu-link disabled" aria-disabled="true">auction ⚡</span></li>
       <li><span class="menu-link disabled" aria-disabled="true">merch ☕️</span></li>
@@ -321,7 +321,7 @@
       <h1 class="caption" id="launch-title">💦ing <span class="date">soon</span></h1>
       <div class="actions">
         <a class="action-btn" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">buy $CUM 💦</a>
-        <a class="action-btn" href="https://opensea.io/collection/cumzillaraptors" target="_blank" rel="noopener noreferrer">buy a cumzillaraptor 🦖</a>
+        <a class="action-btn" href="/cumzillaraptors/">buy a cumzillaraptor 🦖</a>
       </div>
     </section>
   </main>

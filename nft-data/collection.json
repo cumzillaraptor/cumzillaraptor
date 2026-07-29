@@ -1,0 +1,23 @@
+{
+  "name": "cumzillaraptors",
+  "symbol": "$CUM",
+  "description": "420 cumzillaraptors by cumzillaraptor 🦖💦",
+  "image": "ar://PLACEHOLDER_COLLECTION_IMAGE",
+  "external_url": "https://cumzillaraptor.com",
+  "seller_fee_basis_points": 500,
+  "properties": {
+    "files": [
+      {
+        "uri": "ar://PLACEHOLDER_COLLECTION_IMAGE",
+        "type": "image/png"
+      }
+    ],
+    "category": "image",
+    "creators": [
+      {
+        "address": "PLACEHOLDER_TREASURY",
+        "share": 100
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "cumzillaraptor #219",
+  "symbol": "$CUM",
+  "description": "420 cumzillaraptors by cumzillaraptor 🦖💦",
+  "image": "ar://PLACEHOLDER_0219",
+  "external_url": "https://cumzillaraptor.com",
+  "attributes": [
+    {
+      "trait_type": "dong",
+      "value": "big"
+    },
+    {
+      "trait_type": "veins",
+      "value": "no"
+    },
+    {
+      "trait_type": "background",
+      "value": "teal"
+    },
+    {
+      "trait_type": "sex",
+      "value": "male"
+    },
+    {
+      "trait_type": "tiny dino fren",
+      "value": "8020"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "ar://PLACEHOLDER_0219",
+        "type": "image/png"
+      }
+    ],
+    "category": "image",
+    "creators": [
+      {
+        "address": "PLACEHOLDER_TREASURY",
+        "share": 100
+      }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "workspace-cumzillaraptor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cumzillaraptor/cumzillaraptor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cumzillaraptor/cumzillaraptor/issues"
+  },
+  "homepage": "https://github.com/cumzillaraptor/cumzillaraptor#readme",
+  "dependencies": {
+    "@ethersproject/keccak256": "^5.8.0",
+    "@irys/sdk": "^0.2.11",
+    "@solana/web3.js": "^1.98.4",
+    "merkletreejs": "^0.6.0"
+  }
+}
