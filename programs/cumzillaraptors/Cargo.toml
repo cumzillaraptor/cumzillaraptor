@@ -15,9 +15,8 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
+# This controller only uses Anchor's re-export of solana_program; no SPL CPI crates are needed yet.
 anchor-lang = { version = "=0.30.1", features = ["init-if-needed"] }
-anchor-spl = "=0.30.1"
-solana-program = "=1.18.26"
 
 [profile.release]
 overflow-checks = true
