@@ -35,7 +35,7 @@ jobs:
           cargo-build-sbf \
             --manifest-path programs/cumzillaraptors/Cargo.toml \
             --tools-version v1.50 \
-            --arch sbpfv3
+            --arch sbfv2
 
       - name: Verify binary
         shell: bash
