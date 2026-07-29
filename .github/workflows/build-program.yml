@@ -7,54 +7,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-sbpf:
+    name: Build SBPF program
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Solana CLI
+      - name: Install Solana CLI 1.18.26
+        shell: bash
         run: |
-          # Download and extract Solana release tarball
-          curl -sSfL "https://release.anza.xyz/v1.18.26/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o /tmp/solana.tar.bz2
-          echo "Downloaded $(stat -c%s /tmp/solana.tar.bz2) bytes"
-          tar -xjf /tmp/solana.tar.bz2 -C /tmp/
-          echo "Extracted to /tmp/solana-release/"
-          ls /tmp/solana-release/
-          echo "---"
-          ls /tmp/solana-release/bin/
-          # Set PATH globally
-          echo "/tmp/solana-release/bin" >> $GITHUB_PATH
-          echo "PATH=/tmp/solana-release/bin:$PATH" >> $GITHUB_ENV
+          set -euo pipefail
+          curl -sSfL \
+            "https://release.anza.xyz/v1.18.26/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            -o /tmp/solana.tar.bz2
+          tar -xjf /tmp/solana.tar.bz2 -C /tmp
+          echo "/tmp/solana-release/bin" >> "$GITHUB_PATH"
           export PATH="/tmp/solana-release/bin:$PATH"
-          /tmp/solana-release/bin/solana --version
-          /tmp/solana-release/bin/solana-keygen --version
+          solana --version
+          cargo-build-sbf --version
 
-      - name: Install Anchor CLI
+      - name: Build program with SBPF platform tools v1.50
+        shell: bash
         run: |
-          export PATH="$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
-          cargo install --git https://github.com/coral-xyz/anchor avm --locked
-          avm install 0.30.1
-          avm use 0.30.1
-          PATH="$HOME/.avm/tmp/bin:$PATH" anchor --version
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          # v1.50 ships Cargo/Rust new enough for Cargo.lock v4 and has x86_64 SBPF tools.
+          cargo-build-sbf \
+            --manifest-path programs/cumzillaraptors/Cargo.toml \
+            --tools-version v1.50 \
+            --arch sbpfv3
 
-      - name: Verify compatible dependency lockfile
+      - name: Verify binary
+        shell: bash
         run: |
-          test "$(sed -n 's/^version = //p' programs/cumzillaraptors/Cargo.lock | head -1)" = "3"
-          echo "Using committed Cargo.lock v3 (compatible with Solana v1.18's bundled Cargo)."
+          set -euo pipefail
+          PROGRAM_SO=$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)
+          test -n "$PROGRAM_SO"
+          ls -lh "$PROGRAM_SO"
+          sha256sum "$PROGRAM_SO"
 
-      - name: Build Program
-        run: |
-          export PATH="$HOME/.avm/tmp/bin:$HOME/.cargo/bin:/tmp/solana-release/bin:$PATH"
-          anchor build -- --locked
-
-      - name: Upload Artifacts
+      - name: Upload program artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cumzillaraptors-program
+          name: cumzillaraptors-devnet-sbpf
           path: |
-            target/deploy/
-            target/idl/
+            **/target/deploy/cumzillaraptors.so
+          if-no-files-found: error
           retention-days: 90

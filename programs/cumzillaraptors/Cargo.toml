@@ -1,7 +1,7 @@
 [package]
 name = "cumzillaraptors"
 version = "0.1.0"
-description = "Cumzillaraptor NFT Collection — mint + claim"
+description = "Cumzillaraptors devnet sale and claim controller"
 edition = "2021"
 
 [lib]
@@ -15,12 +15,16 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
-anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
-anchor-spl = "0.30.1"
-solana-program = "~1.18"
+anchor-lang = { version = "=0.30.1", features = ["init-if-needed"] }
+anchor-spl = "=0.30.1"
+solana-program = "=1.18.26"
 
 [profile.release]
-opt-level = "z"
-lto = true
-debug = false
 overflow-checks = true
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[workspace]
+resolver = "2"
