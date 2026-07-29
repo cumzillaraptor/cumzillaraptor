@@ -1,13 +1,12 @@
 use anchor_lang::prelude::*;
 use crate::states::*;
-use crate::errors::*;
+use crate::errors::ErrorCode;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitializeArgs {
     pub mint_price: u64,
     pub treasury: Pubkey,
     pub merkle_root: [u8; 32],
-    pub collection_mint: Pubkey,
 }
 
 #[derive(Accounts)]
@@ -35,7 +34,6 @@ pub fn handle_initialize(ctx: Context<Initialize>, args: InitializeArgs) -> Resu
     config.mint_count = 0;
     config.claim_count = 0;
     config.merkle_root = args.merkle_root;
-    config.collection_mint = args.collection_mint;
     config.claims_ready = false;
     config.bump = ctx.bumps.config;
     Ok(())

@@ -1,0 +1,77 @@
+name: Build and Deploy Solana Program
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'programs/**'
+      - 'Anchor.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked
+          avm install 0.30.1
+          avm use 0.30.1
+
+      - name: Build Program (BPF)
+        run: |
+          cd programs/cumzillaraptors
+          anchor build --program-name cumzillaraptors
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cumzillaraptors-program
+          path: target/deploy/cumzillaraptors.so
+          retention-days: 30
+
+      - name: Upload IDL
+        uses: actions/upload-artifact@v4
+        with:
+          name: cumzillaraptors-idl
+          path: target/idl/
+          retention-days: 30
+
+  test-devnet:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: target/
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked
+          avm install 0.30.1
+          avm use 0.30.1
+
+      - name: Deploy to Devnet
+        run: |
+          anchor deploy --provider.cluster devnet
+        env:
+          ANCHOR_WALLET: ${{ secrets.SOLANA_DEPLOY_KEY }}
