@@ -31,12 +31,16 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/tmp/solana-release/bin:$PATH"
-          # v1.50 ships Cargo/Rust new enough for Cargo.lock v4 and has x86_64 SBPF tools.
-          cargo-build-sbf \
+          # cargo-build-sbf v1.18 panics if this fresh-runner cache root is absent.
+          mkdir -p "$HOME/.cache/solana"
+          test -d "$HOME/.cache/solana"
+          # Force a clean install of the matching x86_64 platform-tools bundle.
+          RUST_BACKTRACE=1 cargo-build-sbf \
             --manifest-path programs/cumzillaraptors/Cargo.toml \
             --tools-version v1.50 \
             --force-tools-install \
-            --arch sbfv2
+            --arch sbfv2 \
+            --verbose
 
       - name: Verify binary
         shell: bash
