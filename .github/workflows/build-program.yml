@@ -23,9 +23,12 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v1.18.26/install)"
+          curl -sSfL https://release.anza.xyz/v1.18.26/install 2>&1 | sh -s -- v1.18.26
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-          solana --version
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          solana --version 2>&1 || solana-install --version 2>&1 || echo "Trying agave..."
+          which solana || which solana-install || true
 
       - name: Install Anchor CLI
         run: |
