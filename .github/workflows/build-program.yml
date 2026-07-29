@@ -9,39 +9,37 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: backpackapp/build:v2
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install Solana CLI
         run: |
-          agave-install init 1.18.26 2>&1 || solana-install init 1.18.26 2>&1
-          export PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
-          echo "/root/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          curl -sSfL https://release.anza.xyz/v1.18.26/install 2>&1 | sh -s -- v1.18.26
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
           solana --version
 
       - name: Install Anchor CLI
         run: |
           cargo install --git https://github.com/coral-xyz/anchor avm --locked
+          export PATH="$HOME/.cargo/bin:$PATH"
           avm install 0.30.1
           avm use 0.30.1
           anchor --version
 
       - name: Build Program
-        run: anchor build
-
-      - name: List artifacts
         run: |
-          ls -la target/deploy/
-          ls -la target/idl/
+          export PATH="$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
+          anchor build
 
-      - name: Upload Program Binary
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: cumzillaraptors-program
           path: |
-            target/deploy/cumzillaraptors.so
-            target/deploy/cumzillaraptors-keypair.json
+            target/deploy/
             target/idl/
           retention-days: 90
