@@ -34,8 +34,13 @@ test('compile-only Core wrapper validates canonical program and configured colle
 });
 
 test('program exposes the wrapper module and explicit Core validation errors', async () => {
-  const source = await readFile(path.join(root, 'programs', 'cumzillaraptors', 'src', 'lib.rs'), 'utf8');
-  assert.match(source, /^pub mod core;/m);
-  assert.match(source, /InvalidCoreProgram/);
-  assert.match(source, /InvalidCollection/);
+  const src = path.join(root, 'programs', 'cumzillaraptors', 'src');
+  const [program, errors] = await Promise.all([
+    readFile(path.join(src, 'lib.rs'), 'utf8'),
+    readFile(path.join(src, 'errors.rs'), 'utf8'),
+  ]);
+  assert.match(program, /^pub mod core;/m);
+  assert.match(program, /^pub mod errors;/m);
+  assert.match(errors, /InvalidCoreProgram/);
+  assert.match(errors, /InvalidCollection/);
 });

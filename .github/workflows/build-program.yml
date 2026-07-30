@@ -10,6 +10,9 @@ jobs:
   build-sbpf:
     name: Build SBPF program
     runs-on: ubuntu-22.04
+    env:
+      # GitHub masks this secret; it is never echoed. Empty when not configured.
+      CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,11 +54,43 @@ jobs:
           ls -lh "$PROGRAM_SO"
           sha256sum "$PROGRAM_SO"
 
+      - name: Record exact SBPF source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROGRAM_SO=$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)
+          test -n "$PROGRAM_SO"
+          printf '%s\n' "$GITHUB_SHA" > "$(dirname "$PROGRAM_SO")/cumzillaraptors.build-revision"
+
+      - name: Set up Node for Bankrun gate
+        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked Bankrun test dependencies
+        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
+        run: npm ci
+
+      - name: Run Task 5 Bankrun initialization gate
+        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
+        shell: bash
+        env:
+          CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
+          CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          PROGRAM_DIR=$(dirname "$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)")
+          test -f "$PROGRAM_DIR/cumzillaraptors.build-revision"
+          SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-initialize.test.mjs
+
       - name: Upload program artifact
         uses: actions/upload-artifact@v4
         with:
           name: cumzillaraptors-devnet-sbpf
           path: |
             **/target/deploy/cumzillaraptors.so
+            **/target/deploy/cumzillaraptors.build-revision
           if-no-files-found: error
           retention-days: 90

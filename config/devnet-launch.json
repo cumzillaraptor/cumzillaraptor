@@ -1,0 +1,6 @@
+{
+  "version": "CUMZILLARAPTORS_DEVNET_LAUNCH_AUTHORITY_V1",
+  "cluster": "devnet",
+  "launchAuthority": "BCXJaod1XrwfSeY11F6aznc2KDLhm3wvC5MSyNBJjzi5",
+  "note": "User-approved, verified local devnet launch authority. Its private key is not stored in this repository."
+}
