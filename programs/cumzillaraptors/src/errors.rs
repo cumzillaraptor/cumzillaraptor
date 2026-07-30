@@ -42,6 +42,12 @@ pub enum CumzillaraptorsError {
     InvalidCoreProgram,
     #[msg("The supplied Metaplex Core collection does not match configuration.")]
     InvalidCollection,
+    #[msg("Collection update authority does not equal the deterministic config PDA.")]
+    InvalidCollectionUpdateAuthority,
+    #[msg("Collection royalty recipient does not equal the configured primary-sale treasury.")]
+    InvalidCollectionRoyaltyRecipient,
+    #[msg("Collection royalty basis points must equal 500.")]
+    InvalidCollectionRoyaltyBasisPoints,
     #[msg("Core asset name must not be empty.")]
     InvalidCoreAssetName,
     #[msg("Core asset URI must not be empty.")]
