@@ -46,4 +46,16 @@ pub enum CumzillaraptorsError {
     InvalidCoreAssetName,
     #[msg("Core asset URI must not be empty.")]
     InvalidCoreAssetUri,
+    #[msg("Allocation list contains a duplicate NFT ID.")]
+    DuplicateAllocationId,
+    #[msg("Allocation NFT ID must be between 1 and 420.")]
+    InvalidAllocationId,
+    #[msg("Allocation lists must be the exact disjoint 247/173 partition of IDs 1 through 420.")]
+    InvalidAllocationPartition,
+    #[msg("Allocation registry does not match the immutable launch manifest hash.")]
+    AllocationManifestMismatch,
+    #[msg("NFT ID has already been allocated.")]
+    AllocationIdAlreadyUsed,
+    #[msg("NFT ID belongs to the opposite public/claim allocation partition.")]
+    PublicClaimPartitionViolation,
 }

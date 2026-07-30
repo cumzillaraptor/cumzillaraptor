@@ -1,9 +1,11 @@
 use anchor_lang::prelude::*;
 
+pub mod allocation;
 pub mod core;
 pub mod errors;
 pub mod state;
 
+use allocation::AllocationRegistry;
 use errors::CumzillaraptorsError;
 use state::{launch_authority, CollectionConfig, SaleState, CLAIM_COUNT, PUBLIC_COUNT};
 
@@ -52,6 +54,45 @@ pub mod cumzillaraptors {
         );
         Ok(())
     }
+
+    /// Persists the reviewed public/claim partition exactly once, bound to the allocation hash
+    /// committed during `initialize_launch`. No allocation occurs in this Task 6 instruction.
+    pub fn initialize_allocation_registry(
+        ctx: Context<InitializeAllocationRegistry>,
+        public_ids: Vec<u16>,
+        claim_ids: Vec<u16>,
+    ) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.launch_authority.key(),
+            ctx.accounts.config.launch_authority,
+            CumzillaraptorsError::UnauthorizedLaunchAuthority
+        );
+        ctx.accounts.registry.initialize(
+            &ctx.accounts.config,
+            ctx.program_id,
+            &public_ids,
+            &claim_ids,
+            ctx.bumps.registry,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct InitializeAllocationRegistry<'info> {
+    #[account(seeds = [b"config"], bump = config.bump, has_one = launch_authority)]
+    pub config: Account<'info, CollectionConfig>,
+    #[account(
+        init,
+        payer = launch_authority,
+        space = 8 + AllocationRegistry::LEN,
+        seeds = [b"allocation"],
+        bump
+    )]
+    pub registry: Account<'info, AllocationRegistry>,
+    #[account(mut)]
+    pub launch_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[allow(clippy::too_many_arguments)]
