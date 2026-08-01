@@ -920,6 +920,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang 1.1.2",
  "mpl-core",
+ "solana-keccak-hasher 3.1.0",
 ]
 
 [[package]]

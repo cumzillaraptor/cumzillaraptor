@@ -1,7 +1,7 @@
 use crate::errors::CumzillaraptorsError;
 use crate::state::{CollectionConfig, CLAIM_COUNT, PUBLIC_COUNT};
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::keccak::hash;
+use solana_keccak_hasher::hash;
 
 pub const TOTAL_NFT_COUNT: u16 = 420;
 pub const ALLOCATION_BITMAP_BYTES: usize = 53;
