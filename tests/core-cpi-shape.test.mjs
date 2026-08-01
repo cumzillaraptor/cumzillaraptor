@@ -7,11 +7,26 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const cargoToml = path.join(root, 'programs', 'cumzillaraptors', 'Cargo.toml');
 const coreRs = path.join(root, 'programs', 'cumzillaraptors', 'src', 'core.rs');
+const programRs = path.join(root, 'programs', 'cumzillaraptors', 'src', 'lib.rs');
 
-test('Task 4 pins an Anchor-compatible mpl-core dependency', async () => {
+test('Anchor 1 Task 7 migration pins compatible Core dependencies without borsh-v1 defaults', async () => {
   const manifest = await readFile(cargoToml, 'utf8');
-  assert.match(manifest, /^mpl-core\s*=\s*\{[^\n]*version\s*=\s*"=0\.7\.2"[^\n]*features\s*=\s*\[[^\]]*"anchor"/m);
-  assert.match(manifest, /anchor-lang\s*=\s*\{\s*version\s*=\s*"=0\.30\.1"/);
+  assert.match(manifest, /anchor-lang\s*=\s*\{\s*version\s*=\s*"1\.1\.2"\s*\}/);
+  assert.match(
+    manifest,
+    /^mpl-core\s*=\s*\{[^\n]*version\s*=\s*"0\.12\.1"[^\n]*default-features\s*=\s*false[^\n]*features\s*=\s*\[[^\]]*"anchor"/m,
+  );
+});
+
+test('Task 7 source keeps config-PDA authority and fixed royalty policy through the migration', async () => {
+  const [core, program] = await Promise.all([readFile(coreRs, 'utf8'), readFile(programRs, 'utf8')]);
+  assert.match(core, /ROYALTY_BASIS_POINTS:\s*u16\s*=\s*500/);
+  assert.match(core, /pub const PRIMARY_TREASURY: Pubkey = pubkey!\(/);
+  assert.match(core, /address: PRIMARY_TREASURY/);
+  assert.match(core, /derive_config_pda/);
+  assert.match(program, /pub fn setup_collection/);
+  assert.match(program, /\.update_authority\(Some\(&config\)\)/);
+  assert.match(program, /\.plugins\(vec!\[plugins\]\)/);
 });
 
 test('compile-only Core wrapper validates canonical program and configured collection', async () => {
