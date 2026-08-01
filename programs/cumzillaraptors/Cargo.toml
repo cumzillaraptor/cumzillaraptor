@@ -15,13 +15,11 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
-# Anchor 1.x supports current Rust/platform-tools; `init-if-needed` is no longer enabled here.
-anchor-lang = { version = "1.1.2" }
-# mpl-core 0.12.x defaults to `borsh-v1`, which conflicts with Anchor's Borsh mode.
-# Enable only its Anchor integration for the Task 7 Core CPI.
-mpl-core = { version = "0.12.1", default-features = false, features = ["anchor"] }
-# Anchor 1 no longer re-exports Solana's Keccak helper. Keep the allocation
-# manifest protocol on Solana-compatible Keccak-256, not SHA-256.
+# mpl-core 0.12.1's `anchor-0-32` feature pins its CPI account types to Anchor 0.32.
+anchor-lang = { version = "0.32.1" }
+# Disable mpl-core's default borsh-v1 mode and select the matching Anchor integration.
+mpl-core = { version = "0.12.1", default-features = false, features = ["anchor-0-32"] }
+# Keep the allocation manifest protocol on Solana-compatible Keccak-256, not SHA-256.
 solana-keccak-hasher = { version = "3.1.0", features = ["sha3"] }
 
 [profile.release]
