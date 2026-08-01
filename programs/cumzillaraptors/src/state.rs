@@ -6,8 +6,8 @@ pub const CLAIM_COUNT: u16 = 173;
 // Generated from the user-approved public address in config/devnet-launch.json.
 // No private key, seed phrase, or keypair file is embedded in program source.
 pub const DEVNET_LAUNCH_AUTHORITY_BYTES: [u8; 32] = [
-    151, 136, 133, 164, 218, 114, 152, 240, 89, 244, 81, 104, 242, 65, 34, 215, 179, 71, 133, 140,
-    24, 120, 206, 24, 136, 205, 163, 185, 155, 9, 31, 114,
+    89, 71, 31, 157, 100, 56, 159, 24, 65, 145, 55, 9, 62, 38, 66, 48, 245, 115, 74, 45, 245, 140,
+    92, 146, 18, 176, 38, 222, 202, 170, 215, 239,
 ];
 
 pub fn launch_authority() -> Pubkey {

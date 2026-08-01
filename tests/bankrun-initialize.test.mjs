@@ -19,7 +19,7 @@ const canRun = process.arch === 'x64'
   && Boolean(expectedRevision);
 
 const PROGRAM_ID_TEXT = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
-const AUTHORITY_TEXT = 'BCXJaod1XrwfSeY11F6aznc2KDLhm3wvC5MSyNBJjzi5';
+const AUTHORITY_TEXT = '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r';
 const CORE_PROGRAM_TEXT = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 
 function anchorDiscriminator(name) {

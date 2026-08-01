@@ -85,6 +85,18 @@ jobs:
           test -f "$PROGRAM_DIR/cumzillaraptors.build-revision"
           SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-initialize.test.mjs
 
+      - name: Run Task 7 Bankrun collection-creation gate
+        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
+        shell: bash
+        env:
+          CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
+          CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          PROGRAM_DIR=$(dirname "$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)")
+          test -f "$PROGRAM_DIR/cumzillaraptors.build-revision"
+          SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-collection.test.mjs
+
       - name: Upload program artifact
         uses: actions/upload-artifact@v4
         with:

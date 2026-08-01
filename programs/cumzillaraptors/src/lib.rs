@@ -76,6 +76,42 @@ pub mod cumzillaraptors {
         )?;
         Ok(())
     }
+
+    /// Creates the canonical Metaplex Core collection with the config PDA as update authority and
+    /// the verified 500bp royalty plugin paying the primary treasury. The collection address is
+    /// immutable: it must equal `config.collection` committed at `initialize_launch`, and the
+    /// update authority is bound on-chain (no caller argument can redirect it).
+    pub fn setup_collection(ctx: Context<SetupCollection>) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.collection.key(),
+            ctx.accounts.config.collection,
+            CumzillaraptorsError::InvalidCollection
+        );
+        require_keys_eq!(
+            ctx.accounts.mpl_core_program.key(),
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+
+        let (name, uri, plugins) = core::collection_params();
+        let mpl_core_program = ctx.accounts.mpl_core_program.to_account_info();
+        let collection = ctx.accounts.collection.to_account_info();
+        let config = ctx.accounts.config.to_account_info();
+        let launch_authority = ctx.accounts.launch_authority.to_account_info();
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let mut builder =
+            mpl_core::instructions::CreateCollectionV1CpiBuilder::new(&mpl_core_program);
+        builder
+            .collection(&collection)
+            .update_authority(Some(&config))
+            .payer(&launch_authority)
+            .system_program(&system_program)
+            .name(name)
+            .uri(uri)
+            .plugins(vec![plugins]);
+        builder.invoke()?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -92,6 +128,22 @@ pub struct InitializeAllocationRegistry<'info> {
     pub registry: Account<'info, AllocationRegistry>,
     #[account(mut)]
     pub launch_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetupCollection<'info> {
+    #[account(seeds = [b"config"], bump = config.bump, has_one = launch_authority)]
+    pub config: Account<'info, CollectionConfig>,
+    /// The new collection account. Must be a fresh keypair signer and must equal the
+    /// address committed at `initialize_launch` (checked in the handler).
+    #[account(mut)]
+    pub collection: Signer<'info>,
+    #[account(mut)]
+    pub launch_authority: Signer<'info>,
+    /// CHECK: validated against `mpl_core::ID` in the handler; not an Anchor program.
+    #[account(constraint = mpl_core_program.key() == mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
+    pub mpl_core_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
