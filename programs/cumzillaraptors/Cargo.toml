@@ -12,7 +12,10 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
-default = []
+# Suppress Solana's incompatible default panic macro under SBPF platform-tools v1.54.
+# Release builds retain `panic = "abort"` below.
+custom-panic = []
+default = ["custom-panic"]
 
 [dependencies]
 # mpl-core 0.12.1's `anchor-0-32` feature pins its CPI account types to Anchor 0.32.

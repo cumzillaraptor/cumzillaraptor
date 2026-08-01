@@ -29,7 +29,7 @@ jobs:
           solana --version
           cargo-build-sbf --version
 
-      - name: Build program with SBPF platform tools v1.51
+      - name: Build program with SBPF platform tools v1.54
         shell: bash
         run: |
           set -euo pipefail
@@ -37,11 +37,11 @@ jobs:
           # cargo-build-sbf v1.18 panics if this fresh-runner cache root is absent.
           mkdir -p "$HOME/.cache/solana"
           test -d "$HOME/.cache/solana"
-          # v1.51 is the compatibility bridge: newer than v1.50's Cargo 1.84
-          # (which cannot parse edition2024) but before v1.54's SBPF core break.
+          # v1.54 parses edition2024 manifests; the program enables its documented
+          # custom-panic feature to avoid the older default entrypoint panic macro.
           RUST_BACKTRACE=1 cargo-build-sbf \
             --manifest-path programs/cumzillaraptors/Cargo.toml \
-            --tools-version v1.51 \
+            --tools-version v1.54 \
             --force-tools-install \
             --arch sbfv2 \
             --verbose
