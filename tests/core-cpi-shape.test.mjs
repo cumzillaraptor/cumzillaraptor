@@ -6,16 +6,30 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const cargoToml = path.join(root, 'programs', 'cumzillaraptors', 'Cargo.toml');
+const workflowYml = path.join(root, '.github', 'workflows', 'build-program.yml');
 const coreRs = path.join(root, 'programs', 'cumzillaraptors', 'src', 'core.rs');
 const programRs = path.join(root, 'programs', 'cumzillaraptors', 'src', 'lib.rs');
 
-test('Anchor 1 Task 7 migration pins compatible Core dependencies without borsh-v1 defaults', async () => {
+test('Anchor 0.32 Task 7 migration pins the matching mpl-core CPI integration', async () => {
   const manifest = await readFile(cargoToml, 'utf8');
-  assert.match(manifest, /anchor-lang\s*=\s*\{\s*version\s*=\s*"1\.1\.2"\s*\}/);
+  assert.match(manifest, /anchor-lang\s*=\s*\{\s*version\s*=\s*"0\.32\.1"\s*\}/);
   assert.match(
     manifest,
-    /^mpl-core\s*=\s*\{[^\n]*version\s*=\s*"0\.12\.1"[^\n]*default-features\s*=\s*false[^\n]*features\s*=\s*\[[^\]]*"anchor"/m,
+    /^mpl-core\s*=\s*\{[^\n]*version\s*=\s*"0\.12\.1"[^\n]*default-features\s*=\s*false[^\n]*features\s*=\s*\[[^\]]*"anchor-0-32"/m,
   );
+});
+
+test('SBPF workflow is an explicit x86 manual artifact gate for Anchor 0.32', async () => {
+  const workflow = await readFile(workflowYml, 'utf8');
+  assert.match(workflow, /^\s*workflow_dispatch:/m);
+  assert.match(workflow, /runs-on:\s*ubuntu-22\.04/);
+  assert.match(workflow, /solana-release-x86_64-unknown-linux-gnu\.tar\.bz2/);
+  assert.match(workflow, /--tools-version v1\.50/);
+  assert.match(workflow, /--arch sbfv2/);
+  assert.match(workflow, /cumzillaraptors\.build-revision/);
+  assert.match(workflow, /tests\/bankrun-initialize\.test\.mjs/);
+  assert.match(workflow, /tests\/bankrun-collection\.test\.mjs/);
+  assert.match(workflow, /actions\/upload-artifact@v4/);
 });
 
 test('Task 7 source keeps config-PDA authority and fixed royalty policy through the migration', async () => {
