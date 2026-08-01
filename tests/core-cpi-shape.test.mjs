@@ -24,7 +24,7 @@ test('SBPF workflow is an explicit x86 manual artifact gate for Anchor 0.32', as
   assert.match(workflow, /^\s*workflow_dispatch:/m);
   assert.match(workflow, /runs-on:\s*ubuntu-22\.04/);
   assert.match(workflow, /solana-release-x86_64-unknown-linux-gnu\.tar\.bz2/);
-  assert.match(workflow, /--tools-version v1\.54/);
+  assert.match(workflow, /--tools-version v1\.51/);
   assert.match(workflow, /--arch sbfv2/);
   assert.match(workflow, /cumzillaraptors\.build-revision/);
   assert.match(workflow, /tests\/bankrun-initialize\.test\.mjs/);
