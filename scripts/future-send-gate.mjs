@@ -26,6 +26,13 @@ const AUTHORIZATION_TEXT = 'one Devnet program deployment attempt only';
 const EXCLUSIONS_TEXT = 'No launch initialization, collection creation, minting, claims, payments, uploads, authority changes, upgrades, mainnet, or other transactions.';
 const HEX_256 = /^[a-f0-9]{64}$/;
 const NONCE = /^[A-Za-z0-9_-]{43}$/;
+const EXPECTED_METADATA = Object.freeze([
+  ['uid', 0],
+  ['mode', 0o600],
+  ['isRegularFile', true],
+  ['parentUid', 0],
+  ['parentMode', 0o700],
+]);
 
 
 function endpointError() {
@@ -85,12 +92,29 @@ function isCanonicalTimestamp(value) {
 }
 
 function hasExpectedMetadata(metadata) {
-  return Boolean(metadata)
-    && metadata.uid === 0
-    && metadata.mode === 0o600
-    && metadata.isRegularFile === true
-    && metadata.parentUid === 0
-    && metadata.parentMode === 0o700;
+  if (metadata === null || (typeof metadata !== 'object' && typeof metadata !== 'function')) return false;
+  try {
+    // Provenance metadata is an ordinary frozen object-literal record. Enumerable
+    // is intentionally fixed to true as part of that exact public data topology.
+    // A sealed target leaves non-configurable properties writable, allowing a
+    // Proxy to fabricate their values while preserving Proxy invariants; each
+    // descriptor must therefore be non-writable as well as non-configurable.
+    if (Object.isExtensible(metadata)) return false;
+    const keys = Reflect.ownKeys(metadata);
+    if (keys.length !== EXPECTED_METADATA.length
+      || keys.some((key) => typeof key !== 'string' || !EXPECTED_METADATA.some(([expectedKey]) => expectedKey === key))) return false;
+    return EXPECTED_METADATA.every(([key, expectedValue]) => {
+      const descriptor = Object.getOwnPropertyDescriptor(metadata, key);
+      return descriptor
+        && Object.hasOwn(descriptor, 'value')
+        && descriptor.value === expectedValue
+        && descriptor.writable === false
+        && descriptor.configurable === false
+        && descriptor.enumerable === true;
+    });
+  } catch {
+    return false;
+  }
 }
 
 function hasCanonicalStrings(record) {

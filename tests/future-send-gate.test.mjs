@@ -44,14 +44,14 @@ function canonicalAuthText(overrides = {}) {
 }
 
 function rootOnlyMetadata(overrides = {}) {
-  return {
+  return Object.freeze({
     uid: 0,
     mode: 0o600,
     isRegularFile: true,
     parentUid: 0,
     parentMode: 0o700,
     ...overrides,
-  };
+  });
 }
 
 test('canonicalizes a strict HTTPS endpoint and returns only deterministic metadata', () => {
@@ -127,6 +127,96 @@ test('authorization validation defaults to deny and accepts only canonical root-
     });
     assert.deepEqual(result, { ok: false });
   }
+});
+
+test('authorization validation rejects prototype-poisoned and accessor metadata', () => {
+  const endpoint = canonicalizeRpcEndpoint(SAFE_RPC);
+  const expectedMetadata = {
+    uid: 0,
+    mode: 0o600,
+    isRegularFile: true,
+    parentUid: 0,
+    parentMode: 0o700,
+  };
+  const input = {
+    recordText: canonicalAuthText(),
+    now: '2026-08-01T00:01:00.000Z',
+    rpcSha256: endpoint.sha256,
+  };
+
+  Object.defineProperties(Object.prototype, Object.fromEntries(
+    Object.entries(expectedMetadata).map(([key, value]) => [key, {
+      configurable: true,
+      value,
+    }]),
+  ));
+  try {
+    assert.deepEqual(validateAuthorizationRecord({ ...input, metadata: {} }), { ok: false });
+  } finally {
+    for (const key of Object.keys(expectedMetadata)) delete Object.prototype[key];
+  }
+
+  for (const key of Object.keys(expectedMetadata)) {
+    const metadata = { ...expectedMetadata };
+    Object.defineProperty(metadata, key, {
+      configurable: true,
+      get() { return expectedMetadata[key]; },
+    });
+    assert.deepEqual(validateAuthorizationRecord({ ...input, metadata }), { ok: false });
+  }
+});
+
+test('authorization metadata requires an exact frozen enumerable data-descriptor topology', () => {
+  const endpoint = canonicalizeRpcEndpoint(SAFE_RPC);
+  const input = {
+    recordText: canonicalAuthText(),
+    now: '2026-08-01T00:01:00.000Z',
+    rpcSha256: endpoint.sha256,
+  };
+  // Enumerable is part of the policy: ordinary object-literal provenance facts
+  // are enumerable, and the exact descriptor topology prevents hidden variants.
+  const expectedMetadata = {
+    uid: 0,
+    mode: 0o600,
+    isRegularFile: true,
+    parentUid: 0,
+    parentMode: 0o700,
+  };
+  const sealedIncorrectTarget = Object.seal({ ...expectedMetadata, uid: 1000 });
+  const sealedFabricatingProxy = new Proxy(sealedIncorrectTarget, {
+    getOwnPropertyDescriptor(target, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (!descriptor || !Object.hasOwn(expectedMetadata, key)) return descriptor;
+      // Legal for a non-configurable but writable target property: this fabricates
+      // the expected descriptor value without violating Proxy invariants.
+      return { ...descriptor, value: expectedMetadata[key] };
+    },
+  });
+  const frozenIncorrectTarget = Object.freeze({ ...expectedMetadata, uid: 1000 });
+  const frozenFabricatingProxy = new Proxy(frozenIncorrectTarget, {
+    getOwnPropertyDescriptor(target, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (!descriptor || !Object.hasOwn(expectedMetadata, key)) return descriptor;
+      return { ...descriptor, value: expectedMetadata[key] };
+    },
+  });
+  const nonEnumerableFrozen = { ...expectedMetadata };
+  Object.defineProperty(nonEnumerableFrozen, 'uid', { enumerable: false });
+  Object.freeze(nonEnumerableFrozen);
+
+  assert.deepEqual(Object.getOwnPropertyDescriptor(sealedFabricatingProxy, 'uid'), {
+    value: 0, writable: true, enumerable: true, configurable: false,
+  });
+  assert.deepEqual(validateAuthorizationRecord({ ...input, metadata: sealedFabricatingProxy }), { ok: false });
+  assert.deepEqual(validateAuthorizationRecord({ ...input, metadata: Object.seal({ ...expectedMetadata }) }), { ok: false });
+  assert.deepEqual(validateAuthorizationRecord({ ...input, metadata: nonEnumerableFrozen }), { ok: false });
+  assert.deepEqual(validateAuthorizationRecord({ ...input, metadata: rootOnlyMetadata() }), {
+    ok: true,
+    nonce: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
+  });
+  assert.doesNotThrow(() => {
+    assert.deepEqual(validateAuthorizationRecord({ ...input, metadata: frozenFabricatingProxy }), { ok: false });
+  });
 });
 
 test('policy exports facts only and has no CLI fixture or command assembly helper', () => {
