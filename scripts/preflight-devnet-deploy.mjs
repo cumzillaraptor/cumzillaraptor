@@ -51,6 +51,16 @@ function expectText(filePath, expected, label) {
   if (actual !== expected) throw new Error(`${label} mismatch: expected ${expected}, received ${actual || '(empty)'}.`);
 }
 
+function safeRpcLabel(rpc) {
+  return new URL(rpc).origin;
+}
+
+function safeErrorMessage(error, rpc) {
+  const message = error instanceof Error ? error.message : String(error);
+  if ((rpc && message.includes(rpc)) || /https?:\/\//i.test(message)) return 'RPC request failed; check the configured endpoint locally.';
+  return message;
+}
+
 async function preflight(options) {
   const artifactDir = path.resolve(options.artifact_dir);
   const programBinary = path.join(artifactDir, 'cumzillaraptors.so');
@@ -87,7 +97,7 @@ async function preflight(options) {
     mode: 'READ-ONLY PRE-SEND PREFLIGHT',
     guarantee: 'No transaction will be constructed, signed, or sent.',
     cluster: EXPECTED.cluster,
-    rpc: options.rpc,
+    rpc: safeRpcLabel(options.rpc),
     slot,
     artifact: { path: programBinary, bytes: statSync(programBinary).size, revision: EXPECTED.revision, sha256: artifactHash },
     identities: { programId: expectedProgram.toBase58(), payer: payer.toBase58(), upgradeAuthority: upgradeAuthority.toBase58(), configPda: configPda.toBase58() },
@@ -104,12 +114,16 @@ async function preflight(options) {
   console.log(JSON.stringify(report, null, 2));
 }
 
-try {
-  await preflight(parseArgs(process.argv.slice(2)));
-} catch (error) {
-  console.error(`PREFLIGHT ERROR: ${error.message}`);
-  process.exitCode = 1;
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+  let options;
+  try {
+    options = parseArgs(process.argv.slice(2));
+    await preflight(options);
+  } catch (error) {
+    console.error(`PREFLIGHT ERROR: ${safeErrorMessage(error, options?.rpc)}`);
+    process.exitCode = 1;
+  }
 }
 
 // This file intentionally contains no deployment, transaction-construction, signing, or sending implementation.
-export { EXPECTED, parseArgs, preflight };
+export { EXPECTED, parseArgs, preflight, safeRpcLabel, safeErrorMessage };

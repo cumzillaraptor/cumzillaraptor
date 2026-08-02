@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts', 'preflight-devnet-deploy.mjs');
+const { safeRpcLabel, safeErrorMessage } = await import(pathToFileURL(script).href);
 
 test('devnet deployment preflight is fail-closed and has no signing or sending path', async () => {
   const source = await readFile(script, 'utf8');
@@ -16,6 +18,12 @@ test('devnet deployment preflight is fail-closed and has no signing or sending p
   assert.match(source, /--preflight/);
   assert.match(source, /No transaction will be constructed, signed, or sent/);
   assert.doesNotMatch(source, /sendTransaction|sendRawTransaction|signTransaction|BpfLoader|programDeploy/);
+});
+
+test('preflight redacts authenticated RPC URLs from reports and errors', () => {
+  const rpc = 'https://user:TOP_SECRET_DO_NOT_LEAK@rpc.example.test/v2/TOP_SECRET_DO_NOT_LEAK?api-key=TOP_SECRET_DO_NOT_LEAK';
+  assert.equal(safeRpcLabel(rpc), 'https://rpc.example.test');
+  assert.equal(safeErrorMessage(new Error(`failed: ${rpc}`), rpc), 'RPC request failed; check the configured endpoint locally.');
 });
 
 test('preflight requires an artifact directory and separate payer and upgrade authority paths', async () => {
