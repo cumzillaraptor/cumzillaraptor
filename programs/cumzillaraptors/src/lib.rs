@@ -4,11 +4,13 @@ pub mod allocation;
 pub mod claims;
 pub mod core;
 pub mod errors;
+pub mod metadata;
 pub mod secp256k1;
 pub mod state;
 
 use allocation::AllocationRegistry;
 use errors::CumzillaraptorsError;
+use metadata::APPROVED_METADATA_ROOT;
 use state::{launch_authority, CollectionConfig, SaleState, CLAIM_COUNT, PUBLIC_COUNT};
 
 declare_id!("2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2");
@@ -199,7 +201,7 @@ fn validate_launch_parameters(
         CumzillaraptorsError::InvalidClaimRoot
     );
     require!(
-        metadata_root != [0; 32],
+        metadata_root == APPROVED_METADATA_ROOT,
         CumzillaraptorsError::InvalidMetadataRoot
     );
     require!(
@@ -337,8 +339,8 @@ mod tests {
         )
         .is_err());
         for hashes in [
-            ([0; 32], valid, valid, valid),
-            (valid, [0; 32], valid, valid),
+            ([0; 32], valid, APPROVED_METADATA_ROOT, valid),
+            (valid, [0; 32], APPROVED_METADATA_ROOT, valid),
             (valid, valid, [0; 32], valid),
             (valid, valid, valid, [0; 32]),
         ] {
@@ -356,6 +358,32 @@ mod tests {
             )
             .is_err());
         }
+        assert!(validate_launch_parameters(
+            launch_authority(),
+            Pubkey::new_unique(),
+            mpl_core::ID,
+            collection,
+            valid,
+            valid,
+            [9; 32],
+            valid,
+            PUBLIC_COUNT,
+            CLAIM_COUNT,
+        )
+        .is_err());
+        assert!(validate_launch_parameters(
+            launch_authority(),
+            Pubkey::new_unique(),
+            mpl_core::ID,
+            collection,
+            valid,
+            valid,
+            APPROVED_METADATA_ROOT,
+            valid,
+            PUBLIC_COUNT,
+            CLAIM_COUNT,
+        )
+        .is_ok());
     }
 
     #[test]

@@ -80,4 +80,6 @@ pub enum CumzillaraptorsError {
     WrongSecpMessage,
     #[msg("Claim message input is not canonical.")]
     InvalidClaimMessage,
+    #[msg("Metadata name, URI, or proof is invalid.")]
+    InvalidMetadataProof,
 }

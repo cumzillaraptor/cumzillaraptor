@@ -49,7 +49,9 @@ function encodeInitializeLaunch({ treasury, coreProgram, collection }) {
   return Buffer.concat([
     anchorDiscriminator('initialize_launch'),
     treasury.toBuffer(), coreProgram.toBuffer(), collection.toBuffer(),
-    Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 3), Buffer.alloc(32, 4),
+    Buffer.alloc(32, 1), Buffer.alloc(32, 2),
+    Buffer.from('8b673473b91b510896a2142b647c09b204a93e2ba79d35ec10fe7ea7b915ddaa', 'hex'),
+    Buffer.alloc(32, 4),
     u16le(246), u16le(174),
   ]);
 }
