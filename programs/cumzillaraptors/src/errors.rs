@@ -20,8 +20,8 @@ pub enum CumzillaraptorsError {
     InvalidAllocationHash,
     #[msg("Claim root must not be all zeros.")]
     InvalidClaimRoot,
-    #[msg("Metadata mapping hash must not be all zeros.")]
-    InvalidMetadataHash,
+    #[msg("Metadata Merkle root must not be all zeros.")]
+    InvalidMetadataRoot,
     #[msg("Cluster tag hash must not be all zeros.")]
     InvalidClusterTagHash,
     #[msg("Mint pool must contain exactly the 246 unique public-sale NFT IDs.")]

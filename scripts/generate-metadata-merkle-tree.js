@@ -90,5 +90,8 @@ function main() {
   console.log(`Metadata root: ${output.merkleRoot}`);
 }
 
-try { main(); } catch (error) { console.error(`Error: ${error.message}`); process.exit(1); }
+if (require.main === module) {
+  try { main(); } catch (error) { console.error(`Error: ${error.message}`); process.exit(1); }
+}
+
 module.exports = { leaf, validArUri };

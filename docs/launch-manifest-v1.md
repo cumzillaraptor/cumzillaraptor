@@ -35,16 +35,26 @@ The program must store the resulting `allocationHash` at initialization and reje
 
 All 420 numeric IDs must be present. Every URI must use the exact `ar://` scheme and a 43-character Arweave transaction ID. Strings containing `PLACEHOLDER` are rejected.
 
-## Metadata URI hash
+## Metadata Merkle root
 
-`metadataUriHash = keccak256(payload)` where `payload` is:
+`metadataRoot` is the root from `nft-data/metadata-merkle-v1.devnet.json`. Every asset delivery supplies its canonical metadata name, permanent URI, and sorted-pair Keccak proof. The leaf framing is:
 
 ```text
-"CUMZILLARAPTORS_URI_MAP_V1" (UTF-8 bytes) ||
-collection_uri_length (u16 big-endian) || collection_uri (UTF-8 bytes) ||
-for nft_id = 1 through 420, in numeric order:
-  nft_id (u16 big-endian) || metadata_uri_length (u16 big-endian) || metadata_uri (UTF-8 bytes)
+keccak256(
+  "CUMZILLARAPTORS_METADATA_V1" UTF-8 ||
+  program_id (32 raw Solana public-key bytes) ||
+  cluster_tag_length (u8) || cluster_tag (UTF-8 bytes) ||
+  nft_id (u16 big-endian) ||
+  name_length (u16 big-endian) || name (UTF-8 bytes) ||
+  uri_length (u16 big-endian) || uri (UTF-8 bytes)
+)
 ```
+
+The submitted name must be exactly `cumzillaraptor #<nft_id>` and the URI must be a non-placeholder `ar://` URI with a 43-character transaction ID. The proof prevents a caller from substituting arbitrary metadata.
+
+## V1 claim root
+
+`claimRoot` is the root from `nft-data/claims-v1.devnet.json`, not the legacy `merkle-config.json`. The V1 dataset binds the program, cluster, ETH address, NFT ID, and deterministic nonce in each domain-separated leaf. Its records must map exactly to the canonical reserve CSV.
 
 ## Allocation hash
 
@@ -58,7 +68,7 @@ collection (32 raw Solana public-key bytes) ||
 public_count (u16 big-endian) ||
 public_ids (246 × u16 big-endian, in canonical CSV order) ||
 claim_root (32 raw bytes) ||
-metadataUriHash (32 raw bytes)
+metadataRoot (32 raw bytes)
 ```
 
 The cluster tag is currently the literal UTF-8 string `devnet`.
@@ -94,10 +104,10 @@ The generator defaults to the verified local source-data path. For CI, isolated 
 - `CUMZ_SOURCE_DIR`
 - `CUMZ_MINT_CSV`
 - `CUMZ_RESERVE_CSV`
-- `CUMZ_CLAIM_CONFIG`
-- `CUMZ_CLAIM_PROOFS`
+- `CUMZ_CLAIMS_V1`
+- `CUMZ_METADATA_MERKLE`
 
-The generator verifies each proof record against the canonical reserve CSV: the JSON key, record NFT ID, and normalized ETH wallet must match the reserve row exactly. It then recomputes the sorted-pair Keccak root from those proof records and refuses to emit a manifest unless it exactly equals `merkle-config.json`'s committed root.
+The generator verifies every V1 claim record against the canonical reserve CSV: its NFT ID and normalized ETH wallet must match exactly, then it recomputes the sorted-pair Keccak root and refuses any mismatch with `claims-v1.<cluster>.json`. It likewise recomputes every metadata leaf/proof from the URI map and refuses any mismatch with the V1 metadata Merkle root.
 
 ## Security properties and limits
 

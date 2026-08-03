@@ -6,20 +6,23 @@ const path = require('path');
 const { PublicKey } = require('@solana/web3.js');
 const { keccak256 } = require('@ethersproject/keccak256');
 const { MerkleTree } = require('merkletreejs');
+const { deterministicNonce, makeClaimLeaf } = require('./claim-message-v1');
+const { leaf: metadataLeaf } = require('./generate-metadata-merkle-tree');
 
 const VERSION = 'CUMZILLARAPTORS_ALLOCATION_V1';
+const CLAIM_VERSION = 'CUMZILLARAPTORS_CLAIM_V1';
+const METADATA_VERSION = 'CUMZILLARAPTORS_METADATA_V1';
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = process.env.CUMZ_SOURCE_DIR || path.join(ROOT, 'nft-data', 'allocation-source');
 const MINT_CSV = process.env.CUMZ_MINT_CSV || path.join(SOURCE_DIR, 'mint_list.csv');
 const RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || path.join(SOURCE_DIR, 'reserve_list.csv');
-const CLAIM_CONFIG = process.env.CUMZ_CLAIM_CONFIG || path.join(ROOT, 'nft-data', 'merkle-config.json');
-const CLAIM_PROOFS = process.env.CUMZ_CLAIM_PROOFS || path.join(ROOT, 'nft-data', 'claim-proofs.json');
+const CLAIMS_V1 = process.env.CUMZ_CLAIMS_V1 || path.join(ROOT, 'nft-data', 'claims-v1.devnet.json');
+const METADATA_MERKLE = process.env.CUMZ_METADATA_MERKLE || path.join(ROOT, 'nft-data', 'metadata-merkle-v1.devnet.json');
 const PUBLIC_COUNT = 246;
 const CLAIM_COUNT = 174;
+const NFT_COUNT = 420;
 
-function fail(message) {
-  throw new Error(message);
-}
+function fail(message) { throw new Error(message); }
 
 function parseArgs(argv) {
   const args = {};
@@ -31,19 +34,13 @@ function parseArgs(argv) {
     }
     args[flag.slice(2)] = value;
   }
-  for (const key of ['cluster', 'program-id', 'collection', 'uri-map', 'output']) {
-    if (!args[key]) fail(`Missing required --${key}`);
-  }
+  for (const key of ['cluster', 'program-id', 'collection', 'uri-map', 'output']) if (!args[key]) fail(`Missing required --${key}`);
   if (!/^[a-z0-9-]{1,32}$/.test(args.cluster)) fail('Cluster tag must be lowercase alphanumeric or hyphen.');
   return args;
 }
 
 function publicKeyBytes(value, label) {
-  try {
-    return new PublicKey(value).toBuffer();
-  } catch {
-    fail(`Invalid ${label}: expected a Solana public key.`);
-  }
+  try { return new PublicKey(value).toBuffer(); } catch { fail(`Invalid ${label}: expected a Solana public key.`); }
 }
 
 function parseCsvRows(file, expectedCount, label, requireWallet = false) {
@@ -54,17 +51,13 @@ function parseCsvRows(file, expectedCount, label, requireWallet = false) {
     const idText = columns[0];
     if (!/^[1-9]\d*$/.test(idText)) fail(`${label} CSV row ${index + 2} must use a canonical base-10 NFT ID.`);
     const id = Number(idText);
-    if (!Number.isSafeInteger(id) || id < 1 || id > 420) fail(`${label} CSV row ${index + 2} has invalid NFT ID.`);
+    if (!Number.isSafeInteger(id) || id < 1 || id > NFT_COUNT) fail(`${label} CSV row ${index + 2} has invalid NFT ID.`);
     const ethAddress = columns[2]?.toLowerCase();
     if (requireWallet && !/^0x[0-9a-f]{40}$/.test(ethAddress)) fail(`${label} CSV row ${index + 2} has invalid ETH wallet address.`);
     return { id, ethAddress };
   });
   if (new Set(rows.map((row) => row.id)).size !== rows.length) fail(`${label} CSV contains duplicate NFT IDs.`);
   return rows;
-}
-
-function parseCsvIds(file, expectedCount, label) {
-  return parseCsvRows(file, expectedCount, label).map((row) => row.id);
 }
 
 function bytesU16(value) {
@@ -84,141 +77,107 @@ function hexBytes(value, label) {
 }
 
 function validArUri(value) {
-  return typeof value === 'string'
-    && /^ar:\/\/[A-Za-z0-9_-]{43}$/.test(value)
-    && !/placeholder/i.test(value);
+  return typeof value === 'string' && /^ar:\/\/[A-Za-z0-9_-]{43}$/.test(value) && !/placeholder/i.test(value);
 }
 
-function verifyClaimProofMapping(claimProofs, reserveRows) {
-  const records = Object.entries(claimProofs);
-  if (records.length !== reserveRows.length) fail(`Claim proofs must contain exactly ${CLAIM_COUNT} records.`);
+function expectedKeys() { return Array.from({ length: NFT_COUNT }, (_, index) => String(index + 1)); }
+
+function verifyPartition(publicIds, reserveRows) {
+  const allIds = [...publicIds, ...reserveRows.map((row) => row.id)];
+  const sorted = [...allIds].sort((a, b) => a - b);
+  if (new Set(allIds).size !== NFT_COUNT || sorted.length !== NFT_COUNT || sorted.some((id, index) => id !== index + 1)) {
+    fail('Mint and reserve lists must be an exact, disjoint partition of IDs 1 through 420.');
+  }
+}
+
+function verifyV1Claims(claims, reserveRows, args) {
+  if (claims.version !== CLAIM_VERSION) fail('Claims file must be the V1 claim dataset.');
+  if (claims.cluster !== args.cluster || claims.programId !== args['program-id']) fail('V1 claim dataset cluster or program ID does not match manifest arguments.');
+  if (claims.totalClaims !== CLAIM_COUNT || !Array.isArray(claims.claims) || claims.claims.length !== CLAIM_COUNT) fail(`V1 claim dataset must contain exactly ${CLAIM_COUNT} claims.`);
   const reserveById = new Map(reserveRows.map((row) => [row.id, row.ethAddress]));
-  const seenIds = new Set();
-  for (const [key, record] of records) {
-    if (!/^[1-9]\d*$/.test(key) || Number(key) !== record.nftNumber) fail('Claim proof key must exactly match record NFT ID.');
-    const expectedEthAddress = reserveById.get(record.nftNumber);
-    if (!expectedEthAddress || record.ethAddress !== expectedEthAddress) fail('Claim proof record does not match canonical reserve CSV ID and ETH wallet.');
-    if (seenIds.has(record.nftNumber)) fail('Claim proof records contain duplicate NFT IDs.');
-    seenIds.add(record.nftNumber);
-  }
-  if (seenIds.size !== reserveRows.length) fail('Claim proof records do not cover every reserve CSV NFT ID.');
-}
-
-function recomputeClaimRoot(claimProofs) {
-  const records = Object.values(claimProofs);
-  if (records.length !== CLAIM_COUNT) fail(`Claim proofs must contain exactly ${CLAIM_COUNT} records.`);
-  const leaves = records.map((record) => {
-    if (!/^0x[0-9a-f]{40}$/.test(record.ethAddress) || !Number.isInteger(record.nftNumber) || record.nftNumber < 1 || record.nftNumber > 420) {
-      fail('Claim proof record has invalid ETH address or NFT ID.');
-    }
-    return Buffer.from(keccak256(Buffer.concat([Buffer.from(record.ethAddress.slice(2), 'hex'), bytesU16(record.nftNumber)])).slice(2), 'hex');
+  const seen = new Set();
+  const leaves = claims.claims.map((record) => {
+    if (!Number.isInteger(record.nftId) || !/^[1-9]\d*$/.test(String(record.nftId)) || !/^0x[0-9a-f]{40}$/.test(record.ethAddress) || !/^0x[0-9a-f]{64}$/.test(record.nonceHex) || !/^0x[0-9a-f]{64}$/.test(record.leaf)) fail('V1 claim record has invalid ID, ETH address, nonce, or leaf.');
+    if (reserveById.get(record.nftId) !== record.ethAddress) fail('V1 claim record does not match canonical reserve CSV ID and ETH wallet.');
+    const expectedNonce = deterministicNonce({ programId: args['program-id'], clusterTag: args.cluster, ethAddress: record.ethAddress, nftId: record.nftId });
+    const expectedLeaf = makeClaimLeaf({ programId: args['program-id'], clusterTag: args.cluster, ethAddress: record.ethAddress, nftId: record.nftId, nonceHex: expectedNonce });
+    if (record.nonceHex !== expectedNonce || record.leaf !== expectedLeaf) fail('V1 claim leaf does not match canonical claim record.');
+    if (seen.has(record.nftId)) fail('V1 claim dataset contains duplicate NFT IDs.');
+    seen.add(record.nftId);
+    return record.leaf;
   });
+  if (seen.size !== reserveRows.length) fail('V1 claim records do not cover every reserve CSV NFT ID.');
   const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
-  return `0x${tree.getRoot().toString('hex')}`;
+  const root = `0x${tree.getRoot().toString('hex')}`;
+  if (root !== claims.merkleRoot) fail('V1 claim root does not match canonical V1 claim records.');
+  for (const record of claims.claims) if (!tree.verify(record.proof, record.leaf, root)) fail('V1 claim proof does not verify.');
+  return hexBytes(root, 'V1 claim root');
 }
 
-function hashUriMap(uriMap) {
-  const chunks = [Buffer.from('CUMZILLARAPTORS_URI_MAP_V1', 'utf8')];
-  const collection = Buffer.from(uriMap.collectionUri, 'utf8');
-  chunks.push(bytesU16(collection.length), collection);
-  for (let id = 1; id <= 420; id += 1) {
-    const uri = Buffer.from(uriMap.metadataUris[String(id)], 'utf8');
-    chunks.push(bytesU16(id), bytesU16(uri.length), uri);
-  }
-  return keccak256(Buffer.concat(chunks));
+function verifyMetadata(metadata, uriMap, args) {
+  if (metadata.version !== METADATA_VERSION) fail('Metadata file must be the V1 metadata Merkle dataset.');
+  if (metadata.cluster !== args.cluster || metadata.programId !== args['program-id']) fail('Metadata dataset cluster or program ID does not match manifest arguments.');
+  if (metadata.totalMetadata !== NFT_COUNT || !metadata.metadata || typeof metadata.metadata !== 'object' || Array.isArray(metadata.metadata)) fail('Metadata dataset must contain exactly 420 records.');
+  if (!validArUri(uriMap.collectionUri)) fail('Collection URI is missing, invalid, or contains a placeholder.');
+  const keys = Object.keys(uriMap.metadataUris ?? {}).sort((a, b) => Number(a) - Number(b));
+  const expected = expectedKeys();
+  if (keys.length !== NFT_COUNT || keys.some((key, index) => key !== expected[index])) fail('URI map must contain exactly canonical metadata URI keys 1 through 420.');
+  const records = expected.map((key) => {
+    const record = metadata.metadata[key];
+    if (!record || record.nftId !== Number(key) || record.name !== `cumzillaraptor #${key}` || record.uri !== uriMap.metadataUris[key] || !/^0x[0-9a-f]{64}$/.test(record.leaf) || !Array.isArray(record.proof)) fail('Metadata record does not match canonical URI map.');
+    if (!validArUri(record.uri)) fail(`Metadata URI for NFT #${key} is missing, invalid, or contains a placeholder.`);
+    const expectedLeaf = metadataLeaf({ cluster: args.cluster, programId: args['program-id'], nftId: record.nftId, name: record.name, uri: record.uri });
+    if (expectedLeaf !== record.leaf) fail('Metadata leaf does not match canonical ID/name/URI record.');
+    return record;
+  });
+  const tree = new MerkleTree(records.map((record) => record.leaf), keccak256, { sortPairs: true });
+  const root = `0x${tree.getRoot().toString('hex')}`;
+  if (root !== metadata.merkleRoot) fail('Metadata root does not match canonical metadata records.');
+  for (const record of records) if (!tree.verify(record.proof, record.leaf, root)) fail('Metadata proof does not verify.');
+  return hexBytes(root, 'Metadata root');
 }
 
-function allocationHash({ cluster, programBytes, collectionBytes, publicIds, claimRoot, metadataUriHash }) {
+function allocationHash({ cluster, programBytes, collectionBytes, publicIds, claimRoot, metadataRoot }) {
   const clusterBytes = Buffer.from(cluster, 'utf8');
-  const ids = publicIds.map(bytesU16);
-  const payload = Buffer.concat([
-    Buffer.from(VERSION, 'utf8'),
-    programBytes,
-    bytesU8(clusterBytes.length),
-    clusterBytes,
-    collectionBytes,
-    bytesU16(publicIds.length),
-    ...ids,
-    claimRoot,
-    hexBytes(metadataUriHash, 'Metadata URI hash'),
-  ]);
-  return keccak256(payload);
+  return keccak256(Buffer.concat([
+    Buffer.from(VERSION, 'utf8'), programBytes, bytesU8(clusterBytes.length), clusterBytes,
+    collectionBytes, bytesU16(publicIds.length), ...publicIds.map(bytesU16), claimRoot, metadataRoot,
+  ]));
 }
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const programBytes = publicKeyBytes(args['program-id'], 'program ID');
   const collectionBytes = publicKeyBytes(args.collection, 'collection');
-  const publicIds = parseCsvIds(MINT_CSV, PUBLIC_COUNT, 'Mint');
+  const publicIds = parseCsvRows(MINT_CSV, PUBLIC_COUNT, 'Mint').map((row) => row.id);
   const reserveRows = parseCsvRows(RESERVE_CSV, CLAIM_COUNT, 'Reserve', true);
-  const claimIds = reserveRows.map((row) => row.id);
-  const allIds = [...publicIds, ...claimIds];
-  if (new Set(allIds).size !== 420 || allIds.some((id, index) => id !== [...allIds].sort((a, b) => a - b)[index])) {
-    const sorted = [...allIds].sort((a, b) => a - b);
-    if (sorted.length !== 420 || sorted.some((id, index) => id !== index + 1)) {
-      fail('Mint and reserve lists must be an exact, disjoint partition of IDs 1 through 420.');
-    }
-  }
-
-  const claimConfig = JSON.parse(fs.readFileSync(CLAIM_CONFIG, 'utf8'));
-  const claimRoot = hexBytes(claimConfig.merkleRoot, 'Claim root');
-  if (claimConfig.totalClaims !== CLAIM_COUNT) fail(`Claim configuration must contain exactly ${CLAIM_COUNT} claims.`);
-  const claimProofs = JSON.parse(fs.readFileSync(CLAIM_PROOFS, 'utf8'));
-  verifyClaimProofMapping(claimProofs, reserveRows);
-  const recomputedClaimRoot = recomputeClaimRoot(claimProofs);
-  if (recomputedClaimRoot !== claimConfig.merkleRoot) fail('Claim root does not match the canonical claim proof records.');
-
+  verifyPartition(publicIds, reserveRows);
+  const claims = JSON.parse(fs.readFileSync(CLAIMS_V1, 'utf8'));
+  const claimRoot = verifyV1Claims(claims, reserveRows, args);
   const uriMap = JSON.parse(fs.readFileSync(args['uri-map'], 'utf8'));
-  if (!validArUri(uriMap.collectionUri)) fail('Collection URI is missing, invalid, or contains a placeholder.');
-  if (!uriMap.metadataUris || typeof uriMap.metadataUris !== 'object' || Array.isArray(uriMap.metadataUris)) fail('URI map must contain a metadataUris object keyed by NFT ID.');
-  const uriKeys = Object.keys(uriMap.metadataUris).sort((a, b) => Number(a) - Number(b));
-  const expectedUriKeys = Array.from({ length: 420 }, (_, index) => String(index + 1));
-  if (uriKeys.length !== 420 || uriKeys.some((key, index) => key !== expectedUriKeys[index])) fail('URI map must contain exactly canonical metadata URI keys 1 through 420.');
-  for (let id = 1; id <= 420; id += 1) {
-    if (!validArUri(uriMap.metadataUris[String(id)])) {
-      fail(`Metadata URI for NFT #${id} is missing, invalid, or contains a placeholder.`);
-    }
-  }
-
-  const metadataUriHash = hashUriMap(uriMap);
+  const metadata = JSON.parse(fs.readFileSync(METADATA_MERKLE, 'utf8'));
+  const metadataRoot = verifyMetadata(metadata, uriMap, args);
   const result = {
     version: VERSION,
     cluster: args.cluster,
     programId: args['program-id'],
     collection: args.collection,
     publicCount: publicIds.length,
-    claimCount: claimIds.length,
+    claimCount: reserveRows.length,
     publicIds,
-    claimIds,
-    claimRoot: claimConfig.merkleRoot.toLowerCase(),
-    metadataUriHash,
-    auditSummary: {
-      publicCount: publicIds.length,
-      claimCount: claimIds.length,
-      totalCount: allIds.length,
-      partitionValid: true,
-    },
-    allocationHash: allocationHash({
-      cluster: args.cluster,
-      programBytes,
-      collectionBytes,
-      publicIds,
-      claimRoot,
-      metadataUriHash,
-    }),
+    claimIds: reserveRows.map((row) => row.id),
+    claimRoot: claims.merkleRoot,
+    metadataRoot: metadata.merkleRoot,
+    auditSummary: { publicCount: publicIds.length, claimCount: reserveRows.length, totalCount: NFT_COUNT, partitionValid: true },
+    allocationHash: allocationHash({ cluster: args.cluster, programBytes, collectionBytes, publicIds, claimRoot, metadataRoot }),
   };
-
   fs.mkdirSync(path.dirname(args.output), { recursive: true });
   fs.writeFileSync(args.output, `${JSON.stringify(result, null, 2)}\n`);
   console.log(`Wrote ${args.output}`);
   console.log(`Allocation hash: ${result.allocationHash}`);
-  console.log(`Metadata URI hash: ${result.metadataUriHash}`);
+  console.log(`V1 claim root: ${result.claimRoot}`);
+  console.log(`Metadata root: ${result.metadataRoot}`);
   console.log(`Audit summary: public=${result.auditSummary.publicCount}, claim=${result.auditSummary.claimCount}, total=${result.auditSummary.totalCount}, partitionValid=${result.auditSummary.partitionValid}`);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`Error: ${error.message}`);
-  process.exit(1);
-}
+try { main(); } catch (error) { console.error(`Error: ${error.message}`); process.exit(1); }

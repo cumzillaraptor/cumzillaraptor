@@ -29,7 +29,7 @@ pub struct CollectionConfig {
     pub collection: Pubkey,
     pub allocation_hash: [u8; 32],
     pub claim_root: [u8; 32],
-    pub metadata_hash: [u8; 32],
+    pub metadata_root: [u8; 32],
     pub cluster_tag_hash: [u8; 32],
     pub sale_state: SaleState,
     pub public_minted: u16,

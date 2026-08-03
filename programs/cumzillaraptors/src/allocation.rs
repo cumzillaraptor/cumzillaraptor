@@ -101,7 +101,7 @@ pub fn allocation_hash_v1(
     payload.extend_from_slice(&PUBLIC_COUNT.to_be_bytes());
     payload.extend_from_slice(&id_bytes);
     payload.extend_from_slice(&config.claim_root);
-    payload.extend_from_slice(&config.metadata_hash);
+    payload.extend_from_slice(&config.metadata_root);
     Ok(hash(&payload).to_bytes())
 }
 
@@ -172,7 +172,7 @@ mod tests {
             collection: Pubkey::new_unique(),
             allocation_hash: [0; 32],
             claim_root: [2; 32],
-            metadata_hash: [3; 32],
+            metadata_root: [3; 32],
             cluster_tag_hash: [4; 32],
             sale_state: crate::state::SaleState::Setup,
             public_minted: 0,

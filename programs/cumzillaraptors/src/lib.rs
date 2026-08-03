@@ -23,7 +23,7 @@ pub mod cumzillaraptors {
         collection: Pubkey,
         allocation_hash: [u8; 32],
         claim_root: [u8; 32],
-        metadata_hash: [u8; 32],
+        metadata_root: [u8; 32],
         cluster_tag_hash: [u8; 32],
         public_count: u16,
         claim_count: u16,
@@ -35,7 +35,7 @@ pub mod cumzillaraptors {
             collection,
             allocation_hash,
             claim_root,
-            metadata_hash,
+            metadata_root,
             cluster_tag_hash,
             public_count,
             claim_count,
@@ -48,7 +48,7 @@ pub mod cumzillaraptors {
             collection,
             allocation_hash,
             claim_root,
-            metadata_hash,
+            metadata_root,
             cluster_tag_hash,
             ctx.bumps.config,
         );
@@ -155,7 +155,7 @@ fn validate_launch_parameters(
     collection: Pubkey,
     allocation_hash: [u8; 32],
     claim_root: [u8; 32],
-    metadata_hash: [u8; 32],
+    metadata_root: [u8; 32],
     cluster_tag_hash: [u8; 32],
     public_count: u16,
     claim_count: u16,
@@ -197,8 +197,8 @@ fn validate_launch_parameters(
         CumzillaraptorsError::InvalidClaimRoot
     );
     require!(
-        metadata_hash != [0; 32],
-        CumzillaraptorsError::InvalidMetadataHash
+        metadata_root != [0; 32],
+        CumzillaraptorsError::InvalidMetadataRoot
     );
     require!(
         cluster_tag_hash != [0; 32],
@@ -216,7 +216,7 @@ fn write_launch_config(
     collection: Pubkey,
     allocation_hash: [u8; 32],
     claim_root: [u8; 32],
-    metadata_hash: [u8; 32],
+    metadata_root: [u8; 32],
     cluster_tag_hash: [u8; 32],
     bump: u8,
 ) {
@@ -226,7 +226,7 @@ fn write_launch_config(
     config.collection = collection;
     config.allocation_hash = allocation_hash;
     config.claim_root = claim_root;
-    config.metadata_hash = metadata_hash;
+    config.metadata_root = metadata_root;
     config.cluster_tag_hash = cluster_tag_hash;
     config.sale_state = SaleState::Setup;
     config.public_minted = 0;
@@ -363,7 +363,7 @@ mod tests {
         let collection = Pubkey::new_unique();
         let allocation_hash = [1; 32];
         let claim_root = [2; 32];
-        let metadata_hash = [3; 32];
+        let metadata_root = [3; 32];
         let cluster_tag_hash = [4; 32];
         let mut config = CollectionConfig {
             launch_authority: Pubkey::default(),
@@ -372,7 +372,7 @@ mod tests {
             collection: Pubkey::default(),
             allocation_hash: [0; 32],
             claim_root: [0; 32],
-            metadata_hash: [0; 32],
+            metadata_root: [0; 32],
             cluster_tag_hash: [0; 32],
             sale_state: SaleState::Live,
             public_minted: 99,
@@ -387,7 +387,7 @@ mod tests {
             collection,
             allocation_hash,
             claim_root,
-            metadata_hash,
+            metadata_root,
             cluster_tag_hash,
             254,
         );
@@ -397,7 +397,7 @@ mod tests {
         assert_eq!(config.collection, collection);
         assert_eq!(config.allocation_hash, allocation_hash);
         assert_eq!(config.claim_root, claim_root);
-        assert_eq!(config.metadata_hash, metadata_hash);
+        assert_eq!(config.metadata_root, metadata_root);
         assert_eq!(config.cluster_tag_hash, cluster_tag_hash);
         assert_eq!(config.sale_state, SaleState::Setup);
         assert_eq!(config.public_minted, 0);

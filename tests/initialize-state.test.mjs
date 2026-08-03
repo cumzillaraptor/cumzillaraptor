@@ -20,7 +20,7 @@ test('immutable launch state and user-approved devnet authority configuration ex
   const config = JSON.parse(launch);
   assert.equal(config.cluster, 'devnet');
   assert.equal(config.launchAuthority, '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r');
-  for (const field of ['launch_authority', 'treasury', 'core_program', 'collection', 'allocation_hash', 'claim_root', 'metadata_hash', 'cluster_tag_hash', 'sale_state', 'public_minted', 'claims_minted', 'bump']) {
+  for (const field of ['launch_authority', 'treasury', 'core_program', 'collection', 'allocation_hash', 'claim_root', 'metadata_root', 'cluster_tag_hash', 'sale_state', 'public_minted', 'claims_minted', 'bump']) {
     assert.match(state, new RegExp(`pub ${field}:`));
   }
   assert.match(state, /pub const PUBLIC_COUNT: u16 = 246/);
@@ -37,5 +37,5 @@ test('immutable launch state and user-approved devnet authority configuration ex
 
 test('Task 5 has no generic mutable launch-config update instruction', async () => {
   const source = await readFile(libRs, 'utf8');
-  assert.doesNotMatch(source, /pub fn (?:update|set)_(?:config|treasury|collection|core_program|claim_root|allocation_hash|metadata_hash|cluster_tag_hash)/);
+  assert.doesNotMatch(source, /pub fn (?:update|set)_(?:config|treasury|collection|core_program|claim_root|allocation_hash|metadata_root|cluster_tag_hash)/);
 });
