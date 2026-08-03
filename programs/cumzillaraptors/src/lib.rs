@@ -11,7 +11,9 @@ pub mod state;
 use allocation::AllocationRegistry;
 use errors::CumzillaraptorsError;
 use metadata::APPROVED_METADATA_ROOT;
-use state::{launch_authority, CollectionConfig, SaleState, CLAIM_COUNT, PUBLIC_COUNT};
+use state::{
+    launch_authority, ClaimReceipt, CollectionConfig, SaleState, CLAIM_COUNT, PUBLIC_COUNT,
+};
 
 declare_id!("2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2");
 
@@ -56,6 +58,22 @@ pub mod cumzillaraptors {
             cluster_tag_hash,
             ctx.bumps.config,
         );
+        Ok(())
+    }
+
+    /// The launch authority may enable claims once setup is complete, or pause/resume them as the
+    /// explicit kill switch. Configuration roots and collection identity remain immutable.
+    pub fn set_claims_sale_state(
+        ctx: Context<SetClaimsSaleState>,
+        next_state: SaleState,
+    ) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.launch_authority.key(),
+            ctx.accounts.config.launch_authority,
+            CumzillaraptorsError::UnauthorizedLaunchAuthority
+        );
+        validate_claims_sale_state_transition(ctx.accounts.config.sale_state, next_state)?;
+        ctx.accounts.config.sale_state = next_state;
         Ok(())
     }
 
@@ -116,6 +134,185 @@ pub mod cumzillaraptors {
         builder.invoke()?;
         Ok(())
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn claim_nft(
+        ctx: Context<ClaimNft>,
+        nft_id: u16,
+        eth_address: [u8; 20],
+        nonce: [u8; 32],
+        expiry_unix: u64,
+        claim_proof: Vec<[u8; 32]>,
+        name: String,
+        uri: String,
+        metadata_proof: Vec<[u8; 32]>,
+        expected_claim_leaf: [u8; 32],
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.config.sale_state == SaleState::Live,
+            CumzillaraptorsError::ClaimsNotLive
+        );
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            now >= 0 && (now as u64) <= expiry_unix,
+            CumzillaraptorsError::ClaimAuthorizationExpired
+        );
+        require!(
+            ctx.accounts.config.claims_minted < CLAIM_COUNT,
+            CumzillaraptorsError::ClaimCountExceeded
+        );
+        require_keys_eq!(
+            ctx.accounts.collection.key(),
+            ctx.accounts.config.collection,
+            CumzillaraptorsError::InvalidCollection
+        );
+        require_keys_eq!(
+            ctx.accounts.config.core_program,
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require_keys_eq!(
+            ctx.accounts.mpl_core_program.key(),
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+
+        let claim_leaf = claims::verify_claim_eligibility(
+            &ctx.accounts.config,
+            &ctx.accounts.registry,
+            ctx.program_id,
+            &eth_address,
+            nft_id,
+            &nonce,
+            &claim_proof,
+        )?;
+        require!(
+            claim_leaf == expected_claim_leaf,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        require!(
+            !ctx.accounts.registry.is_allocated(nft_id)?,
+            CumzillaraptorsError::AllocationIdAlreadyUsed
+        );
+        metadata::verify_metadata_proof(
+            ctx.program_id,
+            &ctx.accounts.config.metadata_root,
+            nft_id,
+            &name,
+            &uri,
+            &metadata_proof,
+        )?;
+        let message = secp256k1::build_claim_message(
+            "devnet",
+            *ctx.program_id,
+            ctx.accounts.claimer.key(),
+            nft_id,
+            eth_address,
+            nonce,
+            expiry_unix,
+        )?;
+        let preimage = secp256k1::eip191_preimage(&message)?;
+        secp256k1::verify_preceding_secp_instruction(
+            &ctx.accounts.instructions.to_account_info(),
+            &eth_address,
+            &preimage,
+        )?;
+        require_keys_eq!(
+            ctx.accounts.receipt.key(),
+            Pubkey::find_program_address(&[b"claim", &claim_leaf], ctx.program_id).0,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+
+        let nft_id_bytes = nft_id.to_be_bytes();
+        let config_bump = ctx.accounts.config.bump;
+        let asset_bump = ctx.bumps.asset;
+        let config_seeds: &[&[u8]] = &[b"config", &[config_bump]];
+        let asset_seeds: &[&[u8]] = &[b"asset", &nft_id_bytes, &[asset_bump]];
+        let signer_seeds: &[&[&[u8]]] = &[config_seeds, asset_seeds];
+        let core_program = ctx.accounts.mpl_core_program.to_account_info();
+        let asset = ctx.accounts.asset.to_account_info();
+        let collection = ctx.accounts.collection.to_account_info();
+        let config = ctx.accounts.config.to_account_info();
+        let claimer = ctx.accounts.claimer.to_account_info();
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let mut builder = mpl_core::instructions::CreateV1CpiBuilder::new(&core_program);
+        builder
+            .asset(&asset)
+            .collection(Some(&collection))
+            .authority(Some(&config))
+            .payer(&claimer)
+            .owner(Some(&claimer))
+            .update_authority(Some(&config))
+            .system_program(&system_program)
+            .data_state(mpl_core::types::DataState::AccountState)
+            .name(name)
+            .uri(uri);
+        builder.invoke_signed(signer_seeds)?;
+
+        ctx.accounts
+            .registry
+            .mark_allocated_after_core_success(nft_id)?;
+        ctx.accounts.config.claims_minted = ctx
+            .accounts
+            .config
+            .claims_minted
+            .checked_add(1)
+            .ok_or(error!(CumzillaraptorsError::ArithmeticOverflow))?;
+        ctx.accounts.receipt.claimer = ctx.accounts.claimer.key();
+        ctx.accounts.receipt.eth_address = eth_address;
+        ctx.accounts.receipt.nft_id = nft_id;
+        ctx.accounts.receipt.bump = ctx.bumps.receipt;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct SetClaimsSaleState<'info> {
+    #[account(mut, seeds = [b"config"], bump = config.bump, has_one = launch_authority)]
+    pub config: Account<'info, CollectionConfig>,
+    pub launch_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(
+    nft_id: u16,
+    _eth_address: [u8; 20],
+    _nonce: [u8; 32],
+    _expiry_unix: u64,
+    _claim_proof: Vec<[u8; 32]>,
+    _name: String,
+    _uri: String,
+    _metadata_proof: Vec<[u8; 32]>,
+    expected_claim_leaf: [u8; 32]
+)]
+pub struct ClaimNft<'info> {
+    #[account(mut, seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, CollectionConfig>,
+    #[account(mut, seeds = [b"allocation"], bump = registry.bump)]
+    pub registry: Account<'info, AllocationRegistry>,
+    #[account(mut)]
+    pub claimer: Signer<'info>,
+    /// CHECK: canonical collection key is checked against immutable config.
+    #[account(mut, address = config.collection @ CumzillaraptorsError::InvalidCollection)]
+    pub collection: UncheckedAccount<'info>,
+    /// CHECK: Metaplex Core creates this deterministic PDA during the CPI.
+    #[account(mut, seeds = [b"asset", &nft_id.to_be_bytes()], bump)]
+    pub asset: UncheckedAccount<'info>,
+    #[account(
+        init,
+        payer = claimer,
+        space = 8 + ClaimReceipt::LEN,
+        seeds = [b"claim".as_ref(), expected_claim_leaf.as_ref()],
+        bump
+    )]
+    pub receipt: Account<'info, ClaimReceipt>,
+    /// CHECK: checked against the canonical mpl-core program ID.
+    #[account(address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+    /// CHECK: Instructions sysvar is checked by the verifier.
+    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID @ CumzillaraptorsError::InvalidInstructionsSysvar)]
+    pub instructions: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -149,6 +346,19 @@ pub struct SetupCollection<'info> {
     #[account(constraint = mpl_core_program.key() == mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
     pub mpl_core_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+}
+
+fn validate_claims_sale_state_transition(current: SaleState, next: SaleState) -> Result<()> {
+    require!(
+        matches!(
+            (current, next),
+            (SaleState::Setup, SaleState::Live)
+                | (SaleState::Live, SaleState::Paused)
+                | (SaleState::Paused, SaleState::Live)
+        ),
+        CumzillaraptorsError::InvalidSaleStateTransition
+    );
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -384,6 +594,21 @@ mod tests {
             CLAIM_COUNT,
         )
         .is_ok());
+    }
+
+    #[test]
+    fn claims_sale_state_has_only_live_pause_kill_switch_transitions() {
+        assert!(validate_claims_sale_state_transition(SaleState::Setup, SaleState::Live).is_ok());
+        assert!(validate_claims_sale_state_transition(SaleState::Live, SaleState::Paused).is_ok());
+        assert!(validate_claims_sale_state_transition(SaleState::Paused, SaleState::Live).is_ok());
+        for (current, next) in [
+            (SaleState::Setup, SaleState::Paused),
+            (SaleState::Setup, SaleState::Setup),
+            (SaleState::Live, SaleState::Live),
+            (SaleState::Paused, SaleState::Paused),
+        ] {
+            assert!(validate_claims_sale_state_transition(current, next).is_err());
+        }
     }
 
     #[test]

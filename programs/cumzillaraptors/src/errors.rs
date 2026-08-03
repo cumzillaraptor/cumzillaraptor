@@ -82,4 +82,14 @@ pub enum CumzillaraptorsError {
     InvalidClaimMessage,
     #[msg("Metadata name, URI, or proof is invalid.")]
     InvalidMetadataProof,
+    #[msg("Claims are not live.")]
+    ClaimsNotLive,
+    #[msg("Claim authorization has expired.")]
+    ClaimAuthorizationExpired,
+    #[msg("Claim count would exceed the approved allocation.")]
+    ClaimCountExceeded,
+    #[msg("Claim receipt does not match canonical authorization.")]
+    InvalidClaimReceipt,
+    #[msg("Sale state cannot transition to the requested state.")]
+    InvalidSaleStateTransition,
 }
