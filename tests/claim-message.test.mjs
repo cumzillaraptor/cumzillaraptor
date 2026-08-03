@@ -68,7 +68,7 @@ test('regenerated V1 claim dataset and checked vectors bind devnet/program/root'
   assert.equal(claims.version, 'CUMZILLARAPTORS_CLAIM_V1');
   assert.equal(claims.cluster, 'devnet');
   assert.equal(claims.programId, fixture.programId);
-  assert.equal(claims.claims.length, 173);
+  assert.equal(claims.claims.length, 174);
   assert.match(claims.merkleRoot, /^0x[0-9a-f]{64}$/);
   assert.equal(vectors.version, claims.version);
   assert.equal(vectors.fixture.message, [
@@ -82,7 +82,7 @@ test('regenerated V1 claim dataset and checked vectors bind devnet/program/root'
     'expiry_unix: 2000000000',
   ].join('\n'));
   // Committed V1 interoperability vector: values must not be recomputed by this test.
-  assert.equal(claims.merkleRoot, '0x6b78a511b9b133ca3182c0a5b3d71f4e33e06ea9298110b31fe8b2973549dba4');
+  assert.equal(claims.merkleRoot, '0x791d012fcb221a209f776df044657f81d69b16868534367242577604fc61b086');
   assert.equal(vectors.fixture.messageHash, '0xdd1d6613534a9b4fd81c932e54811eaa26d56f212ba9faf06a05314a2008c2bd');
   assert.equal(vectors.fixture.leaf, '0xc5fb2563c36fde2167a433934c1919b605f30ee01d6d1c2b26260abb50a39f05');
   const tree = new MerkleTree(claims.claims.map((claim) => claim.leaf), keccak256, { sortPairs: true });

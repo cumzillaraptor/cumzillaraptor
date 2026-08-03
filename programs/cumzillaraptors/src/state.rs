@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
-pub const PUBLIC_COUNT: u16 = 247;
-pub const CLAIM_COUNT: u16 = 173;
+pub const PUBLIC_COUNT: u16 = 246;
+pub const CLAIM_COUNT: u16 = 174;
 
 // Generated from the user-approved public address in config/devnet-launch.json.
 // No private key, seed phrase, or keypair file is embedded in program source.

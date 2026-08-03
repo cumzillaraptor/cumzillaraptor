@@ -9,11 +9,13 @@ const { MerkleTree } = require('merkletreejs');
 
 const VERSION = 'CUMZILLARAPTORS_ALLOCATION_V1';
 const ROOT = path.resolve(__dirname, '..');
-const SOURCE_DIR = process.env.CUMZ_SOURCE_DIR || '/home/raspberrypi/nft-collection/cumzillaraptors_solana';
+const SOURCE_DIR = process.env.CUMZ_SOURCE_DIR || path.join(ROOT, 'nft-data', 'allocation-source');
 const MINT_CSV = process.env.CUMZ_MINT_CSV || path.join(SOURCE_DIR, 'mint_list.csv');
 const RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || path.join(SOURCE_DIR, 'reserve_list.csv');
 const CLAIM_CONFIG = process.env.CUMZ_CLAIM_CONFIG || path.join(ROOT, 'nft-data', 'merkle-config.json');
 const CLAIM_PROOFS = process.env.CUMZ_CLAIM_PROOFS || path.join(ROOT, 'nft-data', 'claim-proofs.json');
+const PUBLIC_COUNT = 246;
+const CLAIM_COUNT = 174;
 
 function fail(message) {
   throw new Error(message);
@@ -89,7 +91,7 @@ function validArUri(value) {
 
 function verifyClaimProofMapping(claimProofs, reserveRows) {
   const records = Object.entries(claimProofs);
-  if (records.length !== reserveRows.length) fail('Claim proofs must contain exactly 173 records.');
+  if (records.length !== reserveRows.length) fail(`Claim proofs must contain exactly ${CLAIM_COUNT} records.`);
   const reserveById = new Map(reserveRows.map((row) => [row.id, row.ethAddress]));
   const seenIds = new Set();
   for (const [key, record] of records) {
@@ -104,7 +106,7 @@ function verifyClaimProofMapping(claimProofs, reserveRows) {
 
 function recomputeClaimRoot(claimProofs) {
   const records = Object.values(claimProofs);
-  if (records.length !== 173) fail('Claim proofs must contain exactly 173 records.');
+  if (records.length !== CLAIM_COUNT) fail(`Claim proofs must contain exactly ${CLAIM_COUNT} records.`);
   const leaves = records.map((record) => {
     if (!/^0x[0-9a-f]{40}$/.test(record.ethAddress) || !Number.isInteger(record.nftNumber) || record.nftNumber < 1 || record.nftNumber > 420) {
       fail('Claim proof record has invalid ETH address or NFT ID.');
@@ -147,8 +149,8 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const programBytes = publicKeyBytes(args['program-id'], 'program ID');
   const collectionBytes = publicKeyBytes(args.collection, 'collection');
-  const publicIds = parseCsvIds(MINT_CSV, 247, 'Mint');
-  const reserveRows = parseCsvRows(RESERVE_CSV, 173, 'Reserve', true);
+  const publicIds = parseCsvIds(MINT_CSV, PUBLIC_COUNT, 'Mint');
+  const reserveRows = parseCsvRows(RESERVE_CSV, CLAIM_COUNT, 'Reserve', true);
   const claimIds = reserveRows.map((row) => row.id);
   const allIds = [...publicIds, ...claimIds];
   if (new Set(allIds).size !== 420 || allIds.some((id, index) => id !== [...allIds].sort((a, b) => a - b)[index])) {
@@ -160,7 +162,7 @@ function main() {
 
   const claimConfig = JSON.parse(fs.readFileSync(CLAIM_CONFIG, 'utf8'));
   const claimRoot = hexBytes(claimConfig.merkleRoot, 'Claim root');
-  if (claimConfig.totalClaims !== 173) fail('Claim configuration must contain exactly 173 claims.');
+  if (claimConfig.totalClaims !== CLAIM_COUNT) fail(`Claim configuration must contain exactly ${CLAIM_COUNT} claims.`);
   const claimProofs = JSON.parse(fs.readFileSync(CLAIM_PROOFS, 'utf8'));
   verifyClaimProofMapping(claimProofs, reserveRows);
   const recomputedClaimRoot = recomputeClaimRoot(claimProofs);

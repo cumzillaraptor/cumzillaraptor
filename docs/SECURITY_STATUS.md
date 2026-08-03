@@ -10,7 +10,7 @@ Mint and claim functionality stays disabled until all of the following are compl
 
 1. A reviewed Metaplex Core implementation atomically delivers every asset.
 2. Ethereum claims verify a domain-separated secp256k1 signature binding the ETH holder, NFT ID, Solana recipient, nonce, and expiry.
-3. The public 247 / claim 173 allocation is immutable and enforced on-chain.
+3. The public 246 / claim 174 allocation is immutable and enforced on-chain.
 4. Program, frontend, metadata, and release artifacts pass the test and provenance checks described in `docs/plans/2026-07-29_secure-core-mint-claim.md`.
 5. A controlled devnet rehearsal succeeds with explicit user approval.
 

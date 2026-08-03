@@ -14,11 +14,12 @@ const {
 } = require('./claim-message-v1');
 
 const ROOT = path.resolve(__dirname, '..');
-const DEFAULT_RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || '/home/raspberrypi/nft-collection/cumzillaraptors_solana/reserve_list.csv';
+const DEFAULT_RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || path.join(ROOT, 'nft-data', 'allocation-source', 'reserve_list.csv');
 const OUTPUT_DIR = path.join(ROOT, 'nft-data');
 const DEFAULT_PROGRAM_ID = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
 const VECTOR_RECIPIENT = '8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg';
 const VECTOR_EXPIRY = '2000000000';
+const CLAIM_COUNT = 174;
 
 function fail(message) {
   throw new Error(message);
@@ -46,7 +47,7 @@ function parseReserveCsv(file) {
     if (!Number.isSafeInteger(nftId) || nftId < 1 || nftId > 420) fail(`Reserve CSV row ${index + 2} has invalid NFT ID.`);
     return { nftId, name, ethAddress: normalizeEthAddress(ethAddress) };
   });
-  if (claims.length !== 173 || new Set(claims.map((claim) => claim.nftId)).size !== 173) fail('Reserve CSV must contain exactly 173 unique claims.');
+  if (claims.length !== CLAIM_COUNT || new Set(claims.map((claim) => claim.nftId)).size !== CLAIM_COUNT) fail(`Reserve CSV must contain exactly ${CLAIM_COUNT} unique claims.`);
   return claims;
 }
 

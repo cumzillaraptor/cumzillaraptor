@@ -194,8 +194,8 @@ mod tests {
         let mut out_of_range = public.clone();
         out_of_range[0] = 421;
         assert!(validate_partition(&out_of_range, &claims).is_err());
-        assert!(validate_partition(&public[..246], &claims).is_err());
-        assert!(validate_partition(&public, &claims[..172]).is_err());
+        assert!(validate_partition(&public[..245], &claims).is_err());
+        assert!(validate_partition(&public, &claims[..173]).is_err());
     }
 
     #[test]
@@ -208,8 +208,8 @@ mod tests {
         assert_eq!(
             allocation_hash_v1(&program_id, &config, &public).unwrap(),
             [
-                90, 147, 167, 25, 2, 121, 39, 122, 200, 29, 226, 177, 145, 121, 135, 155, 41, 154,
-                124, 2, 254, 200, 231, 181, 153, 86, 245, 79, 53, 76, 61, 65,
+                104, 154, 73, 50, 111, 144, 71, 28, 72, 229, 4, 69, 67, 213, 59, 56, 41, 101, 183,
+                149, 100, 188, 178, 255, 218, 50, 144, 186, 23, 69, 92, 188,
             ]
         );
     }

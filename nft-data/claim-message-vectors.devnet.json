@@ -2,7 +2,7 @@
   "version": "CUMZILLARAPTORS_CLAIM_V1",
   "cluster": "devnet",
   "programId": "2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2",
-  "merkleRoot": "0x6b78a511b9b133ca3182c0a5b3d71f4e33e06ea9298110b31fe8b2973549dba4",
+  "merkleRoot": "0x791d012fcb221a209f776df044657f81d69b16868534367242577604fc61b086",
   "fixture": {
     "recipient": "8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg",
     "nftId": 1,
@@ -20,7 +20,7 @@
       "0x6cee4d4e0e6b813248550def914f39c061e39b3b0d6e273db7c40b309c60f83c",
       "0xc991e03c74668507942277386e32a0fa979f53bed0eb4066fc147a7f7bbab6fa",
       "0x59996e92cce5f15082e804a94f8b2b483b468b0b964ff1cda2a5b5a9535951dc",
-      "0xdf4b326c0816285bbe0369a69318f60fed13accbb9e7fc3dd89d65444c57aed3"
+      "0x2844576999e6cdfd4d1924aa309d75c5ee8c6aed7187fafdb80950d56b907391"
     ]
   }
 }

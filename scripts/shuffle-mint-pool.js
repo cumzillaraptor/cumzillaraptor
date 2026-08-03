@@ -2,8 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Read mint list CSV
-const MINT_CSV = '/home/raspberrypi/nft-collection/cumzillaraptors_solana/mint_list.csv';
-const OUTPUT_DIR = '/home/raspberrypi/workspace-cumzillaraptor/nft-data';
+const ROOT = path.resolve(__dirname, '..');
+const MINT_CSV = process.env.CUMZ_MINT_CSV || path.join(ROOT, 'nft-data', 'allocation-source', 'mint_list.csv');
+const OUTPUT_DIR = path.join(ROOT, 'nft-data');
 
 const csv = fs.readFileSync(MINT_CSV, 'utf-8').trim().split('\n');
 
@@ -67,5 +68,5 @@ if (missing.length > 0) {
     process.exit(1);
 }
 
-console.log('✅ Shuffle verified — all 247 unique, no missing');
+console.log(`✅ Shuffle verified — all ${shuffled.length} unique, no missing`);
 console.log('\n--- MINT POOL ORDER GENERATED ---');

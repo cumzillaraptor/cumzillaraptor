@@ -12,9 +12,9 @@ pub enum CumzillaraptorsError {
     InvalidLaunchCoreProgram,
     #[msg("Collection must not be the default public key.")]
     InvalidLaunchCollection,
-    #[msg("Public allocation count must equal 247.")]
+    #[msg("Public allocation count must equal 246.")]
     InvalidPublicCount,
-    #[msg("Claim allocation count must equal 173.")]
+    #[msg("Claim allocation count must equal 174.")]
     InvalidClaimCount,
     #[msg("Allocation manifest hash must not be all zeros.")]
     InvalidAllocationHash,
@@ -24,7 +24,7 @@ pub enum CumzillaraptorsError {
     InvalidMetadataHash,
     #[msg("Cluster tag hash must not be all zeros.")]
     InvalidClusterTagHash,
-    #[msg("Mint pool must contain exactly the 247 unique public-sale NFT IDs.")]
+    #[msg("Mint pool must contain exactly the 246 unique public-sale NFT IDs.")]
     InvalidMintPool,
     #[msg("Mint pool has been exhausted.")]
     MintPoolExhausted,
@@ -56,7 +56,7 @@ pub enum CumzillaraptorsError {
     DuplicateAllocationId,
     #[msg("Allocation NFT ID must be between 1 and 420.")]
     InvalidAllocationId,
-    #[msg("Allocation lists must be the exact disjoint 247/173 partition of IDs 1 through 420.")]
+    #[msg("Allocation lists must be the exact disjoint 246/174 partition of IDs 1 through 420.")]
     InvalidAllocationPartition,
     #[msg("Allocation registry does not match the immutable launch manifest hash.")]
     AllocationManifestMismatch,

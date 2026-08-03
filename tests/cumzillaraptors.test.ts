@@ -90,7 +90,7 @@ describe("cumzillaraptors", () => {
       .rpc();
 
     const pool = await program.account.mintPool.fetch(mintPoolPda);
-    assert.equal(pool.order.length, 247);
+    assert.equal(pool.order.length, 246);
     assert.equal(pool.nextIndex, 0);
   });
 

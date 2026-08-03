@@ -317,7 +317,7 @@ mod tests {
             valid,
             valid,
             valid,
-            246,
+            245,
             CLAIM_COUNT
         )
         .is_err());
@@ -331,7 +331,7 @@ mod tests {
             valid,
             valid,
             PUBLIC_COUNT,
-            172
+            173
         )
         .is_err());
         for hashes in [

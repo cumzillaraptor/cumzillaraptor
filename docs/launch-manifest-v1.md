@@ -6,8 +6,8 @@ This document defines the canonical immutable allocation manifest for the Cumzil
 
 The manifest commits one collection to:
 
-- exactly **247** public-sale IDs;
-- exactly **173** ETH-holder claim IDs;
+- exactly **246** public-sale IDs;
+- exactly **174** ETH-holder claim IDs;
 - an approved claim Merkle root;
 - an approved metadata-URI map;
 - a specific Solana program, cluster, and Metaplex Core collection.
@@ -56,7 +56,7 @@ program_id (32 raw Solana public-key bytes) ||
 cluster_tag_length (u8) || cluster_tag (UTF-8 bytes) ||
 collection (32 raw Solana public-key bytes) ||
 public_count (u16 big-endian) ||
-public_ids (247 × u16 big-endian, in canonical CSV order) ||
+public_ids (246 × u16 big-endian, in canonical CSV order) ||
 claim_root (32 raw bytes) ||
 metadataUriHash (32 raw bytes)
 ```
@@ -65,8 +65,8 @@ The cluster tag is currently the literal UTF-8 string `devnet`.
 
 ## Required invariants
 
-1. Public count is exactly 247.
-2. Claim count is exactly 173.
+1. Public count is exactly 246.
+2. Claim count is exactly 174.
 3. Each ID is an integer in `1..=420`.
 4. No ID appears twice in either list.
 5. Public and claim lists are disjoint.
@@ -107,4 +107,4 @@ The generator verifies each proof record against the canonical reserve CSV: the 
 
 ## Change policy
 
-Manifest V1 values are immutable once accepted by the program. Changing a root, URI, collection, public allocation, program ID, or cluster requires a new manifest version and a new reviewed launch process.
+Manifest V1 values are immutable once accepted by the program. This repository currently approves the pre-launch 246-public/174-claim split, including #360 reserved to `0xfadf08b0ecc8f128b22d8fb738024db10d34df91`. Changing a root, URI, collection, public allocation, program ID, or cluster after initialization requires a new manifest version and a new reviewed launch process.

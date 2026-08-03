@@ -37,7 +37,7 @@ function encodeInitializeLaunch({ treasury, coreProgram, collection }) {
     anchorDiscriminator('initialize_launch'),
     treasury.toBuffer(), coreProgram.toBuffer(), collection.toBuffer(),
     Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 3), Buffer.alloc(32, 4),
-    u16le(247), u16le(173),
+    u16le(246), u16le(174),
   ]);
 }
 

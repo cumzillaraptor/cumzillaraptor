@@ -23,8 +23,8 @@ async function writeCanonicalInputs(dir) {
   const sourceDir = path.join(dir, 'source');
   await mkdir(sourceDir, { recursive: true });
   await Promise.all([
-    copyFile('/home/raspberrypi/nft-collection/cumzillaraptors_solana/mint_list.csv', path.join(sourceDir, 'mint_list.csv')),
-    copyFile('/home/raspberrypi/nft-collection/cumzillaraptors_solana/reserve_list.csv', path.join(sourceDir, 'reserve_list.csv')),
+    copyFile(path.join(root, 'nft-data', 'allocation-source', 'mint_list.csv'), path.join(sourceDir, 'mint_list.csv')),
+    copyFile(path.join(root, 'nft-data', 'allocation-source', 'reserve_list.csv'), path.join(sourceDir, 'reserve_list.csv')),
     copyFile(path.join(root, 'nft-data', 'merkle-config.json'), path.join(dir, 'merkle-config.json')),
     copyFile(path.join(root, 'nft-data', 'claim-proofs.json'), path.join(dir, 'claim-proofs.json')),
   ]);
@@ -56,7 +56,7 @@ async function runGenerator(output, extra = [], env = {}) {
   return result;
 }
 
-test('generator produces an exact immutable 247/173 partition with stable allocation hash', async () => {
+test('generator produces an exact immutable 246/174 partition with stable allocation hash', async () => {
   const dir = await makeTempDir('cumz-manifest-');
   try {
     const inputs = await writeCanonicalInputs(dir);
@@ -74,10 +74,10 @@ test('generator produces an exact immutable 247/173 partition with stable alloca
     assert.equal(a.cluster, 'devnet');
     assert.equal(a.programId, programId);
     assert.equal(a.collection, collection);
-    assert.equal(a.publicIds.length, 247);
-    assert.equal(a.claimIds.length, 173);
-    assert.equal(new Set(a.publicIds).size, 247);
-    assert.equal(new Set(a.claimIds).size, 173);
+    assert.equal(a.publicIds.length, 246);
+    assert.equal(a.claimIds.length, 174);
+    assert.equal(new Set(a.publicIds).size, 246);
+    assert.equal(new Set(a.claimIds).size, 174);
 
     const readCsvIds = async (file) => (await readFile(file, 'utf8')).trim().split(/\r?\n/).slice(1).map((line) => Number(line.split(',')[0]));
     assert.deepEqual(a.publicIds, await readCsvIds(path.join(inputs.CUMZ_SOURCE_DIR, 'mint_list.csv')));
@@ -87,11 +87,11 @@ test('generator produces an exact immutable 247/173 partition with stable alloca
     assert.equal(a.allocationHash, b.allocationHash);
     // Fixed V1 interoperability vector for the synthetic URI map from writeValidUriMap().
     assert.equal(a.metadataUriHash, '0x84c26b9592dc0e60e39f49902963206196300735004239f1a6b99e81ee1778bd');
-    assert.equal(a.allocationHash, '0x5c5dccd45363f453298a103ecb37ebdd21583793a8e676814996b09cf139d504');
+    assert.equal(a.allocationHash, '0xcf6bc1e5431ae33739b8a9111ce3ab7b8ee2a36a349965d785295361041b457c');
     assert.match(a.allocationHash, /^0x[0-9a-f]{64}$/);
     assert.match(a.metadataUriHash, /^0x[0-9a-f]{64}$/);
     assert.match(a.claimRoot, /^0x[0-9a-f]{64}$/);
-    assert.deepEqual(a.auditSummary, { publicCount: 247, claimCount: 173, totalCount: 420, partitionValid: true });
+    assert.deepEqual(a.auditSummary, { publicCount: 246, claimCount: 174, totalCount: 420, partitionValid: true });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

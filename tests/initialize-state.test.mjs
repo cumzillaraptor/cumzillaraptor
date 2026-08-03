@@ -23,8 +23,8 @@ test('immutable launch state and user-approved devnet authority configuration ex
   for (const field of ['launch_authority', 'treasury', 'core_program', 'collection', 'allocation_hash', 'claim_root', 'metadata_hash', 'cluster_tag_hash', 'sale_state', 'public_minted', 'claims_minted', 'bump']) {
     assert.match(state, new RegExp(`pub ${field}:`));
   }
-  assert.match(state, /pub const PUBLIC_COUNT: u16 = 247/);
-  assert.match(state, /pub const CLAIM_COUNT: u16 = 173/);
+  assert.match(state, /pub const PUBLIC_COUNT: u16 = 246/);
+  assert.match(state, /pub const CLAIM_COUNT: u16 = 174/);
   assert.match(errors, /UnauthorizedLaunchAuthority/);
   assert.match(errors, /AlreadyInitialized/);
   assert.match(errors, /InvalidLaunchCoreProgram/);
