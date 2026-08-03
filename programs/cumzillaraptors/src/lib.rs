@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 pub mod allocation;
+pub mod claims;
 pub mod core;
 pub mod errors;
 pub mod secp256k1;
