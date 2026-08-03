@@ -64,4 +64,20 @@ pub enum CumzillaraptorsError {
     AllocationIdAlreadyUsed,
     #[msg("NFT ID belongs to the opposite public/claim allocation partition.")]
     PublicClaimPartitionViolation,
+    #[msg("Instructions sysvar account is invalid.")]
+    InvalidInstructionsSysvar,
+    #[msg("The required immediately preceding secp256k1 instruction is missing.")]
+    MissingSecpInstruction,
+    #[msg("The preceding instruction is not the canonical secp256k1 precompile.")]
+    InvalidSecpProgram,
+    #[msg("The secp256k1 instruction layout is malformed.")]
+    MalformedSecpInstruction,
+    #[msg("secp256k1 offsets must reference the secp instruction itself.")]
+    CrossInstructionSecpData,
+    #[msg("The secp256k1 signer does not match the authorized ETH address.")]
+    WrongSecpSigner,
+    #[msg("The secp256k1 message does not match the canonical authorization preimage.")]
+    WrongSecpMessage,
+    #[msg("Claim message input is not canonical.")]
+    InvalidClaimMessage,
 }

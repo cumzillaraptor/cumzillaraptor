@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 pub mod allocation;
 pub mod core;
 pub mod errors;
+pub mod secp256k1;
 pub mod state;
 
 use allocation::AllocationRegistry;
