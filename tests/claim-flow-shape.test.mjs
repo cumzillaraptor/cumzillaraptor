@@ -38,6 +38,12 @@ test('claim_nft binds deterministic asset and receipt PDAs to verified claim dat
   assert.match(lib, /seeds = \[b"claim"\.as_ref\(\), expected_claim_leaf\.as_ref\(\)\]/);
   assert.match(lib, /claim_leaf == expected_claim_leaf/);
   assert.match(lib, /Pubkey::find_program_address\(&\[b"claim", &claim_leaf\]/);
+  assert.match(lib, /data_is_empty\(\) && ctx\.accounts\.receipt\.lamports\(\) == 0/);
+  assert.doesNotMatch(lib, /space = 8 \+ ClaimReceipt::LEN,[\s\S]*seeds = \[b"claim"/);
+  assert.match(lib, /let create_receipt = anchor_lang::solana_program::system_instruction::create_account/);
+  assert.match(lib, /ctx\.accounts\.asset\.data_is_empty\(\)/);
+  assert.match(lib, /let recover_dust = anchor_lang::solana_program::system_instruction::transfer/);
+  assert.match(lib, /builder\.invoke_signed\(signer_seeds\)\?;[\s\S]*create_receipt/);
   assert.match(lib, /pub claimer: Signer<'info>/);
   assert.match(lib, /\.payer\(&claimer\)[\s\S]*\.owner\(Some\(&claimer\)\)/);
 });

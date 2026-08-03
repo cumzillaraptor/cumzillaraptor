@@ -222,12 +222,49 @@ pub mod cumzillaraptors {
             Pubkey::find_program_address(&[b"claim", &claim_leaf], ctx.program_id).0,
             CumzillaraptorsError::InvalidClaimReceipt
         );
+        require_keys_eq!(
+            *ctx.accounts.receipt.owner,
+            anchor_lang::solana_program::system_program::ID,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        require!(
+            ctx.accounts.receipt.data_is_empty() && ctx.accounts.receipt.lamports() == 0,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        require_keys_eq!(
+            *ctx.accounts.asset.owner,
+            anchor_lang::solana_program::system_program::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require!(
+            ctx.accounts.asset.data_is_empty(),
+            CumzillaraptorsError::InvalidCoreProgram
+        );
 
         let nft_id_bytes = nft_id.to_be_bytes();
         let config_bump = ctx.accounts.config.bump;
         let asset_bump = ctx.bumps.asset;
         let config_seeds: &[&[u8]] = &[b"config", &[config_bump]];
         let asset_seeds: &[&[u8]] = &[b"asset", &nft_id_bytes, &[asset_bump]];
+        // A third party can fund a predictable PDA. Drain only an empty system-owned asset PDA
+        // using its signer seed, so dust cannot prevent the Core create instruction.
+        let asset_lamports = ctx.accounts.asset.lamports();
+        if asset_lamports > 0 {
+            let recover_dust = anchor_lang::solana_program::system_instruction::transfer(
+                &ctx.accounts.asset.key(),
+                &ctx.accounts.claimer.key(),
+                asset_lamports,
+            );
+            anchor_lang::solana_program::program::invoke_signed(
+                &recover_dust,
+                &[
+                    ctx.accounts.asset.to_account_info(),
+                    ctx.accounts.claimer.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                &[asset_seeds],
+            )?;
+        }
         let signer_seeds: &[&[&[u8]]] = &[config_seeds, asset_seeds];
         let core_program = ctx.accounts.mpl_core_program.to_account_info();
         let asset = ctx.accounts.asset.to_account_info();
@@ -249,6 +286,32 @@ pub mod cumzillaraptors {
             .uri(uri);
         builder.invoke_signed(signer_seeds)?;
 
+        let receipt_bump = ctx.bumps.receipt;
+        let receipt_seeds: &[&[u8]] = &[b"claim", &claim_leaf, &[receipt_bump]];
+        let create_receipt = anchor_lang::solana_program::system_instruction::create_account(
+            &ctx.accounts.claimer.key(),
+            &ctx.accounts.receipt.key(),
+            Rent::get()?.minimum_balance(8 + ClaimReceipt::LEN),
+            (8 + ClaimReceipt::LEN) as u64,
+            ctx.program_id,
+        );
+        anchor_lang::solana_program::program::invoke_signed(
+            &create_receipt,
+            &[
+                ctx.accounts.claimer.to_account_info(),
+                ctx.accounts.receipt.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[receipt_seeds],
+        )?;
+        ClaimReceipt {
+            claimer: ctx.accounts.claimer.key(),
+            eth_address,
+            nft_id,
+            bump: receipt_bump,
+        }
+        .try_serialize(&mut &mut ctx.accounts.receipt.try_borrow_mut_data()?[..])?;
+
         ctx.accounts
             .registry
             .mark_allocated_after_core_success(nft_id)?;
@@ -258,10 +321,6 @@ pub mod cumzillaraptors {
             .claims_minted
             .checked_add(1)
             .ok_or(error!(CumzillaraptorsError::ArithmeticOverflow))?;
-        ctx.accounts.receipt.claimer = ctx.accounts.claimer.key();
-        ctx.accounts.receipt.eth_address = eth_address;
-        ctx.accounts.receipt.nft_id = nft_id;
-        ctx.accounts.receipt.bump = ctx.bumps.receipt;
         Ok(())
     }
 }
@@ -298,14 +357,9 @@ pub struct ClaimNft<'info> {
     /// CHECK: Metaplex Core creates this deterministic PDA during the CPI.
     #[account(mut, seeds = [b"asset", &nft_id.to_be_bytes()], bump)]
     pub asset: UncheckedAccount<'info>,
-    #[account(
-        init,
-        payer = claimer,
-        space = 8 + ClaimReceipt::LEN,
-        seeds = [b"claim".as_ref(), expected_claim_leaf.as_ref()],
-        bump
-    )]
-    pub receipt: Account<'info, ClaimReceipt>,
+    /// CHECK: must be an empty system account; created only after the Core CPI succeeds.
+    #[account(mut, seeds = [b"claim".as_ref(), expected_claim_leaf.as_ref()], bump)]
+    pub receipt: UncheckedAccount<'info>,
     /// CHECK: checked against the canonical mpl-core program ID.
     #[account(address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
     pub mpl_core_program: UncheckedAccount<'info>,
