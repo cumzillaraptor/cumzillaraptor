@@ -104,29 +104,21 @@ async function submit(connection, web3, transaction, signers) {
 }
 
 async function createAndActivateClaimLookupTable(connection, web3, authority, addresses) {
-  // ALT creation validates recentSlot against the executing bank's SlotHashes.
-  // A fresh single-node validator can advance between an RPC slot read and
-  // transaction preflight, so retry only that deterministic local setup with a
-  // freshly read processed slot rather than assuming an observed slot is usable.
-  let lookupTableAddress;
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const recentSlot = await connection.getSlot('processed');
-    const [createLookupTable, candidateAddress] = web3.AddressLookupTableProgram.createLookupTable({
-      authority: authority.publicKey,
-      payer: authority.publicKey,
-      recentSlot,
-    });
-    try {
-      await submit(connection, web3, new web3.Transaction().add(createLookupTable), [authority]);
-      lookupTableAddress = candidateAddress;
-      break;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes('is not a recent slot') || attempt === 9) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-  }
-  assert.ok(lookupTableAddress, 'private validator must create an ALT from a live SlotHashes entry');
+  // ALT creation validates recentSlot against the executing bank's SlotHashes
+  // sysvar, not against the RPC node's current slot. Read the newest actual
+  // SlotHashes entry so the create instruction cannot race a fast local leader.
+  const slotHashes = await connection.getAccountInfo(web3.SYSVAR_SLOT_HASHES_PUBKEY, 'processed');
+  assert.ok(slotHashes && slotHashes.data.length >= 16, 'private validator must expose SlotHashes for ALT creation');
+  const slotHashesLength = Number(slotHashes.data.readBigUInt64LE(0));
+  assert.ok(slotHashesLength > 0, 'private validator SlotHashes must contain a recent slot');
+  const recentSlot = Number(slotHashes.data.readBigUInt64LE(8));
+  assert.ok(Number.isSafeInteger(recentSlot), 'ALT recent slot must be precisely representable');
+  const [createLookupTable, lookupTableAddress] = web3.AddressLookupTableProgram.createLookupTable({
+    authority: authority.publicKey,
+    payer: authority.publicKey,
+    recentSlot,
+  });
+  await submit(connection, web3, new web3.Transaction().add(createLookupTable), [authority]);
   await submit(connection, web3, new web3.Transaction().add(web3.AddressLookupTableProgram.extendLookupTable({
     lookupTable: lookupTableAddress,
     authority: authority.publicKey,
