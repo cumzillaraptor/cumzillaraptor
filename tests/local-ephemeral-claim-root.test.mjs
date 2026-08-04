@@ -276,7 +276,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   // packet ceiling, so use a validator-created ALT plus a v0 transaction. The
   // precompile remains instruction 0 and claim_nft remains instruction 1.
   const claimWeb3 = {
-    AddressLookupTableProgram, Transaction, TransactionMessage, VersionedTransaction,
+    AddressLookupTableProgram, PublicKey, Transaction, TransactionMessage, VersionedTransaction,
   };
   const claimLookupTable = await createAndActivateClaimLookupTable(connection, claimWeb3, authority, [
     config, registry, collection.publicKey,
