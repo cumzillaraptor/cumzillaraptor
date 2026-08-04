@@ -8,7 +8,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const outputDir = process.env.SBF_OUT_DIR || '';
 const programPath = path.join(outputDir, 'cumzillaraptors.so');
 const revisionPath = path.join(outputDir, 'cumzillaraptors.build-revision');
-const keypairJson = process.env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON;
+const keypairJson = process.env.CUMZ_TEST_VALIDATION_AUTHORITY_KEYPAIR_JSON;
 const expectedRevision = process.env.CUMZ_EXPECTED_BUILD_REVISION;
 const canRun = process.arch === 'x64'
   && process.platform === 'linux'
@@ -19,7 +19,7 @@ const canRun = process.arch === 'x64'
   && Boolean(expectedRevision);
 
 const PROGRAM_ID_TEXT = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
-const AUTHORITY_TEXT = '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r';
+
 const CORE_PROGRAM_TEXT = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 
 function anchorDiscriminator(name) {
@@ -43,15 +43,14 @@ function encodeInitializeLaunch({ treasury, coreProgram, collection }) {
   ]);
 }
 
-// This test deliberately does not use a local keypair path or a generated IDL. x86 CI injects the
-// authority as an ephemeral secret and writes a revision marker beside the freshly built SBPF file.
+// This test deliberately uses a generated ephemeral signer and the separately built
+// test-validation SBPF artifact. It never needs a production/devnet keypair.
 test('x86 Bankrun: initialize_launch stores immutable state and rejects reinitialization', { skip: !canRun }, async () => {
   assert.equal(readFileSync(revisionPath, 'utf8').trim(), expectedRevision, 'SBPF artifact must be built from this exact revision');
   const [{ start }, web3] = await Promise.all([import('solana-bankrun'), import('@solana/web3.js')]);
   const { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionInstruction } = web3;
   const programId = new PublicKey(PROGRAM_ID_TEXT);
   const authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(keypairJson)));
-  assert.equal(authority.publicKey.toBase58(), AUTHORITY_TEXT, 'injected CI key must match the committed authority');
   const context = await start([{ name: 'cumzillaraptors', programId }], []);
 
   const funding = new Transaction().add(SystemProgram.transfer({ fromPubkey: context.payer.publicKey, toPubkey: authority.publicKey, lamports: 2 * LAMPORTS_PER_SOL }));
@@ -99,6 +98,6 @@ test('Bankrun behavioral gate refuses local ARM execution and requires explicit 
   }
   assert.equal(process.arch, 'x64');
   assert.ok(outputDir, 'x86 CI must explicitly select its current SBPF output directory');
-  assert.ok(keypairJson, 'x86 CI must inject the approved authority only as an ephemeral secret');
+  assert.ok(keypairJson, 'x86 CI must generate an ephemeral test-validation authority');
   assert.ok(expectedRevision, 'x86 CI must bind its artifact to the checked-out revision');
 });

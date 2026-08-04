@@ -415,6 +415,28 @@ fn validate_claims_sale_state_transition(current: SaleState, next: SaleState) ->
     Ok(())
 }
 
+/// The `InitializeLaunch` account context already requires this key to sign the transaction.
+/// Default/production builds additionally bind that signer to the immutable devnet authority.
+/// `test-validation` is intentionally a build-time-only exception for a separately named SBPF
+/// binary that the x86 harness loads only into its private loopback validator.
+fn validate_launch_authority(authority: Pubkey) -> Result<()> {
+    #[cfg(feature = "test-validation")]
+    {
+        let _ephemeral_transaction_signer = authority;
+        Ok(())
+    }
+
+    #[cfg(not(feature = "test-validation"))]
+    {
+        require_keys_eq!(
+            authority,
+            launch_authority(),
+            CumzillaraptorsError::UnauthorizedLaunchAuthority
+        );
+        Ok(())
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn validate_launch_parameters(
     authority: Pubkey,
@@ -428,11 +450,7 @@ fn validate_launch_parameters(
     public_count: u16,
     claim_count: u16,
 ) -> Result<()> {
-    require_keys_eq!(
-        authority,
-        launch_authority(),
-        CumzillaraptorsError::UnauthorizedLaunchAuthority
-    );
+    validate_launch_authority(authority)?;
     require_keys_neq!(
         treasury,
         Pubkey::default(),
@@ -518,6 +536,48 @@ mod tests {
     #[test]
     fn configured_authority_is_not_default() {
         assert_ne!(launch_authority(), Pubkey::default());
+    }
+
+    #[cfg(not(feature = "test-validation"))]
+    #[test]
+    fn default_production_validation_rejects_an_arbitrary_authority() {
+        assert!(validate_launch_authority(Pubkey::new_unique()).is_err());
+        assert!(validate_launch_authority(launch_authority()).is_ok());
+    }
+
+    #[cfg(feature = "test-validation")]
+    #[test]
+    fn test_validation_accepts_an_ephemeral_transaction_signer_without_relaxing_metadata_root() {
+        let signer = Pubkey::new_unique();
+        let valid = [7; 32];
+        let collection = Pubkey::new_unique();
+
+        assert!(validate_launch_parameters(
+            signer,
+            Pubkey::new_unique(),
+            mpl_core::ID,
+            collection,
+            valid,
+            valid,
+            APPROVED_METADATA_ROOT,
+            valid,
+            PUBLIC_COUNT,
+            CLAIM_COUNT,
+        )
+        .is_ok());
+        assert!(validate_launch_parameters(
+            signer,
+            Pubkey::new_unique(),
+            mpl_core::ID,
+            collection,
+            valid,
+            valid,
+            [9; 32],
+            valid,
+            PUBLIC_COUNT,
+            CLAIM_COUNT,
+        )
+        .is_err());
     }
 
     #[test]

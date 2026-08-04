@@ -10,9 +10,6 @@ jobs:
   build-sbpf:
     name: Build SBPF program
     runs-on: ubuntu-22.04
-    env:
-      # GitHub masks this secret; it is never echoed. Empty when not configured.
-      CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,40 +60,79 @@ jobs:
           test -n "$PROGRAM_SO"
           printf '%s\n' "$GITHUB_SHA" > "$(dirname "$PROGRAM_SO")/cumzillaraptors.build-revision"
 
-      - name: Set up Node for Bankrun gate
-        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
+      - name: Build isolated test-validation SBPF artifact for private localhost only
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          TEST_SBF_OUT_DIR="$GITHUB_WORKSPACE/.artifacts/test-validation-sbpf"
+          mkdir -p "$TEST_SBF_OUT_DIR"
+          RUST_BACKTRACE=1 cargo-build-sbf \
+            --manifest-path programs/cumzillaraptors/Cargo.toml \
+            --tools-version v1.54 \
+            --arch sbfv2 \
+            --features test-validation \
+            --sbf-out-dir "$TEST_SBF_OUT_DIR" \
+            --verbose
+          test -f "$TEST_SBF_OUT_DIR/cumzillaraptors.so"
+          # The ordinary production artifact remains target/deploy/cumzillaraptors.so. Only the
+          # explicitly named copy below may be passed to the private loopback validator.
+          install -m 0644 "$TEST_SBF_OUT_DIR/cumzillaraptors.so" "$TEST_SBF_OUT_DIR/cumzillaraptors.test-validation.so"
+          printf '%s\n' "$GITHUB_SHA" > "$TEST_SBF_OUT_DIR/cumzillaraptors.build-revision"
+          printf '%s\n' "$GITHUB_SHA" > "$TEST_SBF_OUT_DIR/cumzillaraptors.test-validation.build-revision"
+
+      - name: Set up Node for local validation gates
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - name: Install locked Bankrun test dependencies
-        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
+      - name: Install locked local validation dependencies
         run: npm ci
 
       - name: Run Task 5 Bankrun initialization gate
-        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
         shell: bash
         env:
-          CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
           CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          PROGRAM_DIR=$(dirname "$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)")
+          PROGRAM_DIR="$GITHUB_WORKSPACE/.artifacts/test-validation-sbpf"
           test -f "$PROGRAM_DIR/cumzillaraptors.build-revision"
-          SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-initialize.test.mjs
+          CUMZ_TEST_VALIDATION_AUTHORITY_KEYPAIR_JSON="$(node -e "const {Keypair}=require('@solana/web3.js'); process.stdout.write(JSON.stringify(Array.from(Keypair.generate().secretKey)))")" \
+            SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-initialize.test.mjs
 
       - name: Run Task 7 Bankrun collection-creation gate
-        if: ${{ env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON != '' }}
         shell: bash
         env:
-          CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
           CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          PROGRAM_DIR=$(dirname "$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)")
+          PROGRAM_DIR="$GITHUB_WORKSPACE/.artifacts/test-validation-sbpf"
           test -f "$PROGRAM_DIR/cumzillaraptors.build-revision"
-          SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-collection.test.mjs
+          CUMZ_TEST_VALIDATION_AUTHORITY_KEYPAIR_JSON="$(node -e "const {Keypair}=require('@solana/web3.js'); process.stdout.write(JSON.stringify(Array.from(Keypair.generate().secretKey)))")" \
+            SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-collection.test.mjs
+
+      # Task 1 only proves that the local validator has both exact programs loaded.
+      # It intentionally does not report a claim success; claim CPI coverage follows in later tasks.
+      - name: Run local x86 Core availability gate
+        shell: bash
+        env:
+          CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          TEST_SBF_OUT_DIR="$GITHUB_WORKSPACE/.artifacts/test-validation-sbpf"
+          test -f "$TEST_SBF_OUT_DIR/cumzillaraptors.test-validation.so"
+          test -f "$TEST_SBF_OUT_DIR/cumzillaraptors.test-validation.build-revision"
+          CUMZ_TEST_VALIDATION_SBF_OUT_DIR="$TEST_SBF_OUT_DIR" bash scripts/run-x86-core-claim-gate.sh | tee local-x86-core-availability.log
+
+      - name: Upload local Core availability log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-x86-core-availability-log
+          path: local-x86-core-availability.log
+          if-no-files-found: warn
+          retention-days: 90
 
       - name: Upload program artifact
         uses: actions/upload-artifact@v4

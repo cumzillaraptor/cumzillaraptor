@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@ethersproject/keccak256": "^5.8.0",
+    "@ethersproject/signing-key": "5.8.0",
     "@irys/sdk": "^0.2.11",
     "@solana/web3.js": "^1.98.4",
     "merkletreejs": "^0.6.0"

@@ -20,7 +20,7 @@ import path from 'node:path';
 const outputDir = process.env.SBF_OUT_DIR || '';
 const programPath = path.join(outputDir, 'cumzillaraptors.so');
 const revisionPath = path.join(outputDir, 'cumzillaraptors.build-revision');
-const keypairJson = process.env.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON;
+const keypairJson = process.env.CUMZ_TEST_VALIDATION_AUTHORITY_KEYPAIR_JSON;
 const expectedRevision = process.env.CUMZ_EXPECTED_BUILD_REVISION;
 const canRun = process.arch === 'x64'
   && process.platform === 'linux'
@@ -31,7 +31,7 @@ const canRun = process.arch === 'x64'
   && Boolean(expectedRevision);
 
 const PROGRAM_ID_TEXT = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
-const AUTHORITY_TEXT = '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r';
+
 const CORE_PROGRAM_TEXT = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 const TREASURY_TEXT = 'FiHKQhwq2ZKkD2ZbBf3mPYgyw2Y9QDzNYykpMGErovU6';
 
@@ -112,7 +112,6 @@ test('x86 Bankrun: setup_collection rejects a non-Core mpl_core_program', { skip
   const coreProgram = new PublicKey(CORE_PROGRAM_TEXT);
   const treasury = new PublicKey(TREASURY_TEXT);
   const authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(keypairJson)));
-  assert.equal(authority.publicKey.toBase58(), AUTHORITY_TEXT, 'injected CI key must match the committed authority');
 
   const collection = Keypair.generate();
   const { context, config } = await bootstrap({
@@ -162,6 +161,6 @@ test('Bankrun behavioral gate refuses local ARM execution and requires explicit 
   }
   assert.equal(process.arch, 'x64');
   assert.ok(outputDir, 'x86 CI must explicitly select its current SBPF output directory');
-  assert.ok(keypairJson, 'x86 CI must inject the approved authority only as an ephemeral secret');
+  assert.ok(keypairJson, 'x86 CI must generate an ephemeral test-validation authority');
   assert.ok(expectedRevision, 'x86 CI must bind its artifact to the checked-out revision');
 });

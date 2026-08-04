@@ -15,6 +15,9 @@ cpi = ["no-entrypoint"]
 # Suppress Solana's incompatible default panic macro under SBPF platform-tools v1.54.
 # Release builds retain `panic = "abort"` below.
 custom-panic = []
+# Deliberately non-default: only the private x86 localhost validation SBPF artifact enables this.
+# It must never be used for the ordinary production/devnet artifact.
+test-validation = []
 default = ["custom-panic"]
 
 [dependencies]
