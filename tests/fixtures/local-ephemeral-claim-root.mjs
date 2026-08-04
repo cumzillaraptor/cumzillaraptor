@@ -69,7 +69,10 @@ export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId =
     buildSecpInstruction() {
       return Secp256k1Program.createInstructionWithPrivateKey({
         privateKey: signingKey,
-        message: local.authorization.preimage,
+        // `bindLocalProof` in the integration harness immutably replaces the
+        // authorization after constructing a multi-leaf local root. Resolve the
+        // receiver at call time so this signature covers that final root.
+        message: this.authorization.preimage,
         instructionIndex: 0,
       });
     },
