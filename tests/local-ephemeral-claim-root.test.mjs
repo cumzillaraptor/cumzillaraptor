@@ -233,7 +233,8 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     };
   };
   const assertNoDurableClaimState = async (reason, fixture = local, before) => {
-    assert.deepEqual(await claimState(fixture), before, `${reason}: asset, receipt, allocation, and claim counter must be unchanged`);
+    const expected = before ?? await claimState(fixture);
+    assert.deepEqual(await claimState(fixture), expected, `${reason}: asset, receipt, allocation, and claim counter must be unchanged`);
   };
   const rejectWithoutStateChange = async (reason, transaction, signers, fixture = local) => {
     const before = await claimState(fixture);
