@@ -205,12 +205,12 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   const bindLocalProof = (fixture, proof) => ({
     ...fixture,
     claimRoot: tree.root,
-    // Rebuild the EIP-191 preimage under the actual local multi-leaf root.
-    // The claim leaf itself is root-independent; the authorization domain is not.
+    // The claim leaf and EIP-191 authorization bind different facts. The
+    // validated on-chain claim root is bound by the proof; authorization binds
+    // recipient/nft/ETH/nonce/expiry only.
     authorization: V1_CLAIM_FIXTURE.claimAuthorizationFor(
       fixture.authorization.recipient,
       fixture.authorization.expiryUnix,
-      { claimRoot: tree.root },
     ),
     claim: { ...fixture.claim, proof },
   });
