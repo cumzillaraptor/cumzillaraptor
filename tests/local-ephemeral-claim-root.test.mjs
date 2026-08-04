@@ -104,17 +104,29 @@ async function submit(connection, web3, transaction, signers) {
 }
 
 async function createAndActivateClaimLookupTable(connection, web3, authority, addresses) {
-  // ALT creation validates `recentSlot` against the validator's live SlotHashes
-  // sysvar. On a single-node validator, a confirmed slot can be stale by the
-  // time preflight runs, so derive it from processed commitment immediately
-  // before building the create instruction.
-  const recentSlot = await connection.getSlot('processed');
-  const [createLookupTable, lookupTableAddress] = web3.AddressLookupTableProgram.createLookupTable({
-    authority: authority.publicKey,
-    payer: authority.publicKey,
-    recentSlot,
-  });
-  await submit(connection, web3, new web3.Transaction().add(createLookupTable), [authority]);
+  // ALT creation validates recentSlot against the executing bank's SlotHashes.
+  // A fresh single-node validator can advance between an RPC slot read and
+  // transaction preflight, so retry only that deterministic local setup with a
+  // freshly read processed slot rather than assuming an observed slot is usable.
+  let lookupTableAddress;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const recentSlot = await connection.getSlot('processed');
+    const [createLookupTable, candidateAddress] = web3.AddressLookupTableProgram.createLookupTable({
+      authority: authority.publicKey,
+      payer: authority.publicKey,
+      recentSlot,
+    });
+    try {
+      await submit(connection, web3, new web3.Transaction().add(createLookupTable), [authority]);
+      lookupTableAddress = candidateAddress;
+      break;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes('is not a recent slot') || attempt === 9) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }
+  assert.ok(lookupTableAddress, 'private validator must create an ALT from a live SlotHashes entry');
   await submit(connection, web3, new web3.Transaction().add(web3.AddressLookupTableProgram.extendLookupTable({
     lookupTable: lookupTableAddress,
     authority: authority.publicKey,
@@ -127,7 +139,7 @@ async function createAndActivateClaimLookupTable(connection, web3, authority, ad
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const lookup = await connection.getAddressLookupTable(lookupTableAddress, 'confirmed');
     if (lookup.value && lookup.value.state.addresses.length === addresses.length
-      && BigInt(await connection.getSlot('confirmed')) > BigInt(lookup.value.state.lastExtendedSlot)) {
+      && BigInt(await connection.getSlot('processed')) > BigInt(lookup.value.state.lastExtendedSlot)) {
       return lookup.value;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
