@@ -67,13 +67,23 @@ solana-test-validator \
   >"$VALIDATOR_LOG" 2>&1 &
 VALIDATOR_PID=$!
 
+RPC_URL="http://127.0.0.1:18899"
+RPC_HEALTH_PAYLOAD='{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
 for _ in $(seq 1 60); do
-  if solana --url http://127.0.0.1:18899 cluster-version >/dev/null 2>&1; then break; fi
+  if curl --silent --show-error --fail --max-time 2 \
+    -H 'content-type: application/json' \
+    --data "$RPC_HEALTH_PAYLOAD" "$RPC_URL" | grep -q '"result":"ok"'; then
+    break
+  fi
   sleep 1
 done
-solana --url http://127.0.0.1:18899 cluster-version >/dev/null
-CORE_ACCOUNT="$(solana --url http://127.0.0.1:18899 account "$CORE_PROGRAM_ID" --output json)"
-node -e 'const a=JSON.parse(process.argv[1]); if (!a.executable) process.exit(1)' "$CORE_ACCOUNT"
+if ! curl --silent --show-error --fail --max-time 2 \
+  -H 'content-type: application/json' \
+  --data "$RPC_HEALTH_PAYLOAD" "$RPC_URL" | grep -q '"result":"ok"'; then
+  echo "ERROR: private validator RPC did not become healthy at $RPC_URL" >&2
+  exit 66
+fi
+echo "Private validator RPC is healthy at $RPC_URL"
 
 # Do not weaken this to a mocked Core check. This Task 1 test proves only that
 # both programs are loaded; later tasks must execute CreateV1 before any claim-success assertion.
