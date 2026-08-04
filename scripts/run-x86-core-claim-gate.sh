@@ -34,12 +34,21 @@ cleanup() {
     kill "$VALIDATOR_PID" || true
     wait "$VALIDATOR_PID" || true
   fi
+  if [[ -n "${VALIDATOR_PID:-}" ]] && [[ -f "$VALIDATOR_LOG" ]]; then
+    echo "--- private validator log (last 120 lines) ---" >&2
+    tail -n 120 "$VALIDATOR_LOG" >&2 || true
+  fi
   rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
 
 curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$CORE_URL" -o "$WORKDIR/mpl_core_program.so"
-echo "$CORE_SHA256  $WORKDIR/mpl_core_program.so" | sha256sum --check --status
+CORE_ACTUAL_SHA256="$(sha256sum "$WORKDIR/mpl_core_program.so" | cut -d ' ' -f 1)"
+if [[ "$CORE_ACTUAL_SHA256" != "$CORE_SHA256" ]]; then
+  echo "ERROR: pinned mpl-core SHA-256 mismatch: expected $CORE_SHA256, got $CORE_ACTUAL_SHA256" >&2
+  exit 65
+fi
+echo "Verified pinned mpl-core SHA-256: $CORE_ACTUAL_SHA256"
 
 # The validator is private to CI and uses only supplied SBPF binaries. It does not clone or contact a cluster.
 # It must load the explicitly named test-validation binary, never the ordinary production artifact.
