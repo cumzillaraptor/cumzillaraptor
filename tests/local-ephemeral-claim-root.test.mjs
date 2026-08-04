@@ -104,10 +104,11 @@ async function submit(connection, web3, transaction, signers) {
 }
 
 async function createAndActivateClaimLookupTable(connection, web3, authority, addresses) {
-  // ALT creation validates recentSlot against the executing bank's SlotHashes
-  // sysvar, not against the RPC node's current slot. Read the newest actual
-  // SlotHashes entry so the create instruction cannot race a fast local leader.
-  const slotHashes = await connection.getAccountInfo(web3.SYSVAR_SLOT_HASHES_PUBKEY, 'processed');
+  // web3.js does not export SYSVAR_SLOT_HASHES_PUBKEY in every supported release.
+  // Parse the canonical sysvar address locally so the ALT slot comes from the
+  // validator's actual SlotHashes account, rather than an RPC slot estimate.
+  const slotHashesAddress = new web3.PublicKey('SysvarS1otHashes111111111111111111111111111');
+  const slotHashes = await connection.getAccountInfo(slotHashesAddress, 'processed');
   assert.ok(slotHashes && slotHashes.data.length >= 16, 'private validator must expose SlotHashes for ALT creation');
   const slotHashesLength = Number(slotHashes.data.readBigUInt64LE(0));
   assert.ok(slotHashesLength > 0, 'private validator SlotHashes must contain a recent slot');
