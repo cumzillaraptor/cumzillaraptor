@@ -173,6 +173,8 @@ test('explicit local fixture creates an actual secp precompile instruction for o
   assert.deepEqual(local.claim.proof, []);
   assert.equal(local.metadataRoot, V1_CLAIM_FIXTURE.metadataRoot);
   assert.notEqual(local.claim.ethAddress, V1_CLAIM_FIXTURE.claim.ethAddress);
+  assert.match(local.authorization.message, new RegExp(`eth_address: ${local.claim.ethAddress}`));
+  assert.match(local.authorization.message, new RegExp(`nonce: ${local.claim.nonceHex}`));
 });
 
 test('x86 local validator: authentic secp claim uses an ephemeral local root and immutable production metadata root', { skip: !canRun }, async () => {
@@ -206,12 +208,8 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     ...fixture,
     claimRoot: tree.root,
     // The claim leaf and EIP-191 authorization bind different facts. The
-    // validated on-chain claim root is bound by the proof; authorization binds
-    // recipient/nft/ETH/nonce/expiry only.
-    authorization: V1_CLAIM_FIXTURE.claimAuthorizationFor(
-      fixture.authorization.recipient,
-      fixture.authorization.expiryUnix,
-    ),
+    // validated on-chain claim root is bound by the proof; retain this local
+    // fixture's original recipient/nft/ETH/nonce/expiry authorization.
     claim: { ...fixture.claim, proof },
   });
   const local = bindLocalProof(claim360, tree.proofs[0]);

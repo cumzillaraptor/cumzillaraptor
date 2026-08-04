@@ -4,7 +4,7 @@ import { keccak256 } from '@ethersproject/keccak256';
 import { SigningKey } from '@ethersproject/signing-key';
 import { PublicKey, Secp256k1Program } from '@solana/web3.js';
 
-import { V1_CLAIM_FIXTURE, claimLeaf } from './claim-nft-v1.mjs';
+import { V1_CLAIM_FIXTURE, claimAuthorizationFor, claimLeaf } from './claim-nft-v1.mjs';
 
 // This fixture is intentionally runtime-only. It creates a fresh test Ethereum
 // key for a single-leaf local launch root; it MUST NOT be used to validate the
@@ -62,16 +62,19 @@ export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId =
     // Metadata must remain the immutable reviewed V1 metadata commitment.
     metadataRoot: V1_CLAIM_FIXTURE.metadataRoot,
     metadata: V1_CLAIM_FIXTURE.metadata,
-    authorization: V1_CLAIM_FIXTURE.claimAuthorizationFor(claimant, expiryUnix),
+    authorization: claimAuthorizationFor({
+      programId: V1_CLAIM_FIXTURE.programId,
+      cluster: V1_CLAIM_FIXTURE.cluster,
+      claim,
+    }, claimant, expiryUnix),
   };
   return {
     ...local,
     buildSecpInstruction() {
       return Secp256k1Program.createInstructionWithPrivateKey({
         privateKey: signingKey,
-        // `bindLocalProof` in the integration harness immutably replaces the
-        // authorization after constructing a multi-leaf local root. Resolve the
-        // receiver at call time so this signature covers that final root.
+        // Resolve the fixture at call time so the test signs the exact local
+        // recipient/nft/ETH/nonce/expiry authorization it submits.
         message: this.authorization.preimage,
         instructionIndex: 0,
       });

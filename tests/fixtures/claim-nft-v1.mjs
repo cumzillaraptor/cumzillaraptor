@@ -41,7 +41,7 @@ function metadataLeaf({ programId, cluster, metadata }) {
   );
 }
 
-function authorizationFor(fixture, claimant, expiryUnix) {
+export function claimAuthorizationFor(fixture, claimant, expiryUnix) {
   const message = [
     'CUMZILLARAPTORS_CLAIM_V1',
     `cluster: ${fixture.cluster}`,
@@ -82,7 +82,7 @@ export const V1_CLAIM_FIXTURE = {
     proof: ['0x89582252b72daf565535dd66c3cb213708d331af9ca0dcd91998beb04f845198', '0x23e5fc7447c30349b02a7e2e8e649559085da4bdde98abc348e71157769e2d7d', '0xed594bfe43cbde35e66f254af90b3879e0735d1e34259a21c3ff9fe10ef019ab', '0x4e8d5eff53cfbfeba74e177892c71b806321f692728dccfe09e10a621d5657ff', '0x0486800301417cb2f9a7e264a997e902a2ba277a32e3192d4a57a220855ea119', '0x5373f1bce024950430442d726a3ecf80d330c18d23f29bb387bef1ae3dfbe0a6', '0x3f119cb92fb36ae2026b41cb2cd0c17cd3cc7fd5512c1a6872d044f49980f467', '0x0a4fbcc566d1aecbd30ac8026aa98fbc77ef936240dd6ee1aa37ace7dbc8ab8d', '0x538eb078f2711a22e90f735660b291bfd6d036a2713e45d624567ed521febaf5'],
   },
   claimAuthorizationFor(claimant, expiryUnix) {
-    return authorizationFor(this, claimant, expiryUnix);
+    return claimAuthorizationFor(this, claimant, expiryUnix);
   },
 };
 
