@@ -258,9 +258,14 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   await rejectWithoutStateChange('invalid immutable metadata proof', new Transaction().add(local.buildSecpInstruction(), claimIx(badMetadata)), [claimer]);
   await rejectWithoutStateChange('public-pool ID', new Transaction().add(publicLocal.buildSecpInstruction(), claimIx(publicLocal)), [claimer], publicLocal);
 
-  // A system account with any lamports is a pre-existing receipt and must not be overwritten.
+  // A rent-exempt system account is a pre-existing receipt and must not be
+  // overwritten. Modern validators reject a 1-lamport transfer because it
+  // would create a rent-paying system account before our program executes.
+  const minimumSystemAccountRent = await connection.getMinimumBalanceForRentExemption(0);
   await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(SystemProgram.transfer({
-    fromPubkey: authority.publicKey, toPubkey: replayAccounts.receipt, lamports: 1,
+    fromPubkey: authority.publicKey,
+    toPubkey: replayAccounts.receipt,
+    lamports: minimumSystemAccountRent,
   })), [authority]);
   await rejectWithoutStateChange('pre-existing receipt', new Transaction().add(replayLocal.buildSecpInstruction(), claimIx(replayLocal)), [claimer], replayLocal);
 
