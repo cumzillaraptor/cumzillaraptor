@@ -288,10 +288,10 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   const refill = await connection.requestAirdrop(claimer.publicKey, 10_000_000_000);
   await connection.confirmTransaction(refill, 'confirmed');
 
-  // Dust a predictable but otherwise empty system-owned asset PDA. claim_nft must recover this
-  // to the Core payer before CreateV1; without that recovery the final payer delta includes the
-  // dust in the newly-created Core account instead of returning it to the claimer.
-  const dustLamports = 123_457;
+  // Dust a predictable but otherwise empty system-owned asset PDA. The amount
+  // must be rent-exempt: validators reject a transfer that would create a
+  // rent-paying system account before claim_nft can recover the dust.
+  const dustLamports = await connection.getMinimumBalanceForRentExemption(0);
   await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(SystemProgram.transfer({
     fromPubkey: authority.publicKey, toPubkey: asset, lamports: dustLamports,
   })), [authority]);
