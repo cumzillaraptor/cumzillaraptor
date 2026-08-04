@@ -47,6 +47,10 @@
 2. Create the canonical Core collection with config PDA authority.
 3. Transition sale state to `Live` using the configured test launch authority.
 4. Submit secp instruction immediately followed by `claim_nft`.
+   The full authenticated claim (the reviewed metadata proof plus claim proof) is
+   larger than the legacy packet limit. Build this atomic two-instruction
+   transaction as a v0 `VersionedTransaction` with an Address Lookup Table; do
+   not split the secp predecessor from `claim_nft` or trim either proof.
 5. Assert:
    - Core asset exists and is owned by `mpl-core`;
    - asset owner is the claimant;
@@ -56,6 +60,12 @@
    - `claims_minted` increments exactly once.
 
 **Verification:** x86 execution, not static source inspection.
+
+**Client compatibility requirement:** production claim clients must also use a
+v0 transaction and an active ALT containing the non-signer claim accounts. A
+legacy transaction cannot carry the complete production authorization and
+metadata proofs within Solana's 1232-byte packet limit. This is transaction
+encoding only; it does not alter the on-chain verification protocol.
 
 ## Task 4: Prove rollback and pre-Core rejection paths
 

@@ -103,6 +103,50 @@ async function submit(connection, web3, transaction, signers) {
   return signature;
 }
 
+async function createAndActivateClaimLookupTable(connection, web3, authority, addresses) {
+  const recentSlot = await connection.getSlot('confirmed');
+  const [createLookupTable, lookupTableAddress] = web3.AddressLookupTableProgram.createLookupTable({
+    authority: authority.publicKey,
+    payer: authority.publicKey,
+    recentSlot,
+  });
+  await submit(connection, web3, new web3.Transaction().add(createLookupTable), [authority]);
+  await submit(connection, web3, new web3.Transaction().add(web3.AddressLookupTableProgram.extendLookupTable({
+    lookupTable: lookupTableAddress,
+    authority: authority.publicKey,
+    payer: authority.publicKey,
+    addresses,
+  })), [authority]);
+
+  // ALT extensions are not usable in the slot in which they land. Wait for the
+  // private validator to advance, rather than relying on a timing assumption.
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const lookup = await connection.getAddressLookupTable(lookupTableAddress, 'confirmed');
+    if (lookup.value && lookup.value.state.addresses.length === addresses.length
+      && BigInt(await connection.getSlot('confirmed')) > BigInt(lookup.value.state.lastExtendedSlot)) {
+      return lookup.value;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('local Address Lookup Table did not activate');
+}
+
+async function submitClaimV0(connection, web3, transaction, signers, lookupTable) {
+  const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+  const message = new web3.TransactionMessage({
+    payerKey: signers[0].publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions: transaction.instructions,
+  }).compileToV0Message([lookupTable]);
+  const versioned = new web3.VersionedTransaction(message);
+  versioned.sign(signers);
+  const serialized = versioned.serialize();
+  assert.ok(serialized.length <= 1232, `v0 authentic claim transaction must fit the packet limit; got ${serialized.length}`);
+  const signature = await connection.sendRawTransaction(serialized, { skipPreflight: false });
+  await connection.confirmTransaction({ ...latestBlockhash, signature }, 'confirmed');
+  return { signature, serializedLength: serialized.length, message };
+}
+
 test('local ephemeral fixture is explicitly opt-in and cannot be mistaken for committed-root validation', () => {
   if (enabled) return;
   assert.throws(requireLocalEphemeralClaimRootGuard, new RegExp(LOCAL_EPHEMERAL_CLAIM_ROOT_ENV));
@@ -124,7 +168,7 @@ test('explicit local fixture creates an actual secp precompile instruction for o
 
 test('x86 local validator: authentic secp claim uses an ephemeral local root and immutable production metadata root', { skip: !canRun }, async () => {
   assert.ok(localUrl(validatorUrl), 'test may only connect to a loopback validator');
-  const [{ Connection, Keypair, PublicKey, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction, TransactionInstruction }, revision] = await Promise.all([
+  const [{ AddressLookupTableProgram, Connection, Keypair, PublicKey, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction, TransactionInstruction, TransactionMessage, VersionedTransaction }, revision] = await Promise.all([
     import('@solana/web3.js'),
     import('node:fs/promises').then(({ readFile }) => readFile(path.join(outputDir, 'cumzillaraptors.test-validation.build-revision'), 'utf8')),
   ]);
@@ -218,6 +262,22 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
       data: claimData(fixture, expiry),
     });
   };
+  // The authentic claim carries the full reviewed nine-element metadata proof and
+  // a two-element local claim proof. Its legacy encoding exceeds Solana's 1232-byte
+  // packet ceiling, so use a validator-created ALT plus a v0 transaction. The
+  // precompile remains instruction 0 and claim_nft remains instruction 1.
+  const claimWeb3 = {
+    AddressLookupTableProgram, Transaction, TransactionMessage, VersionedTransaction,
+  };
+  const claimLookupTable = await createAndActivateClaimLookupTable(connection, claimWeb3, authority, [
+    config, registry, collection.publicKey,
+    asset, receipt, replayAccounts.asset, replayAccounts.receipt, publicAccounts.asset, publicAccounts.receipt,
+    coreProgram,
+    SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram.programId,
+  ]);
+  const submitClaim = (transaction, signers) => submitClaimV0(
+    connection, claimWeb3, transaction, signers, claimLookupTable,
+  );
   const claimState = async (fixture = local) => {
     const accounts = claimAccounts(fixture);
     const [configAccount, registryAccount, assetAccount, receiptAccount] = await Promise.all([
@@ -238,7 +298,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   };
   const rejectWithoutStateChange = async (reason, transaction, signers, fixture = local) => {
     const before = await claimState(fixture);
-    await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, transaction, signers), reason);
+    await assert.rejects(submitClaim(transaction, signers), reason);
     await assertNoDurableClaimState(reason, fixture, before);
   };
 
@@ -283,7 +343,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     toPubkey: authority.publicKey,
     lamports: claimerBalance - insufficientForCoreAndReceipt,
   })), [claimer]);
-  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(local.buildSecpInstruction(), claimIx()), [authority, claimer]));
+  await assert.rejects(submitClaim(new Transaction().add(local.buildSecpInstruction(), claimIx()), [authority, claimer]));
   await assertNoDurableClaimState('failed real Core CreateV1 CPI');
   const refill = await connection.requestAirdrop(claimer.publicKey, 10_000_000_000);
   await connection.confirmTransaction(refill, 'confirmed');
@@ -303,7 +363,10 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
 
   // The precompile is instruction 0; claim_nft is instruction 1. This executes
   // the production verifier's strict immediately-preceding-instruction path.
-  const successSignature = await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(local.buildSecpInstruction(), claimIx()), [claimer]);
+  const success = await submitClaim(new Transaction().add(local.buildSecpInstruction(), claimIx()), [claimer]);
+  assert.equal(success.message.version, 0, 'success claim is a v0 transaction using the local ALT');
+  assert.ok(success.serializedLength <= 1232, 'full authentic proof transaction fits Solana packet size');
+  const successSignature = success.signature;
 
   const assetAccount = await connection.getAccountInfo(asset);
   assert.ok(assetAccount, 'Core CreateV1 must create the deterministic asset');
