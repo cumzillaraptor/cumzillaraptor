@@ -104,7 +104,11 @@ async function submit(connection, web3, transaction, signers) {
 }
 
 async function createAndActivateClaimLookupTable(connection, web3, authority, addresses) {
-  const recentSlot = await connection.getSlot('confirmed');
+  // ALT creation validates `recentSlot` against the validator's live SlotHashes
+  // sysvar. On a single-node validator, a confirmed slot can be stale by the
+  // time preflight runs, so derive it from processed commitment immediately
+  // before building the create instruction.
+  const recentSlot = await connection.getSlot('processed');
   const [createLookupTable, lookupTableAddress] = web3.AddressLookupTableProgram.createLookupTable({
     authority: authority.publicKey,
     payer: authority.publicKey,
