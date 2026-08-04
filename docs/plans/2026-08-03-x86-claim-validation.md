@@ -47,10 +47,13 @@
 2. Create the canonical Core collection with config PDA authority.
 3. Transition sale state to `Live` using the configured test launch authority.
 4. Submit secp instruction immediately followed by `claim_nft`.
-   The full authenticated claim (the reviewed metadata proof plus claim proof) is
-   larger than the legacy packet limit. Build this atomic two-instruction
-   transaction as a v0 `VersionedTransaction` with an Address Lookup Table; do
-   not split the secp predecessor from `claim_nft` or trim either proof.
+   Derive and validate the receipt PDA in the handler from the verified canonical
+   claim leaf; do not transmit a duplicate `expected_claim_leaf` argument solely
+   for Anchor pre-handler validation. This removes only redundant transaction
+   bytes—the claim proof remains the authoritative binding. Build this atomic
+   two-instruction transaction as a v0 `VersionedTransaction` with an Address
+   Lookup Table; do not split the secp predecessor from `claim_nft` or trim either
+   proof.
 5. Assert:
    - Core asset exists and is owned by `mpl-core`;
    - asset owner is the claimant;

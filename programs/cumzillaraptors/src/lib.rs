@@ -146,7 +146,6 @@ pub mod cumzillaraptors {
         name: String,
         uri: String,
         metadata_proof: Vec<[u8; 32]>,
-        expected_claim_leaf: [u8; 32],
     ) -> Result<()> {
         require!(
             ctx.accounts.config.sale_state == SaleState::Live,
@@ -186,8 +185,11 @@ pub mod cumzillaraptors {
             &nonce,
             &claim_proof,
         )?;
-        require!(
-            claim_leaf == expected_claim_leaf,
+        let (expected_receipt, receipt_bump) =
+            Pubkey::find_program_address(&[b"claim", &claim_leaf], ctx.program_id);
+        require_keys_eq!(
+            ctx.accounts.receipt.key(),
+            expected_receipt,
             CumzillaraptorsError::InvalidClaimReceipt
         );
         require!(
@@ -219,7 +221,7 @@ pub mod cumzillaraptors {
         )?;
         require_keys_eq!(
             ctx.accounts.receipt.key(),
-            Pubkey::find_program_address(&[b"claim", &claim_leaf], ctx.program_id).0,
+            expected_receipt,
             CumzillaraptorsError::InvalidClaimReceipt
         );
         require_keys_eq!(
@@ -286,7 +288,6 @@ pub mod cumzillaraptors {
             .uri(uri);
         builder.invoke_signed(signer_seeds)?;
 
-        let receipt_bump = ctx.bumps.receipt;
         let receipt_seeds: &[&[u8]] = &[b"claim", &claim_leaf, &[receipt_bump]];
         let create_receipt = anchor_lang::solana_program::system_instruction::create_account(
             &ctx.accounts.claimer.key(),
@@ -341,8 +342,7 @@ pub struct SetClaimsSaleState<'info> {
     _claim_proof: Vec<[u8; 32]>,
     _name: String,
     _uri: String,
-    _metadata_proof: Vec<[u8; 32]>,
-    expected_claim_leaf: [u8; 32]
+    _metadata_proof: Vec<[u8; 32]>
 )]
 pub struct ClaimNft<'info> {
     #[account(mut, seeds = [b"config"], bump = config.bump)]
@@ -357,8 +357,9 @@ pub struct ClaimNft<'info> {
     /// CHECK: Metaplex Core creates this deterministic PDA during the CPI.
     #[account(mut, seeds = [b"asset", &nft_id.to_be_bytes()], bump)]
     pub asset: UncheckedAccount<'info>,
-    /// CHECK: must be an empty system account; created only after the Core CPI succeeds.
-    #[account(mut, seeds = [b"claim".as_ref(), expected_claim_leaf.as_ref()], bump)]
+    /// CHECK: handler derives and validates this receipt PDA from the canonical
+    /// verified claim leaf; creation occurs only after the Core CPI succeeds.
+    #[account(mut)]
     pub receipt: UncheckedAccount<'info>,
     /// CHECK: checked against the canonical mpl-core program ID.
     #[account(address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]

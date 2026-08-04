@@ -35,9 +35,9 @@ test('claim_nft composes all completed authorization boundaries before Core CPI'
 test('claim_nft binds deterministic asset and receipt PDAs to verified claim data', async () => {
   const { lib } = await sources();
   assert.match(lib, /seeds = \[b"asset", &nft_id\.to_be_bytes\(\)\]/);
-  assert.match(lib, /seeds = \[b"claim"\.as_ref\(\), expected_claim_leaf\.as_ref\(\)\]/);
-  assert.match(lib, /claim_leaf == expected_claim_leaf/);
-  assert.match(lib, /Pubkey::find_program_address\(&\[b"claim", &claim_leaf\]/);
+  assert.match(lib, /let \(expected_receipt, receipt_bump\) =\s*Pubkey::find_program_address\(&\[b"claim", &claim_leaf\], ctx\.program_id\)/);
+  assert.match(lib, /ctx\.accounts\.receipt\.key\(\),\s*expected_receipt/);
+  assert.doesNotMatch(lib, /expected_claim_leaf/);
   assert.match(lib, /data_is_empty\(\) && ctx\.accounts\.receipt\.lamports\(\) == 0/);
   assert.doesNotMatch(lib, /space = 8 \+ ClaimReceipt::LEN,[\s\S]*seeds = \[b"claim"/);
   assert.match(lib, /let create_receipt = anchor_lang::solana_program::system_instruction::create_account/);

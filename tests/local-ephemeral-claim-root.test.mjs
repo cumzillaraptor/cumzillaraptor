@@ -91,7 +91,7 @@ function claimData(local, expiryUnix) {
   return Buffer.concat([
     discriminator('claim_nft'), u16(local.claim.nftId), bytes32(`0x${local.claim.ethAddress.slice(2).padStart(64, '0')}`).subarray(12),
     bytes32(local.claim.nonceHex), u64(expiryUnix), vectorBytes32(local.claim.proof),
-    string(local.metadata.name), string(local.metadata.uri), vectorBytes32(local.metadata.proof), bytes32(local.claim.leaf),
+    string(local.metadata.name), string(local.metadata.uri), vectorBytes32(local.metadata.proof),
   ]);
 }
 async function submit(connection, web3, transaction, signers) {
