@@ -35,8 +35,12 @@ cleanup() {
     wait "$VALIDATOR_PID" || true
   fi
   if [[ -n "${VALIDATOR_PID:-}" ]] && [[ -f "$VALIDATOR_LOG" ]]; then
-    echo "--- private validator log (last 120 lines) ---" >&2
+    echo "--- private validator launcher log (last 120 lines) ---" >&2
     tail -n 120 "$VALIDATOR_LOG" >&2 || true
+  fi
+  if [[ -f "$WORKDIR/ledger/validator.log" ]]; then
+    echo "--- private validator runtime log (last 240 lines) ---" >&2
+    tail -n 240 "$WORKDIR/ledger/validator.log" >&2 || true
   fi
   rm -rf "$WORKDIR"
 }
