@@ -264,13 +264,18 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   })), [authority]);
   await rejectWithoutStateChange('pre-existing receipt', new Transaction().add(replayLocal.buildSecpInstruction(), claimIx(replayLocal)), [claimer], replayLocal);
 
-  // Force the real CreateV1 CPI to fail after all pre-CPI validations by retaining
-  // enough lamports for no rent-exempt asset. The transaction fee is paid by the
-  // authority; the program still uses the claimant as the Core CPI payer.
-  const minimumForFailure = 100_000;
+  // Force the real CreateV1 CPI to fail after all pre-CPI validations. Keep the
+  // claimant rent-exempt, but below the measured rent needed for Core AssetV1 +
+  // ClaimReceipt creation. Do not drain it below the system-account rent floor:
+  // recent validator versions reject that transfer before our program executes.
   const claimerBalance = await connection.getBalance(claimer.publicKey);
+  const claimantRentFloor = await connection.getMinimumBalanceForRentExemption(0);
+  const insufficientForCoreAndReceipt = claimantRentFloor + 100_000;
+  assert.ok(claimerBalance > insufficientForCoreAndReceipt, 'airdrop must exceed the deliberate Core-payer balance');
   await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(SystemProgram.transfer({
-    fromPubkey: claimer.publicKey, toPubkey: authority.publicKey, lamports: claimerBalance - minimumForFailure,
+    fromPubkey: claimer.publicKey,
+    toPubkey: authority.publicKey,
+    lamports: claimerBalance - insufficientForCoreAndReceipt,
   })), [claimer]);
   await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(local.buildSecpInstruction(), claimIx()), [authority, claimer]));
   await assertNoDurableClaimState('failed real Core CreateV1 CPI');
