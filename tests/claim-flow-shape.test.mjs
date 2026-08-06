@@ -59,11 +59,13 @@ test('claim_nft retains fail-closed fixed account checks and guarded live-state 
   assert.doesNotMatch(lib, /pub fn (?:update|set)_(?:claim_root|metadata_root|allocation_hash|collection)/);
 });
 
-test('claim_nft Core CPI pins config authority as asset update authority', async () => {
+test('claim_nft Core CPI uses the config-controlled collection authority', async () => {
   const { lib } = await sources();
-  assert.match(lib, /\.authority\(Some\(&config\)\)/);
-  assert.match(lib, /\.update_authority\(Some\(&config\)\)/);
-  assert.match(lib, /\.owner\(Some\(&claimer\)\)/);
+  const claimSection = lib.slice(lib.indexOf('pub fn claim_nft('), lib.indexOf('pub struct SetClaimsSaleState'));
+  assert.match(claimSection, /\.collection\(Some\(&collection\)\)/);
+  assert.match(claimSection, /\.authority\(Some\(&config\)\)/);
+  assert.match(claimSection, /\.owner\(Some\(&claimer\)\)/);
+  assert.doesNotMatch(claimSection, /\.update_authority\(Some\(&config\)\)/);
 });
 
 test('claim implementation does not add a client send or deploy path', async () => {

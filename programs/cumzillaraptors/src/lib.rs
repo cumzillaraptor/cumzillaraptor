@@ -281,7 +281,9 @@ pub mod cumzillaraptors {
             .authority(Some(&config))
             .payer(&claimer)
             .owner(Some(&claimer))
-            .update_authority(Some(&config))
+            // Core derives an asset's update authority from its collection. The
+            // collection itself is immutable-config-PDA controlled; passing a
+            // second direct update authority is rejected by Core CreateV1.
             .system_program(&system_program)
             .data_state(mpl_core::types::DataState::AccountState)
             .name(name)
