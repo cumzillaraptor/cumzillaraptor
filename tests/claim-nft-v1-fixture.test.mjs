@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { PublicKey } from '@solana/web3.js';
 
 import { V1_CLAIM_FIXTURE, verifyCommittedV1Fixture } from './fixtures/claim-nft-v1.mjs';
 
@@ -21,6 +22,22 @@ test('deterministic V1 claim fixture recomputes committed claim and metadata lea
   assert.equal(verified.metadataRoot, V1_CLAIM_FIXTURE.metadataRoot);
   assert.equal(V1_CLAIM_FIXTURE.cluster, 'devnet');
   assert.equal(V1_CLAIM_FIXTURE.programId, '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2');
+});
+
+test('fixture deterministically derives the exact config, registry, asset, and receipt PDAs', () => {
+  const programId = new PublicKey(V1_CLAIM_FIXTURE.programId);
+  const [config] = PublicKey.findProgramAddressSync([Buffer.from('config')], programId);
+  const [registry] = PublicKey.findProgramAddressSync([Buffer.from('allocation')], programId);
+  const [asset] = PublicKey.findProgramAddressSync([
+    Buffer.from('asset'), Buffer.from([V1_CLAIM_FIXTURE.claim.nftId >> 8, V1_CLAIM_FIXTURE.claim.nftId & 0xff]),
+  ], programId);
+  const [receipt] = PublicKey.findProgramAddressSync([
+    Buffer.from('claim'), Buffer.from(V1_CLAIM_FIXTURE.claim.leaf.slice(2), 'hex'),
+  ], programId);
+  assert.equal(config.toBase58(), '7LbuHZ2GJURn3wBfqFNgxQgDgjRv8x1nAhWntfdwiMQ');
+  assert.equal(registry.toBase58(), 'DLktNNn3wgbNCvEjphmR28A4JsmcsUEwazzgADDdeVux');
+  assert.equal(asset.toBase58(), 'EUVTwGPkff1P66LafUBvbKT7zWsgM1xQmcWTgdejE4q1');
+  assert.equal(receipt.toBase58(), '5j2Dg3PLsDYrLYgQvtKBRcvxPUP5R6HRWzKSqNCNnrhy');
 });
 
 test('fixture produces the exact EIP-191 preimage bound to a supplied local claimant', () => {

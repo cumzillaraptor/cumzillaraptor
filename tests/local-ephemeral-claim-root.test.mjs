@@ -399,8 +399,8 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   assert.equal(receiptData.readUInt16LE(60), local.claim.nftId, 'receipt NFT id');
   assert.equal(receiptData[62], receiptBump, 'receipt PDA bump');
 
-  // mpl-core's pinned SDK is the authority for Core data layout. Do not hand-decode this account.
-  const { deserializeAssetV1 } = await import('@metaplex-foundation/mpl-core');
+  // mpl-core's pinned SDK is the authority for Core data layout. Do not hand-decode these accounts.
+  const { deserializeAssetV1, deserializeCollectionV1 } = await import('@metaplex-foundation/mpl-core');
   const decodedAsset = deserializeAssetV1({
     publicKey: asset.toBase58(),
     data: Uint8Array.from(assetAccount.data),
@@ -413,6 +413,20 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   assert.equal(decodedAsset.owner, claimer.publicKey.toBase58(), 'decoded Core asset owner is the claimant');
   assert.equal(decodedAsset.updateAuthority.type, 'Collection', 'decoded Core asset derives update authority from its configured collection');
   assert.equal(decodedAsset.updateAuthority.address, collection.publicKey.toBase58(), 'decoded Core asset update authority is the configured collection');
+  const collectionAccount = await connection.getAccountInfo(collection.publicKey);
+  assert.ok(collectionAccount, 'Core collection must exist before the claimed asset can derive authority from it');
+  assert.equal(collectionAccount.owner.toBase58(), CORE_PROGRAM_TEXT, 'collection must be Core-owned');
+  const decodedCollection = deserializeCollectionV1({
+    publicKey: collection.publicKey.toBase58(),
+    data: Uint8Array.from(collectionAccount.data),
+    executable: collectionAccount.executable,
+    lamports: collectionAccount.lamports,
+    owner: collectionAccount.owner.toBase58(),
+    rentEpoch: collectionAccount.rentEpoch,
+  });
+  assert.equal(decodedCollection.header.owner, CORE_PROGRAM_TEXT, 'SDK raw-account header preserves mpl-core collection ownership');
+  assert.equal(decodedCollection.updateAuthority.type, 'Address', 'collection update authority must be the immutable config PDA');
+  assert.equal(decodedCollection.updateAuthority.address, config.toBase58(), 'collection update authority is the config PDA');
 
   const successTransaction = await connection.getTransaction(successSignature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
   assert.ok(successTransaction?.meta, 'successful claim transaction metadata is available');
