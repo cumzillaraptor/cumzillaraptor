@@ -425,8 +425,9 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     rentEpoch: collectionAccount.rentEpoch,
   });
   assert.equal(decodedCollection.header.owner, CORE_PROGRAM_TEXT, 'SDK raw-account header preserves mpl-core collection ownership');
-  assert.equal(decodedCollection.updateAuthority.type, 'Address', 'collection update authority must be the immutable config PDA');
-  assert.equal(decodedCollection.updateAuthority.address, config.toBase58(), 'collection update authority is the config PDA');
+  // CollectionV1 stores its update authority as a direct public key; unlike an AssetV1,
+  // it is not a tagged update-authority union.
+  assert.equal(decodedCollection.updateAuthority, config.toBase58(), 'collection update authority is the immutable config PDA');
 
   const successTransaction = await connection.getTransaction(successSignature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
   assert.ok(successTransaction?.meta, 'successful claim transaction metadata is available');
