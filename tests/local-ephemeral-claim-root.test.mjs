@@ -411,8 +411,8 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   });
   assert.equal(decodedAsset.header.owner, CORE_PROGRAM_TEXT, 'SDK raw-account header preserves mpl-core ownership');
   assert.equal(decodedAsset.owner, claimer.publicKey.toBase58(), 'decoded Core asset owner is the claimant');
-  assert.equal(decodedAsset.updateAuthority.type, 'Address', 'decoded Core asset uses an address update authority');
-  assert.equal(decodedAsset.updateAuthority.address, config.toBase58(), 'decoded Core asset update authority is the config PDA');
+  assert.equal(decodedAsset.updateAuthority.type, 'Collection', 'decoded Core asset derives update authority from its configured collection');
+  assert.equal(decodedAsset.updateAuthority.address, collection.publicKey.toBase58(), 'decoded Core asset update authority is the configured collection');
 
   const successTransaction = await connection.getTransaction(successSignature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
   assert.ok(successTransaction?.meta, 'successful claim transaction metadata is available');
