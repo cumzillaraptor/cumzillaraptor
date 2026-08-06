@@ -352,8 +352,18 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   })), [claimer]);
   await assert.rejects(submitClaim(new Transaction().add(local.buildSecpInstruction(), claimIx()), [authority, claimer]));
   await assertNoDurableClaimState('failed real Core CreateV1 CPI');
-  const refill = await connection.requestAirdrop(claimer.publicKey, 10_000_000_000);
-  await connection.confirmTransaction(refill, 'confirmed');
+  // Fund the claimant from the already-confirmed local authority instead of
+  // relying on an RPC airdrop becoming visible after the deliberate failure.
+  // This also asserts that the success path has enough rent before invoking Core.
+  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(SystemProgram.transfer({
+    fromPubkey: authority.publicKey,
+    toPubkey: claimer.publicKey,
+    lamports: 10_000_000,
+  })), [authority]);
+  assert.ok(
+    await connection.getBalance(claimer.publicKey) >= 10_000_000,
+    'claimant must be funded for Core AssetV1 and ClaimReceipt rent before the success claim',
+  );
 
   // Dust a predictable but otherwise empty system-owned asset PDA. The amount
   // must be rent-exempt: validators reject a transfer that would create a
