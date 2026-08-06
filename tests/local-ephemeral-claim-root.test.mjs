@@ -30,7 +30,7 @@ const canRun = enabled
 const PROGRAM_ID_TEXT = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
 const CORE_PROGRAM_TEXT = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 
-const METADATA_ROOT = '8b673473b91b510896a2142b647c09b204a93e2ba79d35ec10fe7ea7b915ddaa';
+const METADATA_ROOT = '5874f7c11db9717c89ab56de12fdb309be4043e31fc69486b735382935087caa';
 
 function discriminator(name) {
   return createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);

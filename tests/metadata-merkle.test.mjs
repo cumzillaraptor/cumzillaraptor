@@ -21,6 +21,17 @@ function uriFor(id) {
 
 function validMap() {
   return {
+    version: 'CUMZILLARAPTORS_URI_MAP_V1',
+    cluster: 'devnet',
+    programId,
+    source: {
+      receiptVersion: 'CUMZILLARAPTORS_IRYS_METADATA_URIS_V2',
+      verificationVersion: 'CUMZILLARAPTORS_METADATA_UPLOAD_VERIFICATION_V2',
+      stagedManifestSha256: 'a'.repeat(64),
+      verifiedFiles: 421,
+      passed: 421,
+      failed: 0,
+    },
     collectionUri,
     metadataUris: Object.fromEntries(Array.from({ length: 420 }, (_, index) => [String(index + 1), uriFor(index + 1)])),
   };
@@ -97,6 +108,14 @@ test('metadata generator rejects arbitrary or incomplete caller URI maps', async
     const extraResult = run(extraPath, path.join(dir, 'extra-output.json'));
     assert.notEqual(extraResult.status, 0);
     assert.match(`${extraResult.stdout}\n${extraResult.stderr}`, /canonical metadata URI keys/i);
+
+    const missingProvenance = validMap();
+    delete missingProvenance.source;
+    const provenancePath = path.join(dir, 'missing-provenance.json');
+    await writeFile(provenancePath, JSON.stringify(missingProvenance));
+    const provenanceResult = run(provenancePath, path.join(dir, 'missing-provenance-output.json'));
+    assert.notEqual(provenanceResult.status, 0);
+    assert.match(`${provenanceResult.stdout}\n${provenanceResult.stderr}`, /provenance/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

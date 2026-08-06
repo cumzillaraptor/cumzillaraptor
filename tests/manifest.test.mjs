@@ -19,6 +19,17 @@ async function makeTempDir(prefix) {
 
 function validUriMap() {
   return {
+    version: 'CUMZILLARAPTORS_URI_MAP_V1',
+    cluster: 'devnet',
+    programId,
+    source: {
+      receiptVersion: 'CUMZILLARAPTORS_IRYS_METADATA_URIS_V2',
+      verificationVersion: 'CUMZILLARAPTORS_METADATA_UPLOAD_VERIFICATION_V2',
+      stagedManifestSha256: 'a'.repeat(64),
+      verifiedFiles: 421,
+      passed: 421,
+      failed: 0,
+    },
     collectionUri: `ar://${'a'.repeat(43)}`,
     metadataUris: Object.fromEntries(Array.from({ length: 420 }, (_, i) => [String(i + 1), `ar://${String(i + 1).padStart(3, 'a')}${'b'.repeat(40)}`])),
   };

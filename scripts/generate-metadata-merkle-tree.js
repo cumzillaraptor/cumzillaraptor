@@ -12,6 +12,10 @@ const MAX_NFT_ID = 420;
 const ROOT = path.resolve(__dirname, '..');
 const MAX_NAME_BYTES = 64;
 const MAX_URI_BYTES = 128;
+const URI_MAP_VERSION = 'CUMZILLARAPTORS_URI_MAP_V1';
+const RECEIPT_VERSION = 'CUMZILLARAPTORS_IRYS_METADATA_URIS_V2';
+const VERIFICATION_VERSION = 'CUMZILLARAPTORS_METADATA_UPLOAD_VERIFICATION_V2';
+const VERIFIED_FILE_COUNT = MAX_NFT_ID + 1;
 
 function fail(message) { throw new Error(message); }
 
@@ -64,6 +68,13 @@ function leaf({ cluster, programId, nftId, name, uri }) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const map = JSON.parse(fs.readFileSync(args['uri-map'], 'utf8'));
+  if (map.version !== URI_MAP_VERSION) fail(`URI map version must be ${URI_MAP_VERSION}.`);
+  if (map.cluster !== args.cluster || map.programId !== args['program-id']) fail('URI map cluster or program ID does not match requested Merkle domain.');
+  if (!map.source || typeof map.source !== 'object' || Array.isArray(map.source)) fail('URI map must contain receipt-verification provenance.');
+  const source = map.source;
+  if (source.receiptVersion !== RECEIPT_VERSION || source.verificationVersion !== VERIFICATION_VERSION) fail('URI map provenance versions are invalid.');
+  if (!/^[0-9a-f]{64}$/.test(source.stagedManifestSha256)) fail('URI map provenance staged manifest SHA-256 is invalid.');
+  if (source.verifiedFiles !== VERIFIED_FILE_COUNT || source.passed !== VERIFIED_FILE_COUNT || source.failed !== 0) fail(`URI map provenance must show ${VERIFIED_FILE_COUNT} verified and passed with zero failures.`);
   if (!validArUri(map.collectionUri)) fail('Collection URI must be a valid non-placeholder ar:// URI.');
   if (!map.metadataUris || typeof map.metadataUris !== 'object' || Array.isArray(map.metadataUris)) fail('URI map must contain metadataUris object.');
   const keys = Object.keys(map.metadataUris).sort((a, b) => Number(a) - Number(b));
