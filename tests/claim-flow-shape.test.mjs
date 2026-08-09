@@ -48,6 +48,32 @@ test('claim_nft binds deterministic asset and receipt PDAs to verified claim dat
   assert.match(lib, /\.payer\(&claimer\)[\s\S]*\.owner\(Some\(&claimer\)\)/);
 });
 
+test('claim_nft rejects non-system or nonempty asset PDAs before dust recovery or Core CPI', async () => {
+  const { lib } = await sources();
+  const claimSection = lib.slice(lib.indexOf('pub fn claim_nft('), lib.indexOf('pub struct SetClaimsSaleState'));
+  const systemOwnerCheck = claimSection.indexOf('*ctx.accounts.asset.owner');
+  const emptyDataCheck = claimSection.indexOf('ctx.accounts.asset.data_is_empty()');
+  const dustRecovery = claimSection.indexOf('let recover_dust =');
+  const coreCpi = claimSection.indexOf('builder.invoke_signed(signer_seeds)?;');
+  const systemOwnerGuard = claimSection.lastIndexOf('require_keys_eq!(', systemOwnerCheck);
+  const emptyDataGuard = claimSection.lastIndexOf('require!(', emptyDataCheck);
+
+  assert.ok(systemOwnerCheck >= 0, 'asset must be system-owned before the claim can proceed');
+  assert.match(
+    claimSection.slice(systemOwnerGuard, emptyDataCheck),
+    /require_keys_eq!\(\s*\*ctx\.accounts\.asset\.owner,\s*anchor_lang::solana_program::system_program::ID,\s*CumzillaraptorsError::InvalidCoreProgram[\s\S]*?\);/,
+    'a non-system asset PDA must fail closed before it can be dust-recovered',
+  );
+  assert.ok(emptyDataCheck > systemOwnerCheck, 'asset must be data-empty after its owner is checked');
+  assert.match(
+    claimSection.slice(emptyDataGuard, dustRecovery),
+    /require!\(\s*ctx\.accounts\.asset\.data_is_empty\(\),\s*CumzillaraptorsError::InvalidCoreProgram\s*\)/,
+    'a nonempty system asset PDA must fail closed before it can be dust-recovered',
+  );
+  assert.ok(dustRecovery > emptyDataCheck, 'only a validated empty system account may have dust recovered');
+  assert.ok(coreCpi > dustRecovery, 'asset account validation and dust recovery must precede Core CreateV1');
+});
+
 test('claim_nft retains fail-closed fixed account checks and guarded live-state kill switch', async () => {
   const { lib } = await sources();
   assert.match(lib, /address = config\.collection @ CumzillaraptorsError::InvalidCollection/);
