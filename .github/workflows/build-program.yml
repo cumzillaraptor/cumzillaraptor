@@ -112,25 +112,37 @@ jobs:
           CUMZ_TEST_VALIDATION_AUTHORITY_KEYPAIR_JSON="$(node -e "const {Keypair}=require('@solana/web3.js'); process.stdout.write(JSON.stringify(Array.from(Keypair.generate().secretKey)))")" \
             SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-collection.test.mjs
 
-      # Task 1 only proves that the local validator has both exact programs loaded.
-      # It intentionally does not report a claim success; claim CPI coverage follows in later tasks.
-      - name: Run local x86 Core availability gate
+      # This is a mandatory private localhost gate: the script executes the real
+      # atomic secp→claim_nft path and its Metaplex Core CPI, not only a loader check.
+      - name: Run mandatory x86 atomic Core-CPI claim gate
         shell: bash
         env:
           CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
+          CUMZ_TEST_VALIDATION_SBF_OUT_DIR: ${{ github.workspace }}/.artifacts/test-validation-sbpf
         run: |
           set -euo pipefail
-          TEST_SBF_OUT_DIR="$GITHUB_WORKSPACE/.artifacts/test-validation-sbpf"
-          test -f "$TEST_SBF_OUT_DIR/cumzillaraptors.test-validation.so"
-          test -f "$TEST_SBF_OUT_DIR/cumzillaraptors.test-validation.build-revision"
-          CUMZ_TEST_VALIDATION_SBF_OUT_DIR="$TEST_SBF_OUT_DIR" bash scripts/run-x86-core-claim-gate.sh | tee local-x86-core-availability.log
+          test -f "$CUMZ_TEST_VALIDATION_SBF_OUT_DIR/cumzillaraptors.test-validation.so"
+          test -f "$CUMZ_TEST_VALIDATION_SBF_OUT_DIR/cumzillaraptors.test-validation.build-revision"
+          # Preserve both normal output and failure diagnostics in the retained CI artifact.
+          bash scripts/run-x86-core-claim-gate.sh 2>&1 | tee local-x86-atomic-core-claim.log
 
-      - name: Upload local Core availability log
+      - name: Upload mandatory x86 atomic Core-CPI claim log
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: local-x86-core-availability-log
-          path: local-x86-core-availability.log
+          name: local-x86-atomic-core-claim-log
+          path: local-x86-atomic-core-claim.log
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload test-validation SBPF artifact and revision marker
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-validation-sbpf-artifact-and-revision
+          path: |
+            .artifacts/test-validation-sbpf/cumzillaraptors.test-validation.so
+            .artifacts/test-validation-sbpf/cumzillaraptors.test-validation.build-revision
           if-no-files-found: warn
           retention-days: 90
 

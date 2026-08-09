@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
-// This is deliberately only the Task 1 availability gate. It proves that the
-// private test validator loaded the two exact SBPF programs before later tasks
-// are allowed to submit a claim scenario. It does not report a claim success.
+// The script first proves the private test validator loaded the two exact SBPF
+// programs, then executes the real atomic secp→claim_nft + Metaplex Core-CPI
+// scenario using only generated localhost identities and a test-only claim root.
 const VALIDATOR_URL = process.env.CORE_CLAIM_VALIDATOR_URL;
 const CUMZ_PROGRAM_SO = process.env.CORE_CLAIM_PROGRAM_SO;
 const CORE_PROGRAM_SO = process.env.CORE_CLAIM_CORE_SO;
@@ -66,7 +66,7 @@ test('private test validator has the hash-pinned Core and fresh cumzillaraptors 
   }
 });
 
-test('local Core availability gate is localhost-only and can load only the separately named test-validation artifact', () => {
+test('mandatory local x86 atomic Core-CPI claim gate is localhost-only and uses only the separately named test-validation artifact', () => {
   const script = readFileSync(new URL('../scripts/run-x86-core-claim-gate.sh', import.meta.url), 'utf8');
   const workflow = readFileSync(new URL('../.github/workflows/build-program.yml', import.meta.url), 'utf8');
 
@@ -78,17 +78,29 @@ test('local Core availability gate is localhost-only and can load only the separ
   assert.match(script, /--bpf-program\s+"\$CORE_PROGRAM_ID"\s+"\$WORKDIR\/mpl_core_program\.so"/);
   assert.match(script, new RegExp(CORE_SHA256));
   assert.match(script, /node --test tests\/local-validator-core-availability\.test\.mjs/);
+  assert.match(script, /CUMZ_LOCAL_EPHEMERAL_CLAIM_ROOT=1[\s\S]*node --test tests\/local-ephemeral-claim-root\.test\.mjs/);
   assert.doesNotMatch(script, /https?:\/\/(?:api\.)?devnet\.solana\.com/i);
   assert.doesNotMatch(script, /solana\s+program\s+deploy/i);
   assert.doesNotMatch(script, /solana\s+transfer/i);
   assert.doesNotMatch(script, /CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON/);
 
-  assert.match(workflow, /name: Run local x86 Core availability gate/);
   assert.match(workflow, /name: Build isolated test-validation SBPF artifact for private localhost only/);
   assert.match(workflow, /--features test-validation/);
   assert.match(workflow, /cumzillaraptors\.test-validation\.so/);
-  assert.match(workflow, /CUMZ_TEST_VALIDATION_SBF_OUT_DIR/);
+  assert.match(
+    workflow,
+    /name: Run mandatory x86 atomic Core-CPI claim gate[\s\S]*CUMZ_EXPECTED_BUILD_REVISION: \$\{\{ github\.sha \}\}[\s\S]*CUMZ_TEST_VALIDATION_SBF_OUT_DIR: \$\{\{ github\.workspace \}\}\/.artifacts\/test-validation-sbpf[\s\S]*bash scripts\/run-x86-core-claim-gate\.sh 2>&1 \| tee local-x86-atomic-core-claim\.log/,
+  );
+  assert.match(
+    workflow,
+    /name: Upload mandatory x86 atomic Core-CPI claim log[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*name: local-x86-atomic-core-claim-log[\s\S]*path: local-x86-atomic-core-claim\.log/,
+  );
+  assert.match(
+    workflow,
+    /name: Upload test-validation SBPF artifact and revision marker[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*name: test-validation-sbpf-artifact-and-revision[\s\S]*cumzillaraptors\.test-validation\.so[\s\S]*cumzillaraptors\.test-validation\.build-revision/,
+  );
+  assert.doesNotMatch(workflow, /https?:\/\/(?:api\.)?devnet\.solana\.com/i);
+  assert.doesNotMatch(workflow, /solana\s+program\s+deploy/i);
+  assert.doesNotMatch(workflow, /solana\s+transfer/i);
   assert.doesNotMatch(workflow, /CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON/);
-  assert.match(workflow, /CUMZ_EXPECTED_BUILD_REVISION: \$\{\{ github\.sha \}\}/);
-  assert.match(workflow, /scripts\/run-x86-core-claim-gate\.sh/);
 });
