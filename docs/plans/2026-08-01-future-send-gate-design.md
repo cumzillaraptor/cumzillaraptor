@@ -33,11 +33,11 @@
 |---|---|
 | Cluster | Devnet only |
 | Devnet genesis | `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG` |
-| Program ID | `2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2` |
-| Config PDA | `7LbuHZ2GJURn3wBfqFNgxQgDgjRv8x1nAhWntfdwiMQ` |
-| Artifact revision | `f1e9755d0c081341231bfadf50f06e4170a59065` |
-| Artifact byte length | `287632` |
-| Artifact SHA-256 | `f969f6bcb11d5bfea9a528963fce7c29e553666b5895747e3ab0c4bea051b29d` |
+| Program ID | `AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY` |
+| Config PDA | `7JDvn8mkEousMqzasbDZazkq8EsRy42nB1Dxp74Kg3e6` |
+| Artifact revision | `01ae96e2542717438112c3244394e0d484210f34` |
+| Artifact byte length | `397040` |
+| Artifact SHA-256 | `2c88fe80ff4488e4034fdf2a724822a8413d0242b09176ed1710648eb110aa22` |
 | Protected CLI | `/opt/cumzillaraptors-solana-cli/v1.18.26/bin/solana` |
 | CLI SHA-256 | `1ef9999ed4bce11226170a312775c8b6439f54331ac4bf249957d587deda6852` |
 | CLI source | Agave `v1.18.26`, `c2b350023ba849d1b33142592264aaa51fcb7f1e` |

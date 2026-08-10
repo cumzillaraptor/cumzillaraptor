@@ -8,8 +8,8 @@ const EXPECTED = Object.freeze({
   cluster: 'devnet',
   rpc: 'https://api.devnet.solana.com',
   programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-  revision: '939c7f89e10c0329e8d4a4be1340e9f95f1532f5',
-  artifactSha256: 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0',
+  revision: '01ae96e2542717438112c3244394e0d484210f34',
+  artifactSha256: '2c88fe80ff4488e4034fdf2a724822a8413d0242b09176ed1710648eb110aa22',
 });
 
 function usageError(message) {

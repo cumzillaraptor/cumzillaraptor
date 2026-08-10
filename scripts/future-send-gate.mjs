@@ -6,10 +6,10 @@ const EXPECTED_FIXED_FACTS = Object.freeze({
   cluster: 'devnet',
   devnetGenesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
   programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-  configPda: 'EeinfbkVxjGMVDcuqYbZi2mv6e9NvWz7gvNLAPmpF8bs',
-  artifactRevision: '939c7f89e10c0329e8d4a4be1340e9f95f1532f5',
+  configPda: '7JDvn8mkEousMqzasbDZazkq8EsRy42nB1Dxp74Kg3e6',
+  artifactRevision: '01ae96e2542717438112c3244394e0d484210f34',
   artifactBytes: 397040,
-  artifactSha256: 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0',
+  artifactSha256: '2c88fe80ff4488e4034fdf2a724822a8413d0242b09176ed1710648eb110aa22',
   cliVersion: 'v1.18.26',
   cliSha256: '1ef9999ed4bce11226170a312775c8b6439f54331ac4bf249957d587deda6852',
 });
