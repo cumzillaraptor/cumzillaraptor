@@ -12,7 +12,7 @@ const { keccak256 } = require('@ethersproject/keccak256');
 
 const root = path.resolve(import.meta.dirname, '..');
 const generator = path.join(root, 'scripts', 'generate-metadata-merkle-tree.js');
-const programId = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
+const programId = 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY';
 const collectionUri = `ar://${'c'.repeat(43)}`;
 
 function uriFor(id) {

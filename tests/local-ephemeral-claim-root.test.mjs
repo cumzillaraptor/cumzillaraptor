@@ -27,10 +27,10 @@ const canRun = enabled
   && Boolean(authorityJson)
   && Boolean(expectedRevision);
 
-const PROGRAM_ID_TEXT = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
+const PROGRAM_ID_TEXT = 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY';
 const CORE_PROGRAM_TEXT = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 
-const METADATA_ROOT = '5874f7c11db9717c89ab56de12fdb309be4043e31fc69486b735382935087caa';
+const METADATA_ROOT = '585606c4396358e047f8702d856548587eb0a18bc38be1076b0e4ea7f15ac019';
 
 function discriminator(name) {
   return createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);

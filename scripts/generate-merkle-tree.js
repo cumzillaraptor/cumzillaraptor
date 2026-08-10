@@ -16,7 +16,7 @@ const {
 const ROOT = path.resolve(__dirname, '..');
 const DEFAULT_RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || path.join(ROOT, 'nft-data', 'allocation-source', 'reserve_list.csv');
 const OUTPUT_DIR = path.join(ROOT, 'nft-data');
-const DEFAULT_PROGRAM_ID = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
+const DEFAULT_PROGRAM_ID = 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY';
 const VECTOR_RECIPIENT = '8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg';
 const VECTOR_EXPIRY = '2000000000';
 const CLAIM_COUNT = 174;

@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const generator = path.join(root, 'scripts', 'generate-uri-map-from-irys-receipt.mjs');
-const programId = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
+const programId = 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY';
 const stagedManifestSha256 = 'a'.repeat(64);
 const collectionUri = `ar://${'c'.repeat(43)}`;
 

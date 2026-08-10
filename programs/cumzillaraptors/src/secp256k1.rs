@@ -218,13 +218,13 @@ mod tests {
         0xe4, 0xd2, 0x31, 0x2e, 0x29,
     ];
     const NONCE: [u8; 32] = [
-        0x9f, 0x44, 0x5b, 0x1d, 0xbd, 0x5d, 0x5d, 0xd3, 0xc4, 0x6a, 0x9b, 0x0e, 0x90, 0x46, 0x56,
-        0x5c, 0x8b, 0x65, 0x91, 0xc6, 0xe4, 0xb2, 0x11, 0x65, 0x18, 0xed, 0x6e, 0x58, 0x80, 0x81,
-        0x8a, 0x20,
+        0x79, 0xe9, 0x94, 0x1d, 0x74, 0xe1, 0xab, 0xc6, 0x14, 0xb1, 0x08, 0x7e, 0xbc, 0x9e, 0x1b,
+        0xca, 0xe4, 0xdf, 0x25, 0xf1, 0xc1, 0xa1, 0x27, 0xec, 0xea, 0xe7, 0x17, 0x80, 0xb4, 0xa3,
+        0x7d, 0x63,
     ];
 
     fn fixture_preimage() -> Vec<u8> {
-        let program = parse_pubkey("2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2").unwrap();
+        let program = parse_pubkey("AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY").unwrap();
         let recipient = parse_pubkey("8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg").unwrap();
         eip191_preimage(
             &build_claim_message("devnet", program, recipient, 1, ETH, NONCE, 2_000_000_000)
@@ -258,7 +258,7 @@ mod tests {
         let digest = hashv(&[&preimage]).to_bytes();
         assert_eq!(
             encode_hex(&digest),
-            "dd1d6613534a9b4fd81c932e54811eaa26d56f212ba9faf06a05314a2008c2bd"
+            "d63ea82c133fd09e348f17bea749d1a1d04e21fcaf9659242b55474898957dd6"
         );
         assert!(std::str::from_utf8(&preimage)
             .unwrap()

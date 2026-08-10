@@ -2,7 +2,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { COLLECTION_URI, CORE_PROGRAM_ID, TREASURY } from './verify-core-collection.mjs';
 
-const PROGRAM_ID = new PublicKey('2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2');
+const PROGRAM_ID = new PublicKey('AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY');
 const [configPda] = PublicKey.findProgramAddressSync([Buffer.from('config')], PROGRAM_ID);
 const dryRun = process.argv.includes('--dry-run');
 

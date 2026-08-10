@@ -19,7 +19,7 @@ test('immutable launch state and user-approved devnet authority configuration ex
   ]);
   const config = JSON.parse(launch);
   assert.equal(config.cluster, 'devnet');
-  assert.equal(config.launchAuthority, '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r');
+  assert.equal(config.launchAuthority, '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2');
   for (const field of ['launch_authority', 'treasury', 'core_program', 'collection', 'allocation_hash', 'claim_root', 'metadata_root', 'cluster_tag_hash', 'sale_state', 'public_minted', 'claims_minted', 'bump']) {
     assert.match(state, new RegExp(`pub ${field}:`));
   }

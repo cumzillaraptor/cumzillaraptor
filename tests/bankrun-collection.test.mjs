@@ -30,7 +30,7 @@ const canRun = process.arch === 'x64'
   && Boolean(keypairJson)
   && Boolean(expectedRevision);
 
-const PROGRAM_ID_TEXT = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
+const PROGRAM_ID_TEXT = 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY';
 
 const CORE_PROGRAM_TEXT = 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d';
 const TREASURY_TEXT = 'FiHKQhwq2ZKkD2ZbBf3mPYgyw2Y9QDzNYykpMGErovU6';
@@ -50,7 +50,7 @@ function encodeInitializeLaunch({ treasury, coreProgram, collection }) {
     anchorDiscriminator('initialize_launch'),
     treasury.toBuffer(), coreProgram.toBuffer(), collection.toBuffer(),
     Buffer.alloc(32, 1), Buffer.alloc(32, 2),
-    Buffer.from('5874f7c11db9717c89ab56de12fdb309be4043e31fc69486b735382935087caa', 'hex'),
+    Buffer.from('585606c4396358e047f8702d856548587eb0a18bc38be1076b0e4ea7f15ac019', 'hex'),
     Buffer.alloc(32, 4),
     u16le(246), u16le(174),
   ]);

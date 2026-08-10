@@ -1,6 +1,6 @@
 {
   "version": "CUMZILLARAPTORS_DEVNET_LAUNCH_AUTHORITY_V1",
   "cluster": "devnet",
-  "launchAuthority": "71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r",
+  "launchAuthority": "3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2",
   "note": "Regenerated 2026-07-31. User-approved devnet launch authority; private keypair stored only in GitHub Actions secret CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON, never in this repo."
 }

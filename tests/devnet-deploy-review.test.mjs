@@ -68,26 +68,26 @@ test('live Devnet deployment review emits unsigned transaction details and does 
   assert.equal(report.artifact.revision, '939c7f89e10c0329e8d4a4be1340e9f95f1532f5');
   assert.equal(report.artifact.sha256, 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0');
   assert.equal(report.artifact.bytes, 397040);
-  assert.equal(report.identities.programId, '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2');
-  assert.equal(report.identities.payer, '2yNePQ9iVnMJC1i2fErzZEjUyKXop3b8qpk2fLeoABmF');
-  assert.equal(report.identities.upgradeAuthority, '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r');
+  assert.equal(report.identities.programId, 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY');
+  assert.equal(report.identities.payer, 'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N');
+  assert.equal(report.identities.upgradeAuthority, '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2');
   assert.equal(report.onChain.programExists, false);
   assert.equal(report.genesisHash, 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG');
   assert.equal(report.transactions[0].label, 'create and initialize buffer');
   assert.equal(report.transactions.at(-1).label, 'deploy program');
   assert.ok(report.transactions.length > 2);
   assert.deepEqual(report.transactions[0].requiredSigners, [
-    '2yNePQ9iVnMJC1i2fErzZEjUyKXop3b8qpk2fLeoABmF',
+    'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N',
     report.identities.buffer,
   ]);
   assert.deepEqual(report.transactions[1].requiredSigners, [
-    '2yNePQ9iVnMJC1i2fErzZEjUyKXop3b8qpk2fLeoABmF',
-    '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r',
+    'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N',
+    '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2',
   ]);
   assert.deepEqual(report.transactions.at(-1).requiredSigners, [
-    '2yNePQ9iVnMJC1i2fErzZEjUyKXop3b8qpk2fLeoABmF',
-    '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2',
-    '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r',
+    'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N',
+    'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY',
+    '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2',
   ]);
   assert.ok(report.transactions.every((tx) => tx.signatures.length === tx.requiredSigners.length));
   assert.ok(report.transactions.every((tx) => tx.signatures.every((signature) => signature.signature === null)));

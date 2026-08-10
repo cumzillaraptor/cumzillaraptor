@@ -7,9 +7,9 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 const EXPECTED = Object.freeze({
   cluster: 'devnet',
   rpc: 'https://api.devnet.solana.com',
-  programId: '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2',
-  revision: 'f1e9755d0c081341231bfadf50f06e4170a59065',
-  artifactSha256: 'f969f6bcb11d5bfea9a528963fce7c29e553666b5895747e3ab0c4bea051b29d',
+  programId: 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY',
+  revision: '939c7f89e10c0329e8d4a4be1340e9f95f1532f5',
+  artifactSha256: 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0',
 });
 
 function usageError(message) {

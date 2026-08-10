@@ -19,7 +19,7 @@ const generator = path.join(root, 'scripts', 'generate-merkle-tree.js');
 
 const fixture = {
   cluster: 'devnet',
-  programId: '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2',
+  programId: 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY',
   recipient: '8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg',
   nftId: 1,
   ethAddress: '0xB9B1D4251416066AFF6C06E4AB7A8EE4D2312E29',
@@ -32,7 +32,7 @@ test('V1 helper emits exact domain-separated message, deterministic hash, and ca
   const expectedMessage = [
     'CUMZILLARAPTORS_CLAIM_V1',
     'cluster: devnet',
-    'program: 2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2',
+    'program: AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY',
     'recipient: 8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg',
     'nft_id: 1',
     'eth_address: 0xb9b1d4251416066aff6c06e4ab7a8ee4d2312e29',
@@ -41,14 +41,14 @@ test('V1 helper emits exact domain-separated message, deterministic hash, and ca
   ].join('\n');
   assert.equal(normalizeEthAddress(fixture.ethAddress), '0xb9b1d4251416066aff6c06e4ab7a8ee4d2312e29');
   assert.equal(buildClaimMessage(fixture), expectedMessage);
-  assert.equal(claimMessageHash(expectedMessage), '0x4015afc66d93116b548d3424b4d7442c2a7de35efb51db77f0248693e0f9b5c9');
+  assert.equal(claimMessageHash(expectedMessage), '0x4b57181079dc1ce6c969854d881078e8a8f67c9747fffd115fd38b8cdaebab9f');
   assert.equal(makeClaimLeaf({
     programId: fixture.programId,
     clusterTag: fixture.cluster,
     ethAddress: fixture.ethAddress,
     nftId: fixture.nftId,
     nonceHex: fixture.nonceHex,
-  }), '0xabbeeb21bad265c42f38ecefa75fd105f60038923292a658cf7088874007b0da');
+  }), '0x86f1ec1034d4e3cc7124fbaf7b62ec61babb745f31115a3e5a5198408d6d51be');
 });
 
 test('V1 helper rejects malformed auth inputs', async () => {
@@ -82,9 +82,9 @@ test('regenerated V1 claim dataset and checked vectors bind devnet/program/root'
     'expiry_unix: 2000000000',
   ].join('\n'));
   // Committed V1 interoperability vector: values must not be recomputed by this test.
-  assert.equal(claims.merkleRoot, '0x791d012fcb221a209f776df044657f81d69b16868534367242577604fc61b086');
-  assert.equal(vectors.fixture.messageHash, '0xdd1d6613534a9b4fd81c932e54811eaa26d56f212ba9faf06a05314a2008c2bd');
-  assert.equal(vectors.fixture.leaf, '0xc5fb2563c36fde2167a433934c1919b605f30ee01d6d1c2b26260abb50a39f05');
+  assert.equal(claims.merkleRoot, '0x6b98744c71cba27ec2391b2c4cc79fc835b0c325faca0ff40dea6326e3b238fb');
+  assert.equal(vectors.fixture.messageHash, '0xd63ea82c133fd09e348f17bea749d1a1d04e21fcaf9659242b55474898957dd6');
+  assert.equal(vectors.fixture.leaf, '0x0f38100957d1b293932c16c37f38e965e1e75563df4057b921d98b16b44c65c6');
   const tree = new MerkleTree(claims.claims.map((claim) => claim.leaf), keccak256, { sortPairs: true });
   assert.equal(`0x${tree.getRoot().toString('hex')}`, claims.merkleRoot);
   for (const claim of claims.claims) {
