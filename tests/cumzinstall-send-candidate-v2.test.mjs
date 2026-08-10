@@ -18,6 +18,7 @@ const EXPECTED = Object.freeze({
 test('v2 candidate installer is fixed-purpose, no-argument, and permanently no-send', async () => {
   const source = await readFile(scriptPath, 'utf8');
   assert.match(source, /^#!\/bin\/sh\n/);
+  assert.match(source, /if \[ "\$\(id -u\)" -ne 0 \]; then[\s\S]*Refusing: root is required for candidate installation\.[\s\S]*exit 77[\s\S]*fi/);
   assert.match(source, /if \[ "\$#" -ne 0 \]; then[\s\S]*exit 64[\s\S]*fi/);
   assert.match(source, /CANDIDATE=\/opt\/cumzillaraptors-send-runtime-candidate-v2/);
   assert.match(source, /\[ ! -e "\$CANDIDATE" \] \|\| \{ echo "Candidate directory already exists; refusing replacement\." >&2; exit 1; \}/);

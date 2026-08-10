@@ -4,6 +4,11 @@
 # and runs offline Node tests. It has no key, RPC, CLI, signing, send, or deploy logic.
 set -eu
 
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Refusing: root is required for candidate installation." >&2
+  exit 77
+fi
+
 if [ "$#" -ne 0 ]; then
   echo "Usage: sudo /usr/local/sbin/cumzinstall-send-candidate-v2" >&2
   exit 64
