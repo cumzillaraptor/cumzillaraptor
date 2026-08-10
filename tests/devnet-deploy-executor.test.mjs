@@ -46,6 +46,11 @@ test('trusted review script is owner-only, hash-pinned, and staged before execut
   }
 });
 
+test('executor pins the current approved review script source', async () => {
+  const source = await readFile(script, 'utf8');
+  assert.match(source, /APPROVED_REVIEW_SCRIPT_SHA256 = '6d9f0b419cf310aea3523ca6d3a57fb5f2eee4f85de8526ccda4cd7cc38738e0'/);
+});
+
 test('keypairs are copied to owner-only staging before review or CLI use', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'cumz-executor-keypairs-'));
   try {
