@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 const EXPECTED_FIXED_FACTS = Object.freeze({
   cluster: 'devnet',
   devnetGenesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
-  programId: 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY',
+  programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
   configPda: 'EeinfbkVxjGMVDcuqYbZi2mv6e9NvWz7gvNLAPmpF8bs',
   artifactRevision: '939c7f89e10c0329e8d4a4be1340e9f95f1532f5',
   artifactBytes: 397040,

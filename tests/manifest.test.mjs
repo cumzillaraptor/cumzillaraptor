@@ -9,7 +9,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const generator = path.join(root, 'scripts', 'generate-launch-manifest.js');
 const metadataGenerator = path.join(root, 'scripts', 'generate-metadata-merkle-tree.js');
 const testTempRoot = path.join(tmpdir(), 'cumzillaraptors-tests');
-const programId = 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY';
+const programId = 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY';
 const collection = '8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d';
 
 async function makeTempDir(prefix) {

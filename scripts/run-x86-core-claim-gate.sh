@@ -21,7 +21,7 @@ test -f "$PROGRAM_SO"
 test -f "$REVISION_FILE"
 test "$(tr -d '\r\n' < "$REVISION_FILE")" = "$CUMZ_EXPECTED_BUILD_REVISION"
 
-CUMZ_PROGRAM_ID="AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY"
+CUMZ_PROGRAM_ID="AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY"
 CORE_PROGRAM_ID="CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d"
 # Official mpl-core release asset. This exact SHA is checked before validator startup.
 CORE_URL="https://github.com/metaplex-foundation/mpl-core/releases/download/release/core%400.12.0/mpl_core_program.so"

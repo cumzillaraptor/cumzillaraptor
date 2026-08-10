@@ -21,7 +21,7 @@ test('deterministic V1 claim fixture recomputes committed claim and metadata lea
   assert.equal(verified.claimRoot, V1_CLAIM_FIXTURE.claimRoot);
   assert.equal(verified.metadataRoot, V1_CLAIM_FIXTURE.metadataRoot);
   assert.equal(V1_CLAIM_FIXTURE.cluster, 'devnet');
-  assert.equal(V1_CLAIM_FIXTURE.programId, 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY');
+  assert.equal(V1_CLAIM_FIXTURE.programId, 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY');
 });
 
 test('fixture deterministically derives the exact config, registry, asset, and receipt PDAs', () => {
@@ -34,16 +34,16 @@ test('fixture deterministically derives the exact config, registry, asset, and r
   const [receipt] = PublicKey.findProgramAddressSync([
     Buffer.from('claim'), Buffer.from(V1_CLAIM_FIXTURE.claim.leaf.slice(2), 'hex'),
   ], programId);
-  assert.equal(config.toBase58(), 'EeinfbkVxjGMVDcuqYbZi2mv6e9NvWz7gvNLAPmpF8bs');
-  assert.equal(registry.toBase58(), 'GpTygi5HC9ufieGyZ4NBAu4qAY1ssrcHeN9comBpUk22');
-  assert.equal(asset.toBase58(), 'FWHtM9BC7KNpWrhsDn8aeZrfvEyWoY7XKhLtRLtAouHt');
-  assert.equal(receipt.toBase58(), 'F42dfb7QTXWXfHJR5NFAFbDNwna8yeJYT5MogEyj5ujb');
+  assert.equal(config.toBase58(), '7JDvn8mkEousMqzasbDZazkq8EsRy42nB1Dxp74Kg3e6');
+  assert.equal(registry.toBase58(), 'Hrnf4t6EpR6vU3WMw1JV1vz1p2hLopjo7xrXkQNVGqPc');
+  assert.equal(asset.toBase58(), '7HKLazdYXbBdgFzYxar3Z14ycDLCiDh6Cmwa3BR6JijG');
+  assert.equal(receipt.toBase58(), '6AqkGZ2EWG8tvRpozc8gNhsemRTjWFb2XVXhM2EEEWm1');
 });
 
 test('fixture produces the exact EIP-191 preimage bound to a supplied local claimant', () => {
   const claimant = '8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg';
   const { message, preimage } = V1_CLAIM_FIXTURE.claimAuthorizationFor(claimant, 2_000_000_000);
-  assert.match(message, /^CUMZILLARAPTORS_CLAIM_V1\ncluster: devnet\nprogram: AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY\nrecipient: 8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg\n/);
+  assert.match(message, /^CUMZILLARAPTORS_CLAIM_V1\ncluster: devnet\nprogram: AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY\nrecipient: 8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg\n/);
   const eip191Prefix = Buffer.from(`\x19Ethereum Signed Message:\n${Buffer.byteLength(message)}`);
   assert.deepEqual([...preimage.subarray(0, eip191Prefix.length)], [...eip191Prefix]);
   assert.deepEqual([...preimage.subarray(-Buffer.byteLength(message))], [...Buffer.from(message)]);

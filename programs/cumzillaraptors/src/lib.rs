@@ -15,7 +15,7 @@ use state::{
     launch_authority, ClaimReceipt, CollectionConfig, SaleState, CLAIM_COUNT, PUBLIC_COUNT,
 };
 
-declare_id!("AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY");
+declare_id!("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY");
 
 #[program]
 pub mod cumzillaraptors {

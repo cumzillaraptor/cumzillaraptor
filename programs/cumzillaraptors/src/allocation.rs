@@ -204,12 +204,12 @@ mod tests {
         let mut config = config();
         config.collection =
             Pubkey::from_str("8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d").unwrap();
-        let program_id = Pubkey::from_str("AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY").unwrap();
+        let program_id = Pubkey::from_str("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
         assert_eq!(
             allocation_hash_v1(&program_id, &config, &public).unwrap(),
             [
-                125, 148, 127, 38, 167, 26, 128, 212, 12, 212, 174, 240, 165, 49, 244, 219, 172,
-                41, 255, 148, 220, 151, 125, 146, 70, 154, 50, 121, 165, 242, 218, 51,
+                162, 167, 91, 97, 214, 203, 39, 231, 189, 107, 184, 55, 0, 250, 150, 6, 25, 194,
+                203, 170, 178, 119, 173, 62, 248, 58, 235, 80, 219, 40, 175, 201,
             ]
         );
     }

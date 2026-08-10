@@ -7,7 +7,7 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 const EXPECTED = Object.freeze({
   cluster: 'devnet',
   rpc: 'https://api.devnet.solana.com',
-  programId: 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY',
+  programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
   revision: '939c7f89e10c0329e8d4a4be1340e9f95f1532f5',
   artifactSha256: 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0',
 });

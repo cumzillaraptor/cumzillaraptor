@@ -2,7 +2,7 @@
 anchor_version = "0.32.1"
 
 [programs.devnet]
-cumzillaraptors = "AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY"
+cumzillaraptors = "AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY"
 
 [registry]
 url = "https://api.apr.dev"
