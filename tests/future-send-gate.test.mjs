@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import * as gate from '../scripts/future-send-gate.mjs';
 
@@ -54,8 +55,8 @@ function rootOnlyMetadata(overrides = {}) {
   });
 }
 
-test('future-send policy remains bound to the current reviewed Devnet artifact and PDAs', () => {
-  assert.deepEqual(EXPECTED_FIXED_FACTS, {
+test('future-send policy and active design plan bind the current reviewed Devnet facts', async () => {
+  const expected = {
     cluster: 'devnet',
     devnetGenesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
     programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
@@ -65,7 +66,19 @@ test('future-send policy remains bound to the current reviewed Devnet artifact a
     artifactSha256: '2c88fe80ff4488e4034fdf2a724822a8413d0242b09176ed1710648eb110aa22',
     cliVersion: 'v1.18.26',
     cliSha256: '1ef9999ed4bce11226170a312775c8b6439f54331ac4bf249957d587deda6852',
-  });
+  };
+  assert.deepEqual(EXPECTED_FIXED_FACTS, expected);
+
+  const plan = await readFile(new URL('../docs/plans/2026-08-01-future-send-gate-design.md', import.meta.url), 'utf8');
+  for (const value of [expected.programId, expected.configPda, expected.artifactRevision, String(expected.artifactBytes), expected.artifactSha256]) {
+    assert.match(plan, new RegExp(value));
+  }
+  for (const obsolete of [
+    '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2',
+    '7LbuHZ2GJURn3wBfqFNgxQgDgjRv8x1nAhWntfdwiMQ',
+    'f1e9755d0c081341231bfadf50f06e4170a59065',
+    'f969f6bcb11d5bfea9a528963fce7c29e553666b5895747e3ab0c4bea051b29d',
+  ]) assert.doesNotMatch(plan, new RegExp(obsolete));
 });
 
 test('canonicalizes a strict HTTPS endpoint and returns only deterministic metadata', () => {
