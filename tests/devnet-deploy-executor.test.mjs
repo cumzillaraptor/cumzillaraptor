@@ -48,7 +48,7 @@ test('trusted review script is owner-only, hash-pinned, and staged before execut
 
 test('executor pins the current approved review script source', async () => {
   const source = await readFile(script, 'utf8');
-  assert.match(source, /APPROVED_REVIEW_SCRIPT_SHA256 = '7310cff45deafbaad6de30512ae518af90113c5dd2fb37afb3f15d581cb95553'/);
+  assert.match(source, /APPROVED_REVIEW_SCRIPT_SHA256 = '23ac50bbc798cc3de69d47540f911b46b779739990fdb347e88002500cbea235'/);
 });
 
 test('keypairs are copied to owner-only staging before review or CLI use', async () => {

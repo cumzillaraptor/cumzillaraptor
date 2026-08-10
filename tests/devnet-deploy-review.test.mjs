@@ -8,10 +8,10 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts', 'review-devnet-deployment.mjs');
-const liveArtifactDir = '/tmp/cumz-main-artifact-939c7f8/programs/cumzillaraptors/target/deploy';
-const liveProgramKeypair = '/home/raspberrypi/.config/solana/cumzillaraptors-devnet-program.json';
-const livePayerKeypair = '/home/raspberrypi/.config/solana/cumzillaraptors-devnet-payer.json';
-const liveUpgradeAuthorityKeypair = '/home/raspberrypi/.config/solana/launch-authority/launch-authority-devnet.json';
+const liveArtifactDir = '/tmp/cumz-main-artifact-ffe931d/programs/cumzillaraptors/target/deploy';
+const liveProgramKeypair = '/var/lib/cumzdeploy/keys/program.json';
+const livePayerKeypair = '/var/lib/cumzdeploy/keys/payer.json';
+const liveUpgradeAuthorityKeypair = '/var/lib/cumzdeploy/keys/upgrade-authority.json';
 const { EXPECTED, safeRpcLabel, safeErrorMessage } = await import(pathToFileURL(script).href);
 
 function liveArgs(extra = []) {
@@ -33,8 +33,8 @@ test('deployment review refuses to run without the explicit review-only switch',
 });
 
 test('deployment review pins the approved x86 CI SBPF artifact identity', () => {
-  assert.equal(EXPECTED.revision, '939c7f89e10c0329e8d4a4be1340e9f95f1532f5');
-  assert.equal(EXPECTED.artifactSha256, 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0');
+  assert.equal(EXPECTED.revision, 'ffe931d671a2ca3f750abce5a908f129edec8cd5');
+  assert.equal(EXPECTED.artifactSha256, '479549ae6a901ba0b364b9e4cc0bc2dc01e0df3838628503ed0b62089ae2baf4');
   assert.equal(EXPECTED.artifactBytes, 397040);
 });
 
@@ -65,8 +65,8 @@ test('live Devnet deployment review emits unsigned transaction details and does 
   assert.match(report.guarantee, /No transaction will be signed or sent/);
   assert.equal(report.rpc, 'https://api.devnet.solana.com');
   assert.doesNotMatch(result.stdout, /TOP_SECRET_MUST_NOT_APPEAR/);
-  assert.equal(report.artifact.revision, '939c7f89e10c0329e8d4a4be1340e9f95f1532f5');
-  assert.equal(report.artifact.sha256, 'e5cdbe1ec45093516e1dd7224985c34303c9c632d2db80d37ac1c83ed05998d0');
+  assert.equal(report.artifact.revision, 'ffe931d671a2ca3f750abce5a908f129edec8cd5');
+  assert.equal(report.artifact.sha256, '479549ae6a901ba0b364b9e4cc0bc2dc01e0df3838628503ed0b62089ae2baf4');
   assert.equal(report.artifact.bytes, 397040);
   assert.equal(report.identities.programId, 'AYE4iC2gp81H8jvMjk4EGxwP2sJFzuDptUwxqwTZYTMY');
   assert.equal(report.identities.payer, 'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N');
@@ -99,7 +99,7 @@ test('deployment review rejects an artifact hash mismatch before building a tran
   const temporaryDir = await mkdtemp(path.join(tmpdir(), 'cumz-deploy-review-'));
   try {
     await writeFile(path.join(temporaryDir, 'cumzillaraptors.so'), 'not the approved SBPF artifact');
-    await writeFile(path.join(temporaryDir, 'cumzillaraptors.build-revision'), '939c7f89e10c0329e8d4a4be1340e9f95f1532f5\n');
+    await writeFile(path.join(temporaryDir, 'cumzillaraptors.build-revision'), 'ffe931d671a2ca3f750abce5a908f129edec8cd5\n');
     const result = spawnSync('node', [
       script, '--review-only', '--artifact-dir', temporaryDir,
       '--program-keypair', '/nonexistent/program.json',
