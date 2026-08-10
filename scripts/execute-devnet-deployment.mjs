@@ -10,7 +10,7 @@ const EXPECTED = Object.freeze({
 });
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REVIEW_SCRIPT = path.join(SCRIPT_DIR, 'review-devnet-deployment.mjs');
-const APPROVED_REVIEW_SCRIPT_SHA256 = '33028e8d6f183e1579bdaea9719c5da1006a011f5f620e4238e5aa1738eb1a4c';
+const APPROVED_REVIEW_SCRIPT_SHA256 = '8badf55f3a85b61c2b49821df1959844dee22aa0123d25247d53fa742e219ed1';
 
 function safeErrorMessage(error, rpc) {
   const message = error instanceof Error ? error.message : String(error);
