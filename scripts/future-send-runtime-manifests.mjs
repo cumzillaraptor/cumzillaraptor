@@ -1,6 +1,6 @@
 // Pure schema/policy module. It deliberately has no filesystem, process, network,
 // key, transaction, signing, CLI-spawn, or send capability.
-import { EXPECTED_FIXED_FACTS } from './future-send-gate.mjs';
+import { EXPECTED_FIXED_FACTS, canonicalizeRpcEndpoint } from './future-send-gate.mjs';
 
 const HEX_256 = /^[a-f0-9]{64}$/;
 const ROOT_RUNTIME_PATHS = Object.freeze({
@@ -64,11 +64,11 @@ function validateDigestManifestText(text) {
 
 function sanitizeRuntimeReport(report = {}) {
   if (!isPlainRecord(report)) return Object.freeze({ ok: false, reason: 'invalid-input' });
-  const origin = report.rpcOrigin;
-  if (typeof origin !== 'string' || !/^https:\/\/[^/?#@]+$/.test(origin)) return Object.freeze({ ok: false, reason: 'invalid-input' });
+  let rpc;
+  try { rpc = canonicalizeRpcEndpoint(report.rpcEndpoint); } catch { return Object.freeze({ ok: false, reason: 'invalid-input' }); }
   return Object.freeze({
     ok: true,
-    rpcOrigin: origin,
+    rpcOrigin: rpc.origin,
     artifactRevision: EXPECTED_FIXED_FACTS.artifactRevision,
     artifactSha256: EXPECTED_FIXED_FACTS.artifactSha256,
     programId: EXPECTED_FIXED_FACTS.programId,

@@ -72,8 +72,9 @@ test('digest manifest requires sorted unique relative paths and canonical digest
   ]) assert.deepEqual(validateDigestManifestText(input), { ok: false });
 });
 
-test('sanitized runtime report exposes only origin and public reviewed facts', () => {
-  const report = sanitizeRuntimeReport({ rpcOrigin: 'https://rpc.example.test' });
+test('sanitized runtime report derives a strict canonical origin and omits endpoint credentials and paths', () => {
+  const endpoint = 'HTTPS://RPC.Example.Test/review?tenant=alpha&token=public';
+  const report = sanitizeRuntimeReport({ rpcEndpoint: endpoint });
   assert.deepEqual(report, {
     ok: true,
     rpcOrigin: 'https://rpc.example.test',
@@ -83,9 +84,15 @@ test('sanitized runtime report exposes only origin and public reviewed facts', (
     configPda: EXPECTED_FIXED_FACTS.configPda,
   });
   assert.equal(Object.isFrozen(report), true);
-  for (const input of [undefined, {}, { rpcOrigin: 'https://user:secret@rpc.example.test/path?token=secret' }, { rpcOrigin: 'http://rpc.example.test' }]) {
-    assert.deepEqual(sanitizeRuntimeReport(input), { ok: false, reason: 'invalid-input' });
-  }
+  assert.doesNotMatch(JSON.stringify(report), /review|tenant|alpha|token|public|RPC/);
+  for (const input of [
+    undefined,
+    {},
+    { rpcEndpoint: 'https://user:secret@rpc.example.test/path?token=secret' },
+    { rpcEndpoint: 'http://rpc.example.test' },
+    { rpcEndpoint: 'https://RPC.EXAMPLE.TEST:8443' },
+    { rpcEndpoint: 'https://rpc.example.test/path?x=1&x=2' },
+  ]) assert.deepEqual(sanitizeRuntimeReport(input), { ok: false, reason: 'invalid-input' });
 });
 
 test('manifest schema module is pure and has no filesystem, process, key, transaction, signing, CLI, or send capability', async () => {
