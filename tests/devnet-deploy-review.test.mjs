@@ -70,7 +70,7 @@ test('live Devnet deployment review emits unsigned transaction details and does 
   assert.equal(report.artifact.bytes, 397040);
   assert.equal(report.identities.programId, 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY');
   assert.equal(report.identities.payer, 'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N');
-  assert.equal(report.identities.upgradeAuthority, '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2');
+  assert.equal(report.identities.upgradeAuthority, '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89WdJNihEhU2');
   assert.equal(report.onChain.programExists, false);
   assert.equal(report.genesisHash, 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG');
   assert.equal(report.transactions[0].label, 'create and initialize buffer');
@@ -82,12 +82,12 @@ test('live Devnet deployment review emits unsigned transaction details and does 
   ]);
   assert.deepEqual(report.transactions[1].requiredSigners, [
     'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N',
-    '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2',
+    '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89WdJNihEhU2',
   ]);
   assert.deepEqual(report.transactions.at(-1).requiredSigners, [
     'C7EpDNWshjtRf1tERwotFP2iAEbApBhQKJz4usYUPU9N',
     'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-    '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2',
+    '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89WdJNihEhU2',
   ]);
   assert.ok(report.transactions.every((tx) => tx.signatures.length === tx.requiredSigners.length));
   assert.ok(report.transactions.every((tx) => tx.signatures.every((signature) => signature.signature === null)));

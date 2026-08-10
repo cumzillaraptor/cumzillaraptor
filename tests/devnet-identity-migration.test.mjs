@@ -6,7 +6,7 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const OLD_PROGRAM_ID = '2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2';
 const PROGRAM_ID = 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY';
-const UPGRADE_AUTHORITY = '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89wdJNihEhU2';
+const UPGRADE_AUTHORITY = '3DnrWsBbaT6BMbUKXL4x5cid9KRk7GbG89WdJNihEhU2';
 
 const activeBindings = [
   'Anchor.toml',
