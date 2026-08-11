@@ -111,28 +111,45 @@ function stageTrustedKeypairs(options) {
   }
 }
 
-function runReview(options) {
+function parseReviewOutput(stdout) {
+  try {
+    const review = JSON.parse(stdout);
+    if (!review || Array.isArray(review) || typeof review !== 'object') throw new Error('not an object');
+    return review;
+  } catch {
+    throw new Error('Fresh unsigned deployment review must emit a single JSON object; refusing to continue.');
+  }
+}
+
+function runReview(options, spawn = spawnSync) {
   const { stagingDir, staged } = stageTrustedReviewScript();
   try {
-    const { status, stdout } = spawnSync(process.execPath, [staged, ...buildReviewArgs(options).slice(1)], { cwd: SCRIPT_DIR, encoding: 'utf8' });
+    const { status, stdout } = spawn(process.execPath, [staged, ...buildReviewArgs(options).slice(1)], { cwd: SCRIPT_DIR, encoding: 'utf8' });
     if (status !== 0) throw new Error('Fresh unsigned deployment review failed; refusing to continue.');
-    process.stdout.write(stdout);
+    return parseReviewOutput(stdout);
   } finally {
     removeStagingDirectory(stagingDir);
   }
 }
 
-function execute(options) {
-  const keypairs = stageTrustedKeypairs(options);
+function execute(options, dependencies = {}) {
+  const stageKeypairs = dependencies.stageTrustedKeypairs ?? stageTrustedKeypairs;
+  const reviewRunner = dependencies.runReview ?? runReview;
+  const write = dependencies.write ?? process.stdout.write.bind(process.stdout);
+  const cleanup = dependencies.removeStagingDirectory ?? removeStagingDirectory;
+  const keypairs = stageKeypairs(options);
   try {
-    runReview(keypairs.options);
-    console.log(JSON.stringify({
-      mode: 'FRESH PRE-SIGN REVIEW COMPLETE',
-      guarantee: 'No deployment command was invoked. No transaction was signed or sent.',
-      nextApproval: 'This repository executor is prepare-only. Any future send-capable operation must use the separately audited root-owned runtime and requires a new explicit authorization.',
-    }, null, 2));
+    const review = reviewRunner(keypairs.options);
+    write(`${JSON.stringify({
+      review,
+      prepareCompletion: {
+        mode: 'FRESH PRE-SIGN REVIEW COMPLETE',
+        guarantee: 'No deployment command was invoked. No transaction was signed or sent.',
+        nextApproval: 'This repository executor is prepare-only. Any future send-capable operation must use the separately audited root-owned runtime and requires a new explicit authorization.',
+      },
+    }, null, 2)}\n`);
   } finally {
-    removeStagingDirectory(keypairs.stagingDir);
+    cleanup(keypairs.stagingDir);
   }
 }
 

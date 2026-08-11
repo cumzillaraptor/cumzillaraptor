@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts', 'execute-devnet-deployment.mjs');
-const { EXPECTED, parseArgs, buildReviewArgs, stageTrustedReviewScript, stageTrustedKeypairs } = await import(pathToFileURL(script).href);
+const { EXPECTED, parseArgs, buildReviewArgs, stageTrustedReviewScript, stageTrustedKeypairs, runReview, execute } = await import(pathToFileURL(script).href);
 
 const required = [
   '--artifact-dir', '/tmp/artifact',
@@ -74,6 +74,43 @@ test('keypairs are copied to owner-only staging before review or CLI use', async
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('runReview returns exactly one validated reviewer object without forwarding stdout', () => {
+  const review = { mode: 'UNSIGNED REVIEW', artifact: { sha256: 'a'.repeat(64) } };
+  const result = runReview({ artifact_dir: '/tmp/artifact' }, () => ({
+    status: 0,
+    stdout: JSON.stringify(review),
+  }));
+  assert.deepEqual(result, review);
+});
+
+test('runReview rejects malformed or concatenated reviewer JSON', () => {
+  assert.throws(
+    () => runReview({ artifact_dir: '/tmp/artifact' }, () => ({ status: 0, stdout: '{"review":true}\n{"second":true}' })),
+    /single JSON object/,
+  );
+  assert.throws(
+    () => runReview({ artifact_dir: '/tmp/artifact' }, () => ({ status: 0, stdout: 'not json' })),
+    /single JSON object/,
+  );
+});
+
+test('execute emits one canonical JSON report preserving unsigned review data and completion guarantees', () => {
+  const review = { mode: 'UNSIGNED REVIEW', artifact: { sha256: 'b'.repeat(64) }, reviewedAt: 'offline' };
+  const output = [];
+  execute({}, {
+    stageTrustedKeypairs: () => ({ stagingDir: '/tmp/not-created', options: {} }),
+    runReview: () => review,
+    write: (value) => output.push(value),
+    removeStagingDirectory: () => {},
+  });
+  assert.equal(output.length, 1);
+  const report = JSON.parse(output[0]);
+  assert.deepEqual(Object.keys(report), ['review', 'prepareCompletion']);
+  assert.deepEqual(report.review, review);
+  assert.match(report.prepareCompletion.guarantee, /No deployment command was invoked\. No transaction was signed or sent\./);
+  assert.match(report.prepareCompletion.nextApproval, /prepare-only/);
 });
 
 test('repository executor has no deployment, signing, or CLI invocation path', async () => {
