@@ -10,11 +10,11 @@ This is a static specification only, not an executable installer. Phase A create
 
 The later helper must reject non-root before parsing arguments, source hashing, or filesystem changes, and must reject every argument. It must use a descriptor-pinned, no-follow, descriptor-relative design with post-open byte hashing; pathname check/copy/hash sequences are not sufficient.
 
-## Fixed sealing policy
+## Phase A synthetic manifest and Phase B release-seal boundary
 
-The future helper has one fixed absolute source root, `/home/raspberrypi/workspace-cumzillaraptor`, and one fixed absolute destination, `/opt/cumzillaraptors-send-runtime-candidate-v2`. It uses fixed absolute paths and SHA-256 hashes from an immutable expected source-digest map derived from canonical labeled synthetic fixture text. Caller-provided matching manifest records or digest pairs are not authoritative.
+The Phase A manifest fixes one absolute model source root, `/home/raspberrypi/workspace-cumzillaraptor`, and one model destination, `/opt/cumzillaraptors-send-runtime-candidate-v2`. The pure model uses fixed absolute paths and SHA-256 hashes solely over canonical labeled synthetic fixture text, not repository artifact bytes. Its immutable expected source-digest map derives from that fixture text. It exists only for the pure model and is not a production release seal; caller-provided matching manifest records or digest pairs are non-authoritative.
 
-The candidate seal includes sealed package.json, package-lock.json, and dependency tree cross-bindings, plus these exact required file entries:
+The Phase A candidate seal model includes sealed package.json, package-lock.json, and dependency tree cross-bindings, plus these exact synthetic fixture entries:
 
 - `package.json`
 - `package-lock.json`
@@ -28,7 +28,7 @@ The candidate seal includes sealed package.json, package-lock.json, and dependen
 - `tests/v2-root-runtime-prepare-coordinator.test.mjs`
 - `tests/v2-root-runtime-provenance.test.mjs`
 
-The helper must refuse missing, extra, substituted, non-file, symlink, non-pinned, or no-follow-violating entries. It must bind the package, lock, and dependency-tree cross-digests to that complete exact seal.
+The static Phase A manifest is never supplied to a privileged helper. The Phase B production seal is fixed, operator-provisioned, embedded trusted data. A future separately authorized Phase B helper must instead validate that trusted actual-byte release seal with a complete pinned commit ID and the grammar, allowlist, and entry rules in `v2-phase-b-release-seal-format.md`. Every caller-supplied Phase B seal, commit ID, digest, or entry record is non-authoritative and rejected. The helper must refuse missing, extra, substituted, non-file, symlink, non-pinned, or no-follow-violating release-seal entries, and bind the package, lock, and dependency-tree cross-digests to that complete actual-byte seal.
 
 ## Required helper execution environment
 

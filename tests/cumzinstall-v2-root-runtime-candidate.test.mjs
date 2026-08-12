@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 const ROOT = '/opt/cumzillaraptors-send-runtime-candidate-v2';
 const SOURCE_ROOT = '/home/raspberrypi/workspace-cumzillaraptor';
 const DOCUMENT = new URL('../docs/operations/cumzinstall-v2-root-runtime-candidate-interface.md', import.meta.url);
+const RELEASE_SEAL_FORMAT = new URL('../docs/operations/v2-phase-b-release-seal-format.md', import.meta.url);
 const MANIFEST = new URL('../scripts/cumzinstall-v2-root-runtime-candidate.manifest', import.meta.url);
 const REQUIRED_SOURCES = Object.freeze([
   'package.json',
@@ -111,6 +112,51 @@ test('Task 4 interface document specifies a no-argument root-only, descriptor-pi
   assert.match(text, /no send/i);
   assert.match(text, /no sudoers/i);
   assert.match(text, /no active-runtime replacement/i);
+});
+
+function parseMarkdownAllowlist(text) {
+  const section = text.match(/The explicit runtime artifact allowlist is:\n\n((?:- `[^`]+`\n?)+)/);
+  assert.ok(section, 'release-seal format must contain a Markdown artifact allowlist');
+  return [...section[1].matchAll(/^- `([^`]+)`$/gm)].map(([, path]) => path);
+}
+
+test('Phase B release-seal format fixes the complete trusted production seal', async () => {
+  const [manifest, interfaceDocument, releaseSealFormat] = await Promise.all([
+    readFile(MANIFEST, 'utf8'),
+    readFile(DOCUMENT, 'utf8'),
+    readFile(RELEASE_SEAL_FORMAT, 'utf8'),
+  ]);
+  const syntheticEntries = [...manifest.matchAll(/^entry: ([a-f0-9]{64})  type:file  (\/[^\n ]+) -> (\/[^\n ]+)$/gm)];
+  assert.equal(syntheticEntries.length, REQUIRED_SOURCES.length);
+  for (const source of REQUIRED_SOURCES) {
+    const expected = `${SOURCE_ROOT}/${source}`;
+    const entry = syntheticEntries.find(([, , from]) => from === expected);
+    assert.ok(entry, `missing synthetic fixture entry for ${source}`);
+    assert.equal(entry[1], sha256(canonicalSyntheticSource(source)));
+  }
+
+  const allowlist = parseMarkdownAllowlist(releaseSealFormat);
+  assert.deepEqual(allowlist, REQUIRED_SOURCES, 'Phase B Markdown allowlist must exactly equal REQUIRED_SOURCES');
+  assert.equal(new Set(allowlist).size, REQUIRED_SOURCES.length, 'Phase B Markdown allowlist must not duplicate paths');
+
+  assert.match(interfaceDocument, /Phase A manifest.*canonical labeled synthetic fixture text.*pure model.*not.*production.*release seal/i);
+  assert.match(interfaceDocument, /never supplied to (?:a |the )?privileged helper/i);
+  assert.match(interfaceDocument, /Phase B production seal.*fixed.*operator-provisioned.*embedded trusted data/i);
+  assert.match(interfaceDocument, /caller-supplied.*Phase B.*seal.*commit ID.*digest.*entry record.*(?:non-authoritative|rejected)/i);
+  assert.match(releaseSealFormat, /^format: cumzillaraptors-v2-release-seal-v1$/m);
+  assert.match(releaseSealFormat, /^repository: cumzillaraptor\/cumzillaraptor$/m);
+  assert.match(releaseSealFormat, /^commit: <40-or-64-lowercase-hex immutable full commit id>$/m);
+  assert.match(releaseSealFormat, /^entry: <sha256-64-lowercase-hex> <repository-relative-regular-file-path>$/m);
+  assert.match(releaseSealFormat, /record label.*exactly one ASCII space/i);
+  assert.match(releaseSealFormat, /lowercase ASCII hexadecimal/i);
+  assert.match(releaseSealFormat, /final entry.*single LF/i);
+  assert.match(releaseSealFormat, /entry path must exactly equal one complete item in the explicit runtime artifact allowlist/i);
+  assert.match(releaseSealFormat, /exactly one entry for every allowlist item.*no missing.*no extra.*no duplicate/i);
+  assert.match(releaseSealFormat, /fixed, operator-provisioned, embedded trusted data/i);
+  assert.match(releaseSealFormat, /caller-supplied.*Phase B seal.*commit ID.*digest.*entry record.*rejected.*non-authoritative/i);
+  assert.match(releaseSealFormat, /actual-byte digest/i);
+  assert.match(releaseSealFormat, /UTF-8 byte sorting/i);
+  assert.match(releaseSealFormat, /no comments.*no blank lines.*no symlink entries/i);
 });
 
 test('Task 4 manifest grammar binds every sealed source to the immutable canonical digest fixture', async () => {
