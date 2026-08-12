@@ -1,5 +1,9 @@
+import { createHash } from 'node:crypto';
+
 const FORMAT_RECORD = 'format: cumzillaraptors-v2-release-seal-v1';
 const REPOSITORY_RECORD = 'repository: cumzillaraptor/cumzillaraptor';
+// Task2b seal policy: a selected regular-file blob may be at most 1 MiB.
+const MAX_BLOB_BYTES = 1024 * 1024;
 
 const FIXED_ALLOWLIST = Object.freeze([
   'node_modules/example/index.js',
@@ -100,6 +104,22 @@ export function validateReleaseSealGrammar(sealText) {
   return Object.freeze({ commitId, paths: Object.freeze(paths) });
 }
 
+function assertTreeEntryMetadata(entry) {
+  if (!entry || typeof entry !== 'object') {
+    fail('object database returned invalid tree entry metadata');
+  }
+  assertCanonicalRelativePath(entry.path);
+  if (typeof entry.mode !== 'string' || !/^(?:100[0-7]{3}|120000|160000|040000)$/.test(entry.mode)) {
+    fail(`tree entry has invalid mode: ${entry.path}`);
+  }
+  if (!['blob', 'tree', 'commit'].includes(entry.type)) {
+    fail(`tree entry has invalid type: ${entry.path}`);
+  }
+  if (typeof entry.objectId !== 'string' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(entry.objectId)) {
+    fail(`tree entry has invalid object id: ${entry.path}`);
+  }
+}
+
 function assertRegularTreeEntry(entry, path) {
   if (!entry) {
     fail(`allowlist entry is absent at the pinned commit: ${path}`);
@@ -116,6 +136,24 @@ function assertRegularTreeEntry(entry, path) {
   if (entry.type !== 'blob' || !/^100[0-7]{3}$/.test(entry.mode)) {
     fail(`allowlist entry is not a regular file: ${path}`);
   }
+}
+
+function validatedTreeEntriesByPath(treeEntries, paths) {
+  const entriesByPath = new Map();
+  for (const entry of treeEntries) {
+    assertTreeEntryMetadata(entry);
+    if (entriesByPath.has(entry.path)) {
+      fail(`tree metadata has duplicate entry: ${entry.path}`);
+    }
+    entriesByPath.set(entry.path, entry);
+  }
+  const selectedEntries = [];
+  for (const path of paths) {
+    const entry = entriesByPath.get(path);
+    assertRegularTreeEntry(entry, path);
+    selectedEntries.push(Object.freeze({ path, objectId: entry.objectId }));
+  }
+  return Object.freeze(selectedEntries);
 }
 
 /**
@@ -137,11 +175,61 @@ export async function inspectPinnedReleaseInput({ commitId, allowlistText, objec
   if (!Array.isArray(treeEntries)) {
     fail('object database returned invalid tree entries');
   }
-  const entriesByPath = new Map(treeEntries.map((entry) => [entry.path, entry]));
-  for (const path of paths) {
-    assertRegularTreeEntry(entriesByPath.get(path), path);
+  const selectedEntries = validatedTreeEntriesByPath(treeEntries, paths);
+  return Object.freeze({ commitId: pinnedCommitId, paths: Object.freeze([...paths]), selectedEntries });
+}
+
+function assertBlobBytes(blobBytes, path) {
+  if (!(Buffer.isBuffer(blobBytes) || blobBytes instanceof Uint8Array)) {
+    fail(`object database returned invalid blob bytes: ${path}`);
   }
-  return Object.freeze({ commitId: pinnedCommitId, paths: Object.freeze([...paths]) });
+  if (blobBytes.byteLength > MAX_BLOB_BYTES) {
+    fail(`blob bytes exceed maximum size: ${path}`);
+  }
+  return blobBytes;
+}
+
+function assertBlobReadResult(blobResult, path, expectedObjectId) {
+  if (!blobResult || typeof blobResult !== 'object' || Array.isArray(blobResult)) {
+    fail(`object database returned invalid blob result: ${path}`);
+  }
+  if (typeof blobResult.objectId !== 'string') {
+    fail(`object database blob result has no object identity: ${path}`);
+  }
+  if (blobResult.objectId !== expectedObjectId) {
+    fail(`object database blob object id does not match validated tree metadata: ${path}`);
+  }
+  return assertBlobBytes(blobResult.bytes, path);
+}
+
+/**
+ * Builds a seal only from the fixed allowlist and a caller-selected local object
+ * database. The adapter must implement readBlob({ commitId, path, objectId })
+ * and return { objectId, bytes }; the returned identity must equal the
+ * Task2a-validated tree object id before bytes are hashed.
+ */
+export async function createPinnedReleaseSeal({ commitId, objectDatabase }) {
+  if (!objectDatabase || typeof objectDatabase.readBlob !== 'function') {
+    fail('object database blob interface is required');
+  }
+  const inspected = await inspectPinnedReleaseInput({
+    commitId,
+    allowlistText: `${FIXED_ALLOWLIST.join('\n')}\n`,
+    objectDatabase,
+  });
+  const records = [];
+  for (const { path, objectId } of inspected.selectedEntries) {
+    const blobBytes = assertBlobReadResult(
+      await objectDatabase.readBlob({ commitId: inspected.commitId, path, objectId }),
+      path,
+      objectId,
+    );
+    const digest = createHash('sha256').update(blobBytes).digest('hex');
+    records.push(`entry: ${digest} ${path}`);
+  }
+  const seal = `${[FORMAT_RECORD, REPOSITORY_RECORD, `commit: ${inspected.commitId}`, ...records].join('\n')}\n`;
+  validateReleaseSealGrammar(seal);
+  return seal;
 }
 
 export function getProductionReleaseSealContract() {
@@ -149,6 +237,6 @@ export function getProductionReleaseSealContract() {
     format: FORMAT_RECORD.slice('format: '.length),
     repository: REPOSITORY_RECORD.slice('repository: '.length),
     allowlist: FIXED_ALLOWLIST,
-    status: 'task2b-pending',
+    status: 'task2b-ready',
   });
 }

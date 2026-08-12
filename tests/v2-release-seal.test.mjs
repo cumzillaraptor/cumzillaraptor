@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import {
+  createPinnedReleaseSeal,
   getProductionReleaseSealContract,
   inspectPinnedReleaseInput,
   parseRelativeAllowlist,
@@ -17,6 +19,10 @@ const runGit = (repo, args) => execFileSync('git', ['-C', repo, ...args], { enco
 const approvedPathsText = readFileSync(new URL('../fixtures/v2-release-seal/approved-paths.txt', import.meta.url), 'utf8');
 const fixedPaths = parseRelativeAllowlist(approvedPathsText);
 const digest = 'a'.repeat(64);
+
+function gitBlobId(bytes) {
+  return createHash('sha1').update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex');
+}
 
 function sealFor(paths, commitId = 'b'.repeat(40)) {
   return `format: cumzillaraptors-v2-release-seal-v1\nrepository: cumzillaraptor/cumzillaraptor\ncommit: ${commitId}\n${paths.map((path) => `entry: ${digest} ${path}\n`).join('')}`;
@@ -46,7 +52,8 @@ function makeLocalFixtureRepository() {
   runGit(repo, ['rm', '--quiet', 'fixture/first-only.txt']);
   mkdirSync(join(repo, 'fixture'), { recursive: true });
   writeFileSync(join(repo, 'fixture', 'second-only.txt'), 'present only at second pinned commit\n');
-  runGit(repo, ['add', 'fixture/second-only.txt']);
+  writeFileSync(join(repo, 'package.json'), 'fixed regular file: package.json (second committed bytes)\n');
+  runGit(repo, ['add', 'fixture/second-only.txt', 'package.json']);
   runGit(repo, ['update-index', '--add', '--cacheinfo', `160000,${firstCommit},vendor/submodule`]);
   runGit(repo, ['commit', '--quiet', '-m', 'second fixture commit']);
   return { repo, firstCommit, secondCommit: runGit(repo, ['rev-parse', 'HEAD']) };
@@ -70,15 +77,23 @@ function localObjectDatabase(repo) {
     },
     async listTreeEntries(commitId) {
       receivedTreeIds.push(commitId);
-      const outputs = [
-        execFileSync('git', [`--git-dir=${gitDir}`, 'ls-tree', '-z', '--full-tree', commitId], { encoding: 'buffer' }),
-        execFileSync('git', [`--git-dir=${gitDir}`, 'ls-tree', '-rz', '--full-tree', commitId], { encoding: 'buffer' }),
-      ];
-      return outputs.flatMap((output) => output.toString('utf8').split('\0').filter(Boolean).map((record) => {
+      const output = execFileSync('git', [`--git-dir=${gitDir}`, 'ls-tree', '-rz', '--full-tree', commitId], { encoding: 'buffer' });
+      return output.toString('utf8').split('\0').filter(Boolean).map((record) => {
         const match = /^(\d+) ([a-z]+) ([0-9a-f]+)\t(.+)$/.exec(record);
         assert.ok(match, `unexpected ls-tree record: ${record}`);
         return { mode: match[1], type: match[2], objectId: match[3], path: match[4] };
-      }));
+      });
+    },
+    async readBlob({ commitId, path, objectId }) {
+      const output = execFileSync('git', [`--git-dir=${gitDir}`, 'ls-tree', '-rz', '--full-tree', commitId], { encoding: 'buffer' });
+      const record = output.toString('utf8').split('\0').find((candidate) => candidate.endsWith(`\t${path}`));
+      assert.ok(record, `missing selected blob path: ${path}`);
+      const treeObjectId = /^(\d+) ([a-z]+) ([0-9a-f]+)\t/.exec(record)?.[3];
+      assert.equal(objectId, treeObjectId, `read tuple must match selected tree metadata: ${path}`);
+      return {
+        objectId,
+        bytes: execFileSync('git', [`--git-dir=${gitDir}`, 'cat-file', 'blob', objectId], { encoding: 'buffer' }),
+      };
     },
   };
 }
@@ -182,15 +197,7 @@ test('release-seal-rejects-extra-missing-duplicate-and-symlinked-allowlist-entri
   assert.deepEqual(parseRelativeAllowlist(fixtureAllowlist), ['alpha.txt', 'nested/regular.txt']);
 });
 
-test('release-seal-task2a-has-no-blob-reading-or-hashing-api', async (t) => {
-  const source = readFileSync(new URL('../scripts/v2-release-seal.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /node:(?:fs|crypto|child_process)|\b(?:readFile|createHash|hash|cat-file|show)\b/i);
-  assert.doesNotMatch(source, /expectedPaths/, 'production inspection must not accept an allowlist override');
-  assert.deepEqual(parseRelativeAllowlist(approvedPathsText), getProductionReleaseSealContract().allowlist);
-  assert.equal(getProductionReleaseSealContract.length, 0, 'production contract interface must not accept caller input');
-  const placeholder = readFileSync(new URL('../fixtures/v2-release-seal/expected-release-seal.txt', import.meta.url), 'utf8');
-  assert.throws(() => validateReleaseSealGrammar(placeholder), /format|release seal/i);
-
+test('release-seal-task2a-metadata-remains-pinned-to-the-selected-commit', async (t) => {
   const fixture = makeLocalFixtureRepository();
   t.after(() => rmSync(fixture.repo, { recursive: true, force: true }));
   const objectDatabase = localObjectDatabase(fixture.repo);
@@ -207,4 +214,141 @@ test('release-seal-task2a-has-no-blob-reading-or-hashing-api', async (t) => {
     /absent at pinned commit/i,
   );
   assert.deepEqual(objectDatabase.receivedTreeIds, [fixture.firstCommit, fixture.secondCommit, fixture.firstCommit, fixture.secondCommit]);
+});
+
+test('release-seal-production-api-is-fixed-allowlist-and-selected-object-db-only', () => {
+  const source = readFileSync(new URL('../scripts/v2-release-seal.mjs', import.meta.url), 'utf8');
+  assert.match(source, /node:crypto/);
+  assert.doesNotMatch(source, /node:(?:fs|child_process|https?|net)|\b(?:execFile|execSync|spawn|fetch|cat-file|show)\b/i);
+  assert.doesNotMatch(source, /expectedPaths|allowlistText.*createPinnedReleaseSeal/, 'production sealing must not accept an allowlist override');
+  assert.deepEqual(parseRelativeAllowlist(approvedPathsText), getProductionReleaseSealContract().allowlist);
+  assert.equal(getProductionReleaseSealContract.length, 0, 'production contract interface must not accept caller input');
+  assert.equal(createPinnedReleaseSeal.length, 1, 'production seal API accepts only its pin and selected object database');
+  assert.equal(getProductionReleaseSealContract().status, 'task2b-ready');
+});
+
+test('release-seal-binds-each-read-to-its-validated-git-blob-object', async () => {
+  const syntheticCommit = '1'.repeat(40);
+  const blobs = new Map(fixedPaths.map((path) => [path, Buffer.from(`synthetic pinned blob: ${path}\n`, 'utf8')]));
+  const entries = new Map([...blobs].map(([path, bytes]) => [path, {
+    path,
+    mode: '100644',
+    type: 'blob',
+    objectId: gitBlobId(bytes),
+  }]));
+  const reads = [];
+  const objectDatabase = {
+    async resolveExactCommit(commitId) { return commitId === syntheticCommit; },
+    async listTreeEntries(commitId) {
+      assert.equal(commitId, syntheticCommit);
+      return [...entries.values()].reverse();
+    },
+    async readBlob({ commitId, path, objectId }) {
+      const entry = entries.get(path);
+      assert.equal(commitId, syntheticCommit);
+      assert.equal(objectId, entry.objectId, 'adapter must receive the selected object id');
+      reads.push([commitId, path, objectId]);
+      return { objectId, bytes: new Uint8Array(blobs.get(path)) };
+    },
+  };
+  const seal = await createPinnedReleaseSeal({ commitId: syntheticCommit, objectDatabase });
+  const expected = readFileSync(new URL('../fixtures/v2-release-seal/expected-release-seal.txt', import.meta.url), 'utf8');
+  assert.equal(seal, expected, 'canonical synthetic fixture must match exactly');
+  assert.deepEqual(reads, fixedPaths.map((path) => [syntheticCommit, path, entries.get(path).objectId]), 'each exact validated blob is read once in UTF-8 byte order');
+  assert.deepEqual(validateReleaseSealGrammar(seal).paths, fixedPaths);
+
+  await assert.rejects(
+    createPinnedReleaseSeal({
+      commitId: syntheticCommit,
+      objectDatabase: { ...objectDatabase, async readBlob({ objectId }) { return { objectId: 'f'.repeat(40), bytes: Buffer.from('replaced bytes') }; } },
+    }),
+    /object id|identity|mismatch/i,
+    'a replaced blob identity must be rejected before hashing',
+  );
+  await assert.rejects(
+    createPinnedReleaseSeal({
+      commitId: syntheticCommit,
+      objectDatabase: { ...objectDatabase, async readBlob() { return new Uint8Array(Buffer.from('identity-less bytes')); } },
+    }),
+    /blob result|object id|identity/i,
+    'plain bytes without an object identity are forbidden',
+  );
+});
+
+test('release-seal-enforces-the-task2b-one-mebibyte-blob-policy', async () => {
+  const syntheticCommit = '2'.repeat(40);
+  const makeDatabase = (firstBytes) => {
+    const blobs = new Map(fixedPaths.map((path) => [path, path === fixedPaths[0] ? firstBytes : Buffer.from(path)]));
+    const entries = [...blobs].map(([path, bytes]) => ({ path, mode: '100644', type: 'blob', objectId: gitBlobId(bytes) }));
+    return {
+      async resolveExactCommit(commitId) { return commitId === syntheticCommit; },
+      async listTreeEntries() { return entries; },
+      async readBlob({ commitId, path, objectId }) {
+        const entry = entries.find((candidate) => candidate.path === path);
+        assert.equal(commitId, syntheticCommit);
+        assert.equal(objectId, entry.objectId);
+        return { objectId, bytes: blobs.get(path) };
+      },
+    };
+  };
+  await createPinnedReleaseSeal({ commitId: syntheticCommit, objectDatabase: makeDatabase(Buffer.alloc(1024 * 1024)) });
+  await assert.rejects(
+    createPinnedReleaseSeal({ commitId: syntheticCommit, objectDatabase: makeDatabase(Buffer.alloc((1024 * 1024) + 1)) }),
+    /exceed maximum size/i,
+  );
+});
+
+test('release-seal-rejects-duplicate-tree-metadata-before-reading-and-ignores-valid-unexpected-entries', async () => {
+  const syntheticCommit = '3'.repeat(40);
+  const blobs = new Map(fixedPaths.map((path) => [path, Buffer.from(`synthetic pinned blob: ${path}\n`)]));
+  const entries = fixedPaths.map((path) => ({ path, mode: '100644', type: 'blob', objectId: gitBlobId(blobs.get(path)) }));
+  let reads = 0;
+  const objectDatabase = {
+    async resolveExactCommit() { return true; },
+    async listTreeEntries() { return entries; },
+    async readBlob({ path, objectId }) {
+      reads += 1;
+      assert.equal(objectId, entries.find((entry) => entry.path === path).objectId);
+      return { objectId, bytes: blobs.get(path) };
+    },
+  };
+  const baseline = await createPinnedReleaseSeal({ commitId: syntheticCommit, objectDatabase });
+  assert.equal(reads, fixedPaths.length);
+
+  reads = 0;
+  const duplicateEntry = { ...entries[0] };
+  await assert.rejects(
+    createPinnedReleaseSeal({
+      commitId: syntheticCommit,
+      objectDatabase: { ...objectDatabase, async listTreeEntries() { return [...entries, duplicateEntry]; } },
+    }),
+    /duplicate entry/i,
+  );
+  assert.equal(reads, 0, 'duplicate metadata must reject before any blob read');
+
+  reads = 0;
+  const extraBytes = Buffer.from('valid but not allowlisted');
+  const unexpected = { path: 'unexpected.txt', mode: '100644', type: 'blob', objectId: gitBlobId(extraBytes) };
+  const withUnexpected = await createPinnedReleaseSeal({
+    commitId: syntheticCommit,
+    objectDatabase: { ...objectDatabase, async listTreeEntries() { return [...entries, unexpected]; } },
+  });
+  assert.equal(withUnexpected, baseline, 'valid unexpected tree metadata must not alter the fixed-allowlist seal');
+  assert.equal(reads, fixedPaths.length, 'valid unexpected tree metadata must not cause a read');
+});
+
+test('release-seal-changes-when-approved-byte-content-changes', async (t) => {
+  const fixture = makeLocalFixtureRepository();
+  t.after(() => rmSync(fixture.repo, { recursive: true, force: true }));
+  const objectDatabase = localObjectDatabase(fixture.repo);
+  const firstSeal = await createPinnedReleaseSeal({ commitId: fixture.firstCommit, objectDatabase });
+  const secondSeal = await createPinnedReleaseSeal({ commitId: fixture.secondCommit, objectDatabase });
+  assert.notEqual(firstSeal, secondSeal, 'a committed approved-byte mutation changes the pinned seal');
+
+  writeFileSync(join(fixture.repo, 'package.json'), 'uncommitted working-tree bytes must not affect the pin\n');
+  assert.equal(
+    await createPinnedReleaseSeal({ commitId: fixture.firstCommit, objectDatabase }),
+    firstSeal,
+    'working-tree edits do not affect the first pinned commit seal',
+  );
 });

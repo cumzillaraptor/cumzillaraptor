@@ -1,2 +1,14 @@
-TASK2B_PLACEHOLDER: release-seal serialization and actual-byte SHA-256 digests are intentionally deferred.
-This file is inert fixture text and is not a release seal.
+format: cumzillaraptors-v2-release-seal-v1
+repository: cumzillaraptor/cumzillaraptor
+commit: 1111111111111111111111111111111111111111
+entry: a7758362949c18acfbe70bed32dd86c3334aef91d1dfad98d35af839124bef4b node_modules/example/index.js
+entry: 66730dcf4dddcf9302ac59ff1c1ab1427b66f8cacd8e4784a0ecf267e586949b package-lock.json
+entry: 4085d87d74f1084afac9f98c2cfc9be5696ecdba677e7f266c4c45bee11c5c94 package.json
+entry: 0ae2e562b190f008f4eba68fe19e35643ab2b993353c31cb3153a0b8531b4563 scripts/future-send-v2-schema.mjs
+entry: 8fdba6675607cb34e7b2027f3e4424f72781761d883e64ba22b23c54648efc43 scripts/prepare-launcher.mjs
+entry: 73691a019ea99fe3d1ac3d4f3719ab3909507295213c784aa5594bf9371e2e52 scripts/v2-root-runtime-prepare-contract.mjs
+entry: e7ee416a1e795961931121b9f7ada605bfdf8d8184afde92b95f5d917f3451aa scripts/v2-root-runtime-prepare-coordinator.mjs
+entry: 286aac6232c8043dc6f3518358095506ed553d5c206e111d3673896d6cc578b6 scripts/v2-root-runtime-provenance.mjs
+entry: d90cfdd9f5093f85902c5b86bb35dd7b1dc5ce4764fbf54d931c6828e56a8c0a tests/v2-root-runtime-prepare-contract.test.mjs
+entry: 94dba63bf412afe9f773b35c06c35d8afcdf14b097ead7de34359229d60eb73b tests/v2-root-runtime-prepare-coordinator.test.mjs
+entry: ccad54fc35631f6cc8d4604407c23e65b19a52f32d9529d14c49a77efb11fb11 tests/v2-root-runtime-provenance.test.mjs
