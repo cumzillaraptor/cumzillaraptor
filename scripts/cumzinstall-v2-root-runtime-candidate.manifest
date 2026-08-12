@@ -1,0 +1,18 @@
+format: cumzinstall-v2-root-runtime-candidate-manifest-v1
+candidate-root: /opt/cumzillaraptors-send-runtime-candidate-v2
+source-root: /home/raspberrypi/workspace-cumzillaraptor
+mode: root-only-no-arguments-create-once
+descriptor-policy: pinned-no-follow
+package-seal: package.json package-lock.json node_modules
+entry: 0bf9896e76efe57b06bd84da6829cb7e681c9111b990885c338c426877dee36b  type:file  /home/raspberrypi/workspace-cumzillaraptor/package.json -> /opt/cumzillaraptors-send-runtime-candidate-v2/package.json
+entry: b1ef1a36361b1d4144f30abde88d9fa62528e708d1b76f482768022370f30d15  type:file  /home/raspberrypi/workspace-cumzillaraptor/package-lock.json -> /opt/cumzillaraptors-send-runtime-candidate-v2/package-lock.json
+entry: fe61daa18f9890cdcf4eed01d6b9ed48d3e2fae3c3e3296da79f9dba8e532980  type:file  /home/raspberrypi/workspace-cumzillaraptor/node_modules/example/index.js -> /opt/cumzillaraptors-send-runtime-candidate-v2/node_modules/example/index.js
+entry: 861bdde7c8aad33a9851d53b0b28fd60365ff0c9580ca2e4de35e166a485ecee  type:file  /home/raspberrypi/workspace-cumzillaraptor/scripts/future-send-v2-schema.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/scripts/future-send-v2-schema.mjs
+entry: 52eaab731c62113b4f5e6889632f09f44832c6467fb876cd137e680f0a3cab4c  type:file  /home/raspberrypi/workspace-cumzillaraptor/scripts/prepare-launcher.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/scripts/prepare-launcher.mjs
+entry: 2f4e11e0a1466af73fcc06bb9df3370018fe06695ce925bea9f823ecf7b9f2d1  type:file  /home/raspberrypi/workspace-cumzillaraptor/scripts/v2-root-runtime-prepare-contract.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/scripts/v2-root-runtime-prepare-contract.mjs
+entry: 9747048ac5b472f21339634701ec916b20abf39403a7e2e9f6214e406fc59993  type:file  /home/raspberrypi/workspace-cumzillaraptor/scripts/v2-root-runtime-provenance.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/scripts/v2-root-runtime-provenance.mjs
+entry: 14c99f748b3032cebb3db4801af7c0fe1259d3757f3322b9b852ebfbe895f219  type:file  /home/raspberrypi/workspace-cumzillaraptor/scripts/v2-root-runtime-prepare-coordinator.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/scripts/v2-root-runtime-prepare-coordinator.mjs
+entry: de8302e84b2dc126ad00ec19895ba51726aca23ffaab751921dccc4b6b78c521  type:file  /home/raspberrypi/workspace-cumzillaraptor/tests/v2-root-runtime-prepare-contract.test.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/tests/v2-root-runtime-prepare-contract.test.mjs
+entry: d759ed9c2a983dbfaec372b937fbf4279487d60186f9556ed2afba63d3c526df  type:file  /home/raspberrypi/workspace-cumzillaraptor/tests/v2-root-runtime-prepare-coordinator.test.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/tests/v2-root-runtime-prepare-coordinator.test.mjs
+entry: f35c9423c75d1836e00264ab65d8a35784a56ea286156364abe764a0feae1f7b  type:file  /home/raspberrypi/workspace-cumzillaraptor/tests/v2-root-runtime-provenance.test.mjs -> /opt/cumzillaraptors-send-runtime-candidate-v2/tests/v2-root-runtime-provenance.test.mjs
+forbidden: keys artifact-bytes endpoint-bytes solana-cli network send sudoers active-runtime-replacement

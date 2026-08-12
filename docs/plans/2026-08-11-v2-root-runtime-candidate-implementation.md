@@ -229,8 +229,9 @@ Run focused test and static capability test.
 **Files:**
 - Create: `docs/operations/cumzinstall-v2-root-runtime-candidate-interface.md`
 - Create: `scripts/cumzinstall-v2-root-runtime-candidate.manifest`
+- Create: `scripts/cumzinstall-v2-root-runtime-candidate-harness.mjs` — a pure synthetic no-host-I/O harness; it accepts only frozen metadata records and has no filesystem, copy, directory-creation, shell, or process adapter.
 - Create: `tests/cumzinstall-v2-root-runtime-candidate.test.mjs`
-- Create: `tests/cumzinstall-v2-root-runtime-candidate-harness.mjs`
+- Create: `tests/cumzinstall-v2-root-runtime-candidate-harness.test.mjs`
 - Deferred to a separately reviewed privileged-helper plan: `scripts/cumzinstall-v2-root-runtime-candidate.sh`
 
 **Step 1 — RED tests**
@@ -240,7 +241,8 @@ Phase A does **not** implement a privileged installer. It produces only a static
 Require a candidate installer specification that states a later root implementation must:
 - reject non-root before argument parsing/source hashing/filesystem changes;
 - reject every argument;
-- use fixed absolute source/destination paths and fixed SHA-256 values only;
+- use a test-side immutable expected source-digest map: each fixed SHA-256 is derived from canonical labeled synthetic source text, frozen with its fixed source path and required `file` type, and never accepted from a caller-provided matching pair;
+- bind the trusted manifest record to its fixed candidate root, exact sealed source paths/types/digests, exact `package.json`/`package-lock.json`/dependency-tree cross-digests, and `pinned-no-follow` descriptor policy; reject root mutation, wrong source type, missing or extra sealed entries, and a self-consistent forged observed hash;
 - use descriptor-pinned, no-follow staging primitives with post-open byte hashing—not a shell pathname check/copy sequence;
 - start from a fresh create-once stage directory and reject existing/symlink stage;
 - validate every parent directory before staging/copy/temp/rename;
@@ -276,14 +278,15 @@ Run documentation/static tests and the unprivileged semantic harness. Do not run
 
 **Files:**
 - Create: `scripts/cumzdeploy-v2-prepare-launcher.sh`
+- Create: `scripts/cumzdeploy-v2-prepare-launcher-contract.mjs` — a pure fake-adapter/no-spawn contract model; it receives no host process, filesystem, or shell adapter.
 - Create: `tests/cumzdeploy-v2-prepare-launcher.test.mjs`
 - Modify later only under a separate host-install decision: `/usr/local/sbin/cumzdeploy-executor`, `/etc/sudoers.d/cumzdeploy-executor`
 
 **Step 1 — RED tests**
 
 Require the repository launcher candidate to:
-- require root and accept exactly `--prepare`, no other argument;
-- invoke exactly this literal three-token argv with no shell evaluation: `['/usr/bin/node', '/opt/cumzillaraptors-send-runtime-candidate-v2/scripts/v2-root-runtime-prepare-coordinator.mjs', '--prepare']`;
+- require root and reject every user-supplied argument; its only external operator interface is **no arguments**;
+- internally invoke exactly this fixed literal three-token argv with no shell evaluation: `['/usr/bin/node', '/opt/cumzillaraptors-send-runtime-candidate-v2/scripts/v2-root-runtime-prepare-coordinator.mjs', '--prepare']`; user input never supplies or forwards `--prepare`;
 - use fixed candidate working directory `/opt/cumzillaraptors-send-runtime-candidate-v2`, `stdin` from `/dev/null`, and no caller CWD/PATH;
 - rebuild environment with `env -i`, exactly `PATH=/usr/sbin:/usr/bin:/sbin:/bin`, `LC_ALL=C`, and a fixed non-secret `HOME=/nonexistent`; reject inherited environment-derived configuration;
 - emit exactly one newline-terminated JSON object to stdout; bound and redact stderr; reject malformed/concatenated candidate output;
@@ -317,7 +320,8 @@ Run static/syntax tests and a fake, unprivileged command-path harness. Do not in
 
 **Files:**
 - Create: `tests/v2-root-runtime-candidate-release-safety.test.mjs`
-- Inspect: all Task 1–5 candidate files and existing `scripts/execute-devnet-deployment.mjs`
+- Inspect planned Task 4–5 candidate-source models: `scripts/cumzinstall-v2-root-runtime-candidate-harness.mjs`, `scripts/cumzdeploy-v2-prepare-launcher-contract.mjs`, and `scripts/cumzdeploy-v2-prepare-launcher.sh`
+- Inspect: all remaining Task 1–3 candidate files and existing `scripts/execute-devnet-deployment.mjs`
 
 **Step 1 — RED tests**
 
