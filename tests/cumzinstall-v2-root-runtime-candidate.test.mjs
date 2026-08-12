@@ -45,73 +45,19 @@ function assertDeepFrozen(value, seen = new Set()) {
   for (const child of Object.values(value)) assertDeepFrozen(child, seen);
 }
 
-test('Task 4 interface document specifies a no-argument root-only, descriptor-pinned candidate installation', async () => {
+test('Task 4 interface document is a non-authorizing supersession note for the descriptor-pinned bootstrap contract', async () => {
   const text = await readFile(DOCUMENT, 'utf8');
   assert.match(text, /^# cumzinstall v2 root runtime candidate interface$/mi);
-  assert.match(text, new RegExp(`^candidate-root: ${escape(ROOT)}$`, 'm'));
-  assert.match(text, /^invocation: no arguments$/mi);
-  assert.match(text, /^prerequisite: effective uid 0 \(root\)$/mi);
-  assert.match(text, /descriptor-pinned/i);
-  assert.match(text, /no-follow/i);
-  assert.match(text, /immutable expected source-digest map|canonical labeled synthetic/i);
-  assert.match(text, /refuse.*(?:preexisting|existing).*(?:stage|destination)|(?:stage|destination).*(?:preexisting|existing).*refuse/i);
-  assert.match(text, /create-once/i);
-  assert.match(text, /sealed package\.json, package-lock\.json, and dependency tree/i);
-  assert.match(text, /fixed absolute paths and SHA-256 hashes/i);
-  assert.match(text, /every utility.*absolute trusted path/i);
-  assert.match(text, /future-helper utility inventory/i);
-  for (const utility of [
-    '/usr/bin/sha256sum',
-    '/usr/bin/stat',
-    '/usr/bin/mkdir',
-    '/usr/bin/cp',
-    '/usr/bin/chown',
-    '/usr/bin/chmod',
-    '/usr/bin/mv',
-    '/usr/bin/rm',
-    '/usr/bin/awk',
-    '/usr/bin/printf',
-    '/usr/bin/wc',
-  ]) assert.match(text, new RegExp(escape(utility)));
-  assert.match(text, /sha256sum.*post-open SHA-256 hashing/i);
-  assert.match(text, /stat.*type, ownership, and mode checks/i);
-  assert.match(text, /mkdir.*create-once staging directories/i);
-  assert.match(text, /cp.*copy without dereference/i);
-  assert.match(text, /chown.*root ownership/i);
-  assert.match(text, /chmod.*required modes/i);
-  assert.match(text, /mv.*same-parent atomic rename/i);
-  assert.match(text, /rm.*temporary-state cleanup/i);
-  assert.match(text, /awk.*printf.*wc.*not applicable.*not invoked/i);
-  assert.match(text, /every utility invocation, including.*substitution.*pipeline.*absolute.*no PATH lookup/i);
-  assert.match(text, /PATH=\/usr\/sbin:\/usr\/bin:\/sbin:\/bin/i);
-  assert.match(text, /LC_ALL=C/i);
-  assert.match(text, /HOME=\/root/i);
-  assert.match(text, /cleanup trap/i);
-  assert.match(text, /clear temporary state.*(?:failure|signal|before return)/i);
-  assert.match(text, /trusted synthetic `\{device,inode\}` identity/i);
-  assert.match(text, /temporary`?\.parent`?, `?destination`?\.parent`?, and `?rename`?\.parent`?.*exactly equal/i);
-  assert.match(text, /ordered immutable synthetic metadata list.*source.*stage.*destination.*temporary.*rename/i);
-  assert.match(text, /every ancestor record.*descriptorPinned.*noFollow/i);
-  assert.match(text, /model acceptance plan.*PATH.*\/usr\/sbin:\/usr\/bin:\/sbin:\/bin.*LC_ALL.*C.*HOME.*\/root/i);
-  assert.match(text, /trapInstalledBeforeTemporary.*temporaryClearedOnlyAfterSuccessfulRename.*cleanupOnFailure/i);
-  assert.match(text, /caller.*environment.*cleanup.*non-authoritative/i);
-  assert.match(text, /literal destination-parent identity/i);
-  assert.match(text, /temporary.*same directory/i);
-  assert.match(text, /no-follow\/open validation/i);
-  assert.match(text, /0600.*root ownership.*before copy/i);
-  assert.match(text, /post-copy hash\/mode validation/i);
-  assert.match(text, /atomic rename/i);
-  assert.match(text, /final revalidation/i);
-  assert.match(text, /no delete\/reuse.*pre-existing path/i);
-  for (const source of REQUIRED_SOURCES) assert.match(text, new RegExp(escape(source)));
-  assert.match(text, /no keys/i);
-  assert.match(text, /no artifact bytes/i);
-  assert.match(text, /no endpoint bytes/i);
-  assert.match(text, /no Solana CLI/i);
-  assert.match(text, /no network/i);
-  assert.match(text, /no send/i);
-  assert.match(text, /no sudoers/i);
-  assert.match(text, /no active-runtime replacement/i);
+  assert.match(text, /^## Superseded interface boundary$/mi);
+  assert.match(text, /static interface note only/i);
+  assert.match(text, /superseded.*\[the v2 descriptor-pinned bootstrap contract\]\(v2-descriptor-pinned-bootstrap-contract\.md\)/i);
+  assert.doesNotMatch(text, /^candidate-root:/mi);
+  assert.doesNotMatch(text, /^source-root:/mi);
+  assert.match(text, /does not authorize host work, helper creation, helper execution, or installation/i);
+  assert.match(text, /supplies no source root.*staging path.*destination.*runtime.*release-seal input.*manifest.*commit.*digest.*caller argument.*environment interface/i);
+  assert.match(text, new RegExp(`legacy candidate path is permanently excluded: \`${escape(ROOT)}\``));
+  assert.match(text, /current active runtime is permanently excluded/i);
+  assert.match(text, /later separate tests and approvals before execution or installation/i);
 });
 
 function parseMarkdownAllowlist(text) {
@@ -139,10 +85,14 @@ test('Phase B release-seal format fixes the complete trusted production seal', a
   assert.deepEqual(allowlist, REQUIRED_SOURCES, 'Phase B Markdown allowlist must exactly equal REQUIRED_SOURCES');
   assert.equal(new Set(allowlist).size, REQUIRED_SOURCES.length, 'Phase B Markdown allowlist must not duplicate paths');
 
-  assert.match(interfaceDocument, /Phase A manifest.*canonical labeled synthetic fixture text.*pure model.*not.*production.*release seal/i);
-  assert.match(interfaceDocument, /never supplied to (?:a |the )?privileged helper/i);
-  assert.match(interfaceDocument, /Phase B production seal.*fixed.*operator-provisioned.*embedded trusted data/i);
-  assert.match(interfaceDocument, /caller-supplied.*Phase B.*seal.*commit ID.*digest.*entry record.*(?:non-authoritative|rejected)/i);
+  assert.match(interfaceDocument, /^## Superseded interface boundary$/mi);
+  assert.match(interfaceDocument, /superseded.*\[the v2 descriptor-pinned bootstrap contract\]\(v2-descriptor-pinned-bootstrap-contract\.md\)/i);
+  assert.doesNotMatch(interfaceDocument, /^candidate-root:/mi);
+  assert.doesNotMatch(interfaceDocument, /^source-root:/mi);
+  assert.match(interfaceDocument, /does not authorize host work, helper creation, helper execution, or installation/i);
+  assert.match(interfaceDocument, /legacy candidate path is permanently excluded/i);
+  assert.match(interfaceDocument, /current active runtime is permanently excluded/i);
+  assert.match(releaseSealFormat, /static Phase A synthetic manifest is never a release seal and is never supplied to a privileged helper.*pure model fixture only/i);
   assert.match(releaseSealFormat, /^format: cumzillaraptors-v2-release-seal-v1$/m);
   assert.match(releaseSealFormat, /^repository: cumzillaraptor\/cumzillaraptor$/m);
   assert.match(releaseSealFormat, /^commit: <40-or-64-lowercase-hex immutable full commit id>$/m);
