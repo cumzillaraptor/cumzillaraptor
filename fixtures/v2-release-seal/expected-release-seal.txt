@@ -1,0 +1,2 @@
+TASK2B_PLACEHOLDER: release-seal serialization and actual-byte SHA-256 digests are intentionally deferred.
+This file is inert fixture text and is not a release seal.
