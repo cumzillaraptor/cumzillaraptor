@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
@@ -14,11 +15,20 @@ import {
   validateFullPinnedCommitId,
   validateReleaseSealGrammar,
 } from '../scripts/v2-release-seal.mjs';
+import { getRuntimeProvenanceDependencyPaths } from '../scripts/v2-root-runtime-provenance.mjs';
 
 const runGit = (repo, args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
 const approvedPathsText = readFileSync(new URL('../fixtures/v2-release-seal/approved-paths.txt', import.meta.url), 'utf8');
 const fixedPaths = parseRelativeAllowlist(approvedPathsText);
 const digest = 'a'.repeat(64);
+const EXPECTED_RUNTIME_PATHS = Object.freeze([
+  'package-lock.json',
+  'package.json',
+  'scripts/future-send-v2-schema.mjs',
+  'scripts/v2-root-runtime-prepare-contract.mjs',
+  'scripts/v2-root-runtime-prepare-coordinator.mjs',
+  'scripts/v2-root-runtime-provenance.mjs',
+]);
 
 function gitBlobId(bytes) {
   return createHash('sha1').update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex');
@@ -221,10 +231,59 @@ test('release-seal-production-api-is-fixed-allowlist-and-selected-object-db-only
   assert.match(source, /node:crypto/);
   assert.doesNotMatch(source, /node:(?:fs|child_process|https?|net)|\b(?:execFile|execSync|spawn|fetch|cat-file|show)\b/i);
   assert.doesNotMatch(source, /expectedPaths|allowlistText.*createPinnedReleaseSeal/, 'production sealing must not accept an allowlist override');
-  assert.deepEqual(parseRelativeAllowlist(approvedPathsText), getProductionReleaseSealContract().allowlist);
+  assert.deepEqual(fixedPaths, EXPECTED_RUNTIME_PATHS, 'synthetic fixture must mirror exactly the six tracked runtime paths without becoming production authority');
+  assert.equal(fixedPaths.length, 6);
+  assert.equal(fixedPaths.some((path) => path.startsWith('node_modules/') || path.startsWith('tests/') || path === 'scripts/prepare-launcher.mjs'), false, 'runtime artifact allowlist excludes obsolete and test-only paths');
+  assert.deepEqual(getProductionReleaseSealContract().allowlist, EXPECTED_RUNTIME_PATHS);
+  assert.deepEqual(getRuntimeProvenanceDependencyPaths(), EXPECTED_RUNTIME_PATHS, 'release-seal and runtime provenance dependency allowlists must be identical');
   assert.equal(getProductionReleaseSealContract.length, 0, 'production contract interface must not accept caller input');
   assert.equal(createPinnedReleaseSeal.length, 1, 'production seal API accepts only its pin and selected object database');
   assert.equal(getProductionReleaseSealContract().status, 'task2b-ready');
+});
+
+test('release-seal-current-head-is-permitted-through-a-local-git-object-database-adapter', async () => {
+  const repository = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+  const commitId = runGit(repository, ['rev-parse', 'HEAD']);
+  const expectedSealUrl = new URL('../fixtures/v2-release-seal/expected-release-seal.txt', import.meta.url);
+  const expectedSealBefore = readFileSync(expectedSealUrl, 'utf8');
+  assert.match(expectedSealBefore, /^commit: 1{40}$/m, 'the public fixture remains synthetic');
+
+  const localAdapter = localObjectDatabase(repository);
+  const operations = { resolveExactCommit: [], listTreeEntries: [], readBlob: [] };
+  let treeEntries;
+  const objectDatabase = {
+    async resolveExactCommit(requestedCommitId) {
+      operations.resolveExactCommit.push(requestedCommitId);
+      return localAdapter.resolveExactCommit(requestedCommitId);
+    },
+    async listTreeEntries(requestedCommitId) {
+      operations.listTreeEntries.push(requestedCommitId);
+      treeEntries = await localAdapter.listTreeEntries(requestedCommitId);
+      return treeEntries;
+    },
+    async readBlob(request) {
+      operations.readBlob.push({ ...request });
+      return localAdapter.readBlob(request);
+    },
+  };
+
+  const seal = await createPinnedReleaseSeal({ commitId, objectDatabase });
+  const parsed = validateReleaseSealGrammar(seal);
+  assert.equal(parsed.commitId, commitId, 'candidate seal must retain the exact full current HEAD pin');
+  assert.deepEqual(parsed.paths, EXPECTED_RUNTIME_PATHS, 'candidate seal must contain exactly the six runtime paths');
+  assert.equal(parsed.paths.length, 6);
+  assert.notEqual(seal, expectedSealBefore, 'current-head candidate must not be the synthetic fixture seal');
+  assert.ok(seal.includes(`commit: ${commitId}\n`), 'candidate seal must contain the actual current commit');
+
+  const selectedObjectIds = new Map(treeEntries.map(({ path, objectId }) => [path, objectId]));
+  assert.deepEqual(operations.resolveExactCommit, [commitId], 'adapter may only resolve the supplied pin once');
+  assert.deepEqual(operations.listTreeEntries, [commitId], 'adapter may only read the supplied pin tree once');
+  assert.deepEqual(
+    operations.readBlob,
+    EXPECTED_RUNTIME_PATHS.map((path) => ({ commitId, path, objectId: selectedObjectIds.get(path) })),
+    'adapter may only read each selected pinned blob once',
+  );
+  assert.equal(readFileSync(expectedSealUrl, 'utf8'), expectedSealBefore, 'candidate generation must not persist or alter the fixture seal');
 });
 
 test('release-seal-binds-each-read-to-its-validated-git-blob-object', async () => {

@@ -11,12 +11,14 @@ export const RUNTIME_MANIFEST_FIELDS = Object.freeze([
 ]);
 
 const DEPENDENCY_PATHS = Object.freeze([
-  'node_modules/example/index.js', 'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
-  'scripts/prepare-launcher.mjs', 'scripts/v2-root-runtime-prepare-contract.mjs',
-  'scripts/v2-root-runtime-prepare-coordinator.mjs', 'scripts/v2-root-runtime-provenance.mjs',
-  'tests/v2-root-runtime-prepare-contract.test.mjs', 'tests/v2-root-runtime-prepare-coordinator.test.mjs',
-  'tests/v2-root-runtime-provenance.test.mjs',
+  'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
+  'scripts/v2-root-runtime-prepare-contract.mjs', 'scripts/v2-root-runtime-prepare-coordinator.mjs',
+  'scripts/v2-root-runtime-provenance.mjs',
 ]);
+
+export function getRuntimeProvenanceDependencyPaths() {
+  return DEPENDENCY_PATHS;
+}
 
 const PATH_FIELDS = Object.freeze([
   'runtimeRoot', 'runtimeManifest', 'dependencyManifest', 'endpointDigestManifest', 'endpoint',

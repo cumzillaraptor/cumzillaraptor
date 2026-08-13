@@ -14,11 +14,12 @@ const REVIEW_TEXT = '{"observedProgramAbsent":true,"observedConfigAbsent":true,"
 const REVIEW = Object.freeze(JSON.parse(REVIEW_TEXT));
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const REQUIRED_DEPENDENCY_PATHS = Object.freeze([
-  'node_modules/example/index.js', 'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
-  'scripts/prepare-launcher.mjs', 'scripts/v2-root-runtime-prepare-contract.mjs',
-  'scripts/v2-root-runtime-prepare-coordinator.mjs', 'scripts/v2-root-runtime-provenance.mjs',
-  'tests/v2-root-runtime-prepare-contract.test.mjs', 'tests/v2-root-runtime-prepare-coordinator.test.mjs',
-  'tests/v2-root-runtime-provenance.test.mjs',
+  'package-lock.json',
+  'package.json',
+  'scripts/future-send-v2-schema.mjs',
+  'scripts/v2-root-runtime-prepare-contract.mjs',
+  'scripts/v2-root-runtime-prepare-coordinator.mjs',
+  'scripts/v2-root-runtime-provenance.mjs',
 ]);
 const RUNTIME_SOURCE_PATH = 'scripts/v2-root-runtime-provenance.mjs';
 
@@ -108,6 +109,15 @@ function expectDeny(value) {
 
 test('prepare-coordinator-emits-one-frozen-envelope-after-full-provenance-evaluation', () => {
   const { adapters, calls } = makeNominalPrepareAdapters();
+  assert.deepEqual(REQUIRED_DEPENDENCY_PATHS, [
+    'package-lock.json',
+    'package.json',
+    'scripts/future-send-v2-schema.mjs',
+    'scripts/v2-root-runtime-prepare-contract.mjs',
+    'scripts/v2-root-runtime-prepare-coordinator.mjs',
+    'scripts/v2-root-runtime-provenance.mjs',
+  ]);
+  assert.equal(REQUIRED_DEPENDENCY_PATHS.some((path) => path.startsWith('tests/') || path.startsWith('node_modules/') || path === 'scripts/prepare-launcher.mjs'), false);
   assert.deepEqual(Object.keys(adapters), EXPECTED_ADAPTER_KEYS);
   assert.deepEqual(Object.keys(REVIEW), REVIEW_FIELDS);
   assert.equal(JSON.stringify(REVIEW), REVIEW_TEXT);

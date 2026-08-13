@@ -10,11 +10,9 @@ import { coordinatePrepare } from '../scripts/v2-root-runtime-prepare-coordinato
 const DENY = Object.freeze({ ok: false, reason: 'invalid-input' });
 const GUARANTEE = 'No deployment command was invoked. No transaction was signed or sent.';
 const DEPENDENCY_PATHS = Object.freeze([
-  'node_modules/example/index.js', 'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
-  'scripts/prepare-launcher.mjs', 'scripts/v2-root-runtime-prepare-contract.mjs',
-  'scripts/v2-root-runtime-prepare-coordinator.mjs', 'scripts/v2-root-runtime-provenance.mjs',
-  'tests/v2-root-runtime-prepare-contract.test.mjs', 'tests/v2-root-runtime-prepare-coordinator.test.mjs',
-  'tests/v2-root-runtime-provenance.test.mjs',
+  'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
+  'scripts/v2-root-runtime-prepare-contract.mjs', 'scripts/v2-root-runtime-prepare-coordinator.mjs',
+  'scripts/v2-root-runtime-provenance.mjs',
 ]);
 const RUNTIME_FIELDS = Object.freeze([
   'formatVersion', 'cluster', 'runtimeRoot', 'runtimeSourceSha256', 'packageJsonSha256', 'packageLockSha256',
@@ -111,10 +109,10 @@ function assertDeepFrozen(value, seen = new Set()) {
   for (const child of Object.values(value)) assertDeepFrozen(child, seen);
 }
 
-test('Phase A Tasks 1-3 compose a fully frozen, redacted prepare report from an exact synthetic 11-dependency/18-field runtime manifest', () => {
+test('Phase A Tasks 1-3 compose a fully frozen, redacted prepare report from an exact synthetic six-dependency/18-field runtime manifest', () => {
   const provenance = makeProvenance();
   const { adapters, calls } = makeAdapters(provenance);
-  assert.equal(provenance.dependencyEntries.length, 11);
+  assert.equal(provenance.dependencyEntries.length, 6);
   assert.deepEqual(Object.keys(JSON.parse(provenance.manifests.runtimeText)), RUNTIME_FIELDS);
   const result = coordinatePrepare(['--prepare'], adapters);
   assert.deepEqual(validatePrepareReport(result), Object.freeze({ ok: true, value: result }));

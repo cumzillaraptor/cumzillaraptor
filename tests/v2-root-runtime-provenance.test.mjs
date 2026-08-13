@@ -13,11 +13,9 @@ const DENY = Object.freeze({ ok: false, reason: 'invalid-input' });
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const sha = (letter) => letter.repeat(64);
 const REQUIRED_DEPENDENCY_PATHS = Object.freeze([
-  'node_modules/example/index.js', 'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
-  'scripts/prepare-launcher.mjs', 'scripts/v2-root-runtime-prepare-contract.mjs',
-  'scripts/v2-root-runtime-prepare-coordinator.mjs', 'scripts/v2-root-runtime-provenance.mjs',
-  'tests/v2-root-runtime-prepare-contract.test.mjs', 'tests/v2-root-runtime-prepare-coordinator.test.mjs',
-  'tests/v2-root-runtime-provenance.test.mjs',
+  'package-lock.json', 'package.json', 'scripts/future-send-v2-schema.mjs',
+  'scripts/v2-root-runtime-prepare-contract.mjs', 'scripts/v2-root-runtime-prepare-coordinator.mjs',
+  'scripts/v2-root-runtime-provenance.mjs',
 ]);
 const EXPECTED_FIELDS = Object.freeze([
   'formatVersion', 'cluster', 'runtimeRoot', 'runtimeSourceSha256', 'packageJsonSha256', 'packageLockSha256',
@@ -159,6 +157,8 @@ function expectDeny(input) {
 test('v2-provenance-accepts-exact-sealed-layout-and-hash-bound-manifests', () => {
   assert.deepEqual(RUNTIME_MANIFEST_FIELDS, EXPECTED_FIELDS);
   assert.deepEqual([...REQUIRED_DEPENDENCY_PATHS].sort(), REQUIRED_DEPENDENCY_PATHS);
+  assert.equal(REQUIRED_DEPENDENCY_PATHS.length, 6, 'runtime provenance has exactly six runtime/dependency paths');
+  assert.equal(REQUIRED_DEPENDENCY_PATHS.some((path) => path.startsWith('node_modules/') || path.startsWith('tests/') || path === 'scripts/prepare-launcher.mjs'), false);
   assert.equal(REQUIRED_DEPENDENCY_PATHS.includes('scripts/future-send-v2-schema.mjs'), true);
   assert.equal(REQUIRED_DEPENDENCY_PATHS.includes('scripts/future-send-v2-coordinator.mjs'), false);
   const nominal = makeNominalV2Provenance();

@@ -6,17 +6,12 @@ const REPOSITORY_RECORD = 'repository: cumzillaraptor/cumzillaraptor';
 const MAX_BLOB_BYTES = 1024 * 1024;
 
 const FIXED_ALLOWLIST = Object.freeze([
-  'node_modules/example/index.js',
   'package-lock.json',
   'package.json',
   'scripts/future-send-v2-schema.mjs',
-  'scripts/prepare-launcher.mjs',
   'scripts/v2-root-runtime-prepare-contract.mjs',
   'scripts/v2-root-runtime-prepare-coordinator.mjs',
   'scripts/v2-root-runtime-provenance.mjs',
-  'tests/v2-root-runtime-prepare-contract.test.mjs',
-  'tests/v2-root-runtime-prepare-coordinator.test.mjs',
-  'tests/v2-root-runtime-provenance.test.mjs',
 ]);
 
 function fail(message) {
