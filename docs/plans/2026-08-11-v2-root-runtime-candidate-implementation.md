@@ -1,5 +1,7 @@
 # V2 Root-Runtime Candidate Implementation Plan
 
+> **Phase-B supersession notice — current Phase-B repository planning and safety references.** This document's Phase-A history is retained, but it grants no current Phase-B host authority. Its older Phase-B path/interface assumptions are superseded and excluded. Current Phase-B repository planning and safety references are `docs/plans/2026-08-12-v2-phase-b-recovery-and-bootstrap-plan.md`, together with the recovery decision `docs/operations/v2-candidate-root-recovery-decision.md`, production release seal `docs/operations/v2-phase-b-release-seal-format.md`, descriptor-pinned contract `docs/operations/v2-descriptor-pinned-bootstrap-contract.md`, and helper test suite `tools/v2_descriptor_pinned_bootstrap/tests/bootstrap_refusal.rs`. The recovery decision's no-reuse rule remains binding. The Phase-A synthetic manifest/fixture `scripts/cumzinstall-v2-root-runtime-candidate.manifest` is not a production release seal and cannot be used or relied on for production. Any host action remains behind a later separately authorized host gate.
+
 > **For Hermes:** This is an implementation plan only. It does **not** authorize candidate-directory creation, root commands, sudoers changes, CLI installation, artifact/key copying, endpoint configuration, key access, network/RPC calls, signing, transaction serialization, broadcast, deployment, or any launch action.
 
 **Goal:** Specify a TDD sequence for a future root-owned **prepare-only candidate runtime** that can verify its own root-controlled provenance and run only an unsigned review through injected/fake adapters.
@@ -31,9 +33,9 @@ Forbidden:
 - access to `/opt`, `/root`, `/usr/local`, deployed runtime files, sudoers, real keypairs, real artifacts, real endpoint files, or the Solana CLI;
 - `--send`, signing, transaction serialization, deploy invocation, endpoint connection, or broadcast.
 
-### Phase B — privileged candidate installation
+### Phase B — superseded and excluded
 
-Not authorized by this plan. It requires a new explicit user decision *after* Phase A source is independently approved and published. It is limited to installing a candidate whose only external operator mode is `--prepare`.
+The older Phase-B placeholder in this historical plan is superseded and grants no host authority. Use the current Phase-B recovery plan and recovery decision named in the supersession notice; a later separately authorized host gate is required before any host action.
 
 ### Permanent exclusions
 

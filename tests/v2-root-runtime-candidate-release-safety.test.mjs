@@ -82,11 +82,11 @@ test('Task 6 candidate planned-source audit list matches the explicit Task 1–5
   assert.match(text, /pure fake-adapter\/no-spawn contract model/i);
 });
 
-test('Task 6 requires the active plan to name Phase B prerequisites and an explicit no-host decision gate', async () => {
+test('Task 6 requires the active plan to record Phase B supersession and an explicit no-host decision gate', async () => {
   const text = await readFile(plan, 'utf8');
-  assert.match(text, /Phase B — privileged candidate installation/i);
-  assert.match(text, /Phase B authorization gate — not part of this plan/i);
-  assert.match(text, /requires a new explicit user decision/i);
+  assert.match(text, /Phase B — superseded and excluded/i);
+  assert.match(text, /superseded and grants no host authority/i);
+  assert.match(text, /later separately authorized host gate/i);
   assert.match(text, /No candidate\/runtime\/host action occurs without a new human decision/i);
   assert.match(text, /root bootstrap or candidate directory creation/i);
 });
