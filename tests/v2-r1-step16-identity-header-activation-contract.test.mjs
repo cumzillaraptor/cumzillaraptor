@@ -1,0 +1,99 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+const CONTRACT = new URL('../docs/operations/v2-r1-step16-identity-header-activation-contract.md', import.meta.url);
+const NATIVE_WRAPPER = new URL('../tools/v2_r1_helius_handoff/native_wrapper.c', import.meta.url);
+const EXPECTED_NATIVE_WRAPPER_SHA256 = '6e45dd91c53ba7ac6aa76e2513a55c901d0bff108f7ae579475dceb1c2ee8d76';
+
+const EXPECTED_CONTRACT = `# Step 16 fixed identity-header activation and build procedure design
+
+## Status and fixed bindings
+
+This is a repository-only design and deterministic review contract. It authorizes no command, host inspection, active-header replacement, compiler invocation, or build. It is bound only to published revision \`620dc7dfbce6c831b4755dce6e5776cb613001b8\`; no predecessor, successor, branch, tag, working tree, caller, environment, configuration, or supplied value may substitute that revision.
+
+The fixed active header is \`tools/v2_r1_helius_handoff/generated_owner_config.h\`. Before any future replacement it must be the complete exact UTF-8 bytes with SHA-256 \`bd19ffa281f81e12e7c49327b81f0c801097c9a5af8d233cf84d175231b48233\`; any preexisting different active header is ambiguity and fails closed.
+
+The sole fixed review-header source is \`tools/v2_r1_helius_handoff/step16_identity_header_review/generated_owner_config.review.h\`, whose complete exact UTF-8 bytes have SHA-256 \`8f7e430182822e5014f4be39fdb3ac4734e3546df54d5c3e448c0eba5f510814\`. The bound review evidence is \`tools/v2_r1_helius_handoff/step16_identity_header_review/canonical_owner_evidence.txt\`, whose complete exact UTF-8 bytes have SHA-256 \`1cd653ca02dd1bf075f36b6c92c0ceb530ba9aaadc589c95b534fe82b73116f4\`. SHA-256 means the complete lowercase 64-hex byte digest; no weak, truncated, alternate, shared, or textual-only hash is acceptable. The future active header bytes must equal the sole review-header source bytes exactly and therefore have its same SHA-256.
+
+The future build gate has one fixed canonical repository root: a separately approved absolute root configuration not selected or authorized by this document. Before any replacement or compilation, an independent root-authentication review must non-dereferencingly resolve that configured absolute root, reject every symlink, alias, traversal, alternate root, or caller-selected working directory, and prove its Git object database resolves \`HEAD\` exactly to \`620dc7dfbce6c831b4755dce6e5776cb613001b8\` and that commit's tree exactly to \`8ee47f1ea59e2803b218c2fb9ad28d4c3ccf0aac\`. A branch name, worktree state, checkout appearance, caller CWD, or bytes supplied outside those authenticated objects is not a substitute.
+
+The complete repository compile-source inventory is exactly: (1) \`tools/v2_r1_helius_handoff/native_wrapper.c\`, resolved from that commit tree as Git blob \`0e59f37f98e3f6632064b3ade9a133ea24de90da\` and complete-byte SHA-256 \`6e45dd91c53ba7ac6aa76e2513a55c901d0bff108f7ae579475dceb1c2ee8d76\`; and (2) after the atomic activation, the fixed active header at \`tools/v2_r1_helius_handoff/generated_owner_config.h\`, resolved beneath that same canonical root as a non-symlink regular file with complete-byte SHA-256 \`8f7e430182822e5014f4be39fdb3ac4734e3546df54d5c3e448c0eba5f510814\`. The active header is intentionally not asserted to be a historical blob of revision \`620dc7dfbce6c831b4755dce6e5776cb613001b8\`: it is accepted only as the post-activation sealed reviewed bytes. A future separately reviewed native descriptor-pinned source-acquisition/staging helper, not this document or an authorized implementation, must read the exact native-wrapper blob bytes from authenticated Git object data, verify both blob identity and complete-byte digest, and copy them by descriptor into the new sealed build stage described below. It must separately copy the activated-header bytes only after their required post-activation verification. The compiler may consume only those held verified staged source and header files beneath that dedicated descriptor-verified stage; it must never receive an untrusted checkout source or header path. Shell or compiler path strings do not retain directory FDs across exec: the future native helper must separately own the directory FDs, enforce ownership and permissions, and materialize the root-owned no-user-writable sealed stage before exec. That helper needs separate security review and explicit future authorization before any activation or build.
+
+## Fresh authority and canonical facts
+
+The bound review evidence is user-reported and not current host authority. It never proves current identity, ownership, type, mode, or symlink state, and is stale unless a later authorized process independently reconfirms it immediately before replacement.
+
+Immediately before any active replacement, a separately authorized fresh read-only host-metadata review must independently reconfirm this complete fixed ordered object set, one non-dereferencing record for each exact absolute path in this order: (1) \`/home\` — directory, UID \`0\`, GID \`0\`, mode \`0755\`; (2) \`/home/piadmin\` — directory, UID \`1001\`, GID \`1001\`, mode \`0700\`; (3) \`/home/piadmin/.config\` — directory, UID \`1001\`, GID \`1001\`, mode \`0700\`; (4) \`/home/piadmin/.config/cumzillaraptors\` — directory, UID \`1001\`, GID \`1001\`, mode \`0700\`; and (5) \`/home/piadmin/.config/cumzillaraptors/helius-devnet-rpc.url\` — regular file, UID \`1001\`, GID \`1001\`, mode \`0600\`. Each record must bind its stated path to its expected object type, UID, GID, exact mode, and fact that the object is not a symlink; validation must not dereference any component or final object. The canonical fresh-review output is exactly those five ordered path records with those facts and no substitute, omission, duplicate, reordering, added path, or endpoint-content field. It must never read the endpoint file's contents. The fresh review must be distinct from this document, reported evidence, identity activation, build review, and any earlier review. Missing, mismatched, malformed, non-canonical, stale, inaccessible, or ambiguous facts fail closed.
+
+Only after that fresh read-only review, a separate explicit identity-activation authorization and independent review may select the already fixed canonical verified numeric UID/GID facts. It may not use reported facts as current authority, infer facts from a digest or revision, accept a caller/environment/configuration value, repair a fact, discover a new identity, or change a fact. This design selects neither a present host action nor authority to perform the future reviews.
+
+## Future replacement protocol
+
+A later separately authorized operator procedure must use no source header other than the fixed review-header source and no active destination other than the fixed active header. It must reject unsafe path components, including any symlink, traversal, empty component, alternate root, path substitution, source/destination alias, or ambiguity. It must reject a missing, changed, malformed, non-regular, non-canonical, or digest-mismatched source header before staging.
+
+The separately reviewed future native helper must choose an input-independent opaque identifier, record its one-time consumption, and create exactly one directory named \`build-stage-<opaque-id>\` beneath a fixed authenticated parent by descriptor-relative atomic \`mkdirat\` with exclusive creation semantics. This document specifies neither a random-number implementation nor an identifier format beyond that opaque naming boundary; preexistence, collision, reuse, caller control, or ambiguity fails closed. The helper must retain and authenticate the parent and stage directory descriptors, reject symlinks and unsafe components, make the stage root-owned and no-user-writable, and write the verified native-wrapper source and activated header through descriptor-relative \`O_CREAT|O_EXCL\`, no-follow file creation. It must \`fstat\` and digest-verify each staged regular file before compilation. The compiler may receive only paths beneath that sealed stage, not the checkout paths. For active-header replacement, the helper must retain the verified active-header parent FD; create a replacement temporary by descriptor-relative \`O_CREAT|O_EXCL\` no-follow creation, write the sealed header bytes, \`fstat\`, SHA-256 verify, and \`fsync\` it, then atomically \`renameat\` only within that verified parent and post-\`fstat\`/SHA-256 verify the fixed destination. Copy-in-place, partial write, fallback, recovery, repair, fixed reusable stage names, or a non-atomic replacement is forbidden.
+
+After the atomic replacement, it must independently validate the active header's exact bytes and SHA-256, required owner UID \`1001\`, required group GID \`1001\`, required regular-file type, required mode \`0600\`, and non-symlink status. Any omitted post-write validation, mismatch, malformed result, changed owner/group/mode/type, symlink, disappearance, or ambiguity fails closed. Active replacement alone does not authorize runtime invocation.
+
+## Future compiler and build policy
+
+Only after a fresh independent review of the completed post-write validation may a separately authorized later procedure possibly build one sealed staging artifact. It must begin from helper-authenticated directories and must neither accept nor change a caller CWD or worktree CWD. The compiler executable is fixed to \`/usr/bin/cc\`. Before exec, a later separately authorized fresh compiler-identity review must non-dereferencingly confirm that exact path is a regular non-symlink, root-owned file of mode \`0755\`, record fresh compiler identity evidence including its complete-byte digest, and obtain separate approval of that evidence; this contract selects no current compiler digest or additional compiler identity fact. The helper must launch only \`/usr/bin/cc\` by \`execve\` with no inherited environment and the exact ordered \`envp\` entries \`PATH=/usr/bin:/bin\`, \`LANG=C\`, and \`LC_ALL=C\`, with no other entry. The only permitted compiler arguments are the fixed flags \`-std=c11\`, \`-Wall\`, \`-Wextra\`, \`-Werror\`, and \`-O2\`, followed by the helper-materialized sealed-stage native-wrapper source path, \`-o\`, and the helper-created sealed-stage private output path, in that order. The helper must reject every argument/path not produced under its retained verified stage descriptors. No arbitrary, caller-supplied, inherited, appended, reordered, or substituted argument is permitted; \`-D\`, \`-include\`, response files, linker forwarding, alternate include paths, and environment-controlled compiler behavior are forbidden.
+
+The only permitted output is a private descriptor-relative \`O_CREAT|O_EXCL\`, no-follow staging-output path beneath the sealed unique stage. After successful compiler exit, the helper must \`fstat\` it and verify regular non-symlink type plus the expected ownership and mode selected by a later separately approved postbuild review; it must retain the artifact only in that stage. This gate prohibits a known final output path, any rename/publication outside the sealed stage, and every execution of the artifact until a later dedicated output-publication design and authorization. Preexistence, aliasing, unsafe component, symlink, collision, malformed postbuild result, or ambiguity fails closed. A possible build is not wrapper execution authority.
+
+## Prohibited current operations and non-authority
+
+This design contains no shell code or example command and authorizes no host command. It distinctly forbids endpoint read, network or RPC use, wrapper compilation, wrapper execution, reviewer transport, secret access, signing, sending, deployment, or runtime invocation. It also forbids reading endpoint contents, reviewer communication or transport, and treating header replacement as a current action or as runtime authority.
+
+Every missing, mismatched, malformed, stale, substituted, unsafe, preexisting, or ambiguous input, path, fact, digest, stage, active header, compiler, argument, review, post-write result, or build output preserves fail-closed status. Passing this repository-only design authorizes neither commit nor publication, and it does not authorize the future replacement or build.
+`;
+
+function validateContract(source) {
+  assert.equal(source, EXPECTED_CONTRACT);
+}
+
+test('Step16 identity-header activation/build procedure is the exact canonical review contract', async () => {
+  validateContract(await readFile(CONTRACT, 'utf8'));
+});
+
+test('native wrapper bytes remain pinned to the canonical sealed SHA-256', async () => {
+  const digest = createHash('sha256').update(await readFile(NATIVE_WRAPPER)).digest('hex');
+  assert.equal(digest, EXPECTED_NATIVE_WRAPPER_SHA256);
+});
+
+test('canonical comparison rejects provenance, sealed staging, live-source binding, output, execve-environment, and authority weakening', async () => {
+  const source = await readFile(CONTRACT, 'utf8');
+  const mutations = [
+    source.replace('published revision `620dc7dfbce6c831b4755dce6e5776cb613001b8`', 'published revision `0000000000000000000000000000000000000000`'),
+    source.replace('Git blob `0e59f37f98e3f6632064b3ade9a133ea24de90da`', 'Git blob `0000000000000000000000000000000000000000`'),
+    source.replace('6e45dd91c53ba7ac6aa76e2513a55c901d0bff108f7ae579475dceb1c2ee8d76', '0000000000000000000000000000000000000000000000000000000000000000'),
+    source.replace('caller-selected working directory', 'caller-selected root'),
+    source.replace('`/home/piadmin/.config/cumzillaraptors/helius-devnet-rpc.url`', '`/tmp/helius-devnet-rpc.url`'),
+    source.replace('It must never read the endpoint file\'s contents.', 'It may read the endpoint file\'s contents.'),
+    source.replace('must neither accept nor change a caller CWD or worktree CWD', 'may accept a caller CWD or worktree CWD'),
+    source.replace('user-reported and not current host authority', 'current host authority'),
+    source.replace('and is stale unless a later authorized process independently reconfirms it immediately before replacement.', 'and remains acceptable indefinitely.'),
+    source.replace('immediately before replacement', 'at any prior time'),
+    source.replace('SHA-256 means the complete lowercase 64-hex byte digest; no weak, truncated, alternate, shared, or textual-only hash is acceptable.', 'A short hash is acceptable.'),
+    source.replaceAll('tools/v2_r1_helius_handoff/generated_owner_config.h', 'replacement/generated_owner_config.h'),
+    source.replaceAll('tools/v2_r1_helius_handoff/step16_identity_header_review/generated_owner_config.review.h', 'replacement/generated_owner_config.review.h'),
+    source.replace('The compiler may consume only those held verified staged source and header files beneath that dedicated descriptor-verified stage; it must never receive an untrusted checkout source or header path.', 'The compiler may consume checkout source and header paths.'),
+    source.replace('Shell or compiler path strings do not retain directory FDs across exec:', 'Shell path strings retain directory FDs across exec:'),
+    source.replace('create exactly one directory named `build-stage-<opaque-id>`', 'create the fixed stage directory `step16_identity_header_activation.stage`'),
+    source.replace('preexistence, collision, reuse, caller control, or ambiguity fails closed.', 'reuse is permitted.'),
+    source.replace('The compiler may receive only paths beneath that sealed stage, not the checkout paths.', 'The compiler may receive checkout paths.'),
+    source.replace('This gate prohibits a known final output path, any rename/publication outside the sealed stage, and every execution of the artifact until a later dedicated output-publication design and authorization.', 'The compiler may write the known final output path.'),
+    source.replace('with no inherited environment and the exact ordered `envp` entries `PATH=/usr/bin:/bin`, `LANG=C`, and `LC_ALL=C`, with no other entry.', 'with inherited environment variables.'),
+    source.replace('That helper needs separate security review and explicit future authorization before any activation or build.', 'That helper is authorized by this document.'),
+    source.replace('After the atomic replacement, it must independently validate the active header\'s exact bytes and SHA-256, required owner UID `1001`, required group GID `1001`, required regular-file type, required mode `0600`, and non-symlink status.', 'After replacement, no validation is required.'),
+    source.replace('No arbitrary, caller-supplied, inherited, appended, reordered, or substituted argument is permitted; `-D`, `-include`, response files, linker forwarding, alternate include paths, and environment-controlled compiler behavior are forbidden.', 'Arbitrary compiler arguments, including -D and -include, are permitted.'),
+    source.replace('It distinctly forbids endpoint read, network or RPC use, wrapper compilation, wrapper execution, reviewer transport, secret access, signing, sending, deployment, or runtime invocation.', 'It permits compilation, execution, reviewer transport, and deployment.'),
+    source.replace('Active replacement alone does not authorize runtime invocation.', 'Active replacement authorizes runtime invocation.'),
+    source.replace('reported evidence, identity activation, build review, and any earlier review.', 'reported evidence and any earlier review.'),
+  ];
+  for (const mutation of mutations) assert.throws(() => validateContract(mutation));
+});
+
+// This deterministic test reads repository text only. It performs no host, endpoint, secret, compiler, process, network/RPC, signing, send, deployment, or runtime action.
