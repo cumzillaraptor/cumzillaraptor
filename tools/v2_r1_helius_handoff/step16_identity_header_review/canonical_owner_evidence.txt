@@ -1,0 +1,10 @@
+report_classification=user-reported-not-current-host-authority
+source=reported
+owner_uid=1001
+owner_gid=1001
+home=directory,uid=0,gid=0,mode=0755
+piadmin=directory,uid=1001,gid=1001,mode=0700
+config=directory,uid=1001,gid=1001,mode=0700
+cumzillaraptors=directory,uid=1001,gid=1001,mode=0700
+secret_file=regular,uid=1001,gid=1001,mode=0600
+symlink_indicator=absent
