@@ -1,0 +1,25 @@
+# Step 21 bounded-discovery authorization lifecycle architecture contract
+
+## Status, predecessor, and present boundary
+
+This is a repository-only lifecycle architecture/review contract and deterministic repository-text test. It is not a record generator, review record, verifier, trusted clock, durable store, authorization record, signature, host gate, discovery execution, candidate selection, helper implementation, command sequence, metadata probe, compiler invocation, build, or authorization for any live action. It binds the immediate published predecessor exactly to `d45c70c61309963f67b5d3110fd3fcc1b4a6b020`; no branch, successor, tag, working tree, caller, environment, configuration, or supplied value may substitute that predecessor. The predecessor is historical design input only, never current authority.
+
+This contract selects no implementation, host path, clock, store, database, filesystem location, account, user, group, identifier, time, record value, review value, signature algorithm, key, command, candidate, compiler, target, endpoint, secret, or operational action. It authorizes no present record creation, host action, or approval acceptance.
+
+## Required future lifecycle boundaries
+
+Before a real Step 20 authorization record can be generated, a separate repository-only implementation review must select and test exactly one canonical record generator and one canonical independent-review-record grammar. The generator must accept only immutable human-supplied approval facts through an explicitly reviewed input boundary, generate no IDs or time values itself, reject unknown/duplicate/reordered/noncanonical input, and produce only exact Step 20 canonical bytes. The two independent reviews must each bind the exact prospective record bytes by distinct SHA-256 digest and independently confirm the Step 19 identity, scope, context, lifetime, identifier distinction, non-authority boundary, and absence of hidden capability. A review digest is integrity binding only, never approval, signature, or acceptance authority.
+
+Before any record can be accepted, a separately reviewed trusted-time boundary must define one authoritative time source, exact canonical time grammar, availability and boundary behavior, and fail-closed refusal for malformed, unavailable, uncertain, stale, issuance, expiry, and equality conditions. It must not obtain time from caller input, local environment, repository state, unchecked host clock, network response, or an unreviewed configuration source. This contract selects no clock or time source now.
+
+Before any record can be accepted or used, a separately reviewed durable replay-store boundary must define an exact persistent state format, store origin, access control, atomic transaction semantics, restart/crash/rollback/concurrency behavior, durable reservation and consume-before-open sequence, and non-echoing typed denials. It must bind the entire canonical record or its exact digest together with Step 19 identity, IDs, review digests, scope, context, and validated lifetime. The transition must durably consume before any trusted-root FD or host object can open. Unavailable, ambiguous, failed, partial, rolled-back, concurrent, replayed, or uncertain state must refuse. This contract selects no store or implementation now.
+
+A future accepted result must have exactly one separately reviewed, expressly non-authoritative consumer: the later host-gate reviewer. It may receive only a typed acceptance/denial plus exact canonical record digest and immutable bindings; it cannot discover candidates, access a host, open files, run a compiler, access secrets or endpoints, perform RPC, sign, send, deploy, or cause a host action. A valid record, valid review, valid clock, or durable consumption is not human host-gate approval.
+
+## Required future implementation proof
+
+A later implementation review must prove refusal for malformed, reordered, duplicate, unknown, substituted, and noncanonical records; wrong Step 19 commit/path/digest; aliased IDs or review digests; wrong/missing review bytes; unavailable/boundary/expired/uncertain time; duplicate/restart/crash/rollback/concurrent consumption; and every before-consume host-object access attempt. It must prove no generator/verifier/store/consumer input discovery through filesystem, Git, environment, configuration, network, endpoint, credential, runtime, or caller defaults beyond its expressly reviewed boundary. It must prove no present host, compiler, candidate, file-content, endpoint, secret, RPC, signing, send, deployment, commit, or publication capability.
+
+## Non-authority boundary
+
+Passing this test authorizes neither selecting nor implementing a generator, review record, clock, store, consumer, authorization record, host gate, host discovery, candidate nomination, metadata probe, compiler execution, filesystem/content access, endpoint or secret access, RPC, signing, sending, deployment, commit, or publication. Each requires separate explicit human approval.
