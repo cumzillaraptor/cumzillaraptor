@@ -84,6 +84,16 @@ pub enum CumzillaraptorsError {
     InvalidMetadataProof,
     #[msg("Claims are not live.")]
     ClaimsNotLive,
+    #[msg("Public mints are not live.")]
+    PublicMintsNotLive,
+    #[msg("Public mint count would exceed the approved allocation.")]
+    PublicMintCountExceeded,
+    #[msg("The supplied public-mint treasury does not match immutable configuration.")]
+    InvalidMintTreasury,
+    #[msg("Public-mint buyer and treasury must be distinct.")]
+    PublicMintBuyerTreasuryAlias,
+    #[msg("Public-mint asset and treasury must be distinct.")]
+    PublicMintAssetTreasuryAlias,
     #[msg("Claim authorization has expired.")]
     ClaimAuthorizationExpired,
     #[msg("Claim count would exceed the approved allocation.")]

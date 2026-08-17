@@ -17,6 +17,8 @@ use state::{
 
 declare_id!("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY");
 
+pub const PUBLIC_MINT_PRICE_LAMPORTS: u64 = 1_000_000_000;
+
 #[program]
 pub mod cumzillaraptors {
     use super::*;
@@ -132,6 +134,144 @@ pub mod cumzillaraptors {
             .uri(uri)
             .plugins(vec![plugins]);
         builder.invoke()?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn mint_nft(
+        ctx: Context<MintNft>,
+        nft_id: u16,
+        name: String,
+        uri: String,
+        metadata_proof: Vec<[u8; 32]>,
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.config.sale_state == SaleState::Live,
+            CumzillaraptorsError::PublicMintsNotLive
+        );
+        require!(
+            ctx.accounts.config.public_minted < PUBLIC_COUNT,
+            CumzillaraptorsError::PublicMintCountExceeded
+        );
+        require_keys_eq!(
+            ctx.accounts.collection.key(),
+            ctx.accounts.config.collection,
+            CumzillaraptorsError::InvalidCollection
+        );
+        require_keys_eq!(
+            ctx.accounts.config.core_program,
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require_keys_eq!(
+            ctx.accounts.mpl_core_program.key(),
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require_keys_eq!(
+            ctx.accounts.treasury.key(),
+            ctx.accounts.config.treasury,
+            CumzillaraptorsError::InvalidMintTreasury
+        );
+        require_keys_neq!(
+            ctx.accounts.buyer.key(),
+            ctx.accounts.treasury.key(),
+            CumzillaraptorsError::PublicMintBuyerTreasuryAlias
+        );
+        require_keys_neq!(
+            ctx.accounts.asset.key(),
+            ctx.accounts.treasury.key(),
+            CumzillaraptorsError::PublicMintAssetTreasuryAlias
+        );
+        ctx.accounts.registry.assert_public_id(nft_id)?;
+        require!(
+            !ctx.accounts.registry.is_allocated(nft_id)?,
+            CumzillaraptorsError::AllocationIdAlreadyUsed
+        );
+        metadata::verify_metadata_proof(
+            ctx.program_id,
+            &ctx.accounts.config.metadata_root,
+            nft_id,
+            &name,
+            &uri,
+            &metadata_proof,
+        )?;
+        require_keys_eq!(
+            *ctx.accounts.asset.owner,
+            anchor_lang::solana_program::system_program::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require!(
+            ctx.accounts.asset.data_is_empty(),
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+
+        let payment = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.buyer.key(),
+            &ctx.accounts.treasury.key(),
+            PUBLIC_MINT_PRICE_LAMPORTS,
+        );
+        anchor_lang::solana_program::program::invoke(
+            &payment,
+            &[
+                ctx.accounts.buyer.to_account_info(),
+                ctx.accounts.treasury.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+        )?;
+
+        let nft_id_bytes = nft_id.to_be_bytes();
+        let config_bump = ctx.accounts.config.bump;
+        let asset_bump = ctx.bumps.asset;
+        let config_seeds: &[&[u8]] = &[b"config", &[config_bump]];
+        let asset_seeds: &[&[u8]] = &[b"asset", &nft_id_bytes, &[asset_bump]];
+        let asset_lamports = ctx.accounts.asset.lamports();
+        if asset_lamports > 0 {
+            let recover_dust = anchor_lang::solana_program::system_instruction::transfer(
+                &ctx.accounts.asset.key(),
+                &ctx.accounts.buyer.key(),
+                asset_lamports,
+            );
+            anchor_lang::solana_program::program::invoke_signed(
+                &recover_dust,
+                &[
+                    ctx.accounts.asset.to_account_info(),
+                    ctx.accounts.buyer.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                &[asset_seeds],
+            )?;
+        }
+
+        let signer_seeds: &[&[&[u8]]] = &[config_seeds, asset_seeds];
+        let core_program = ctx.accounts.mpl_core_program.to_account_info();
+        let asset = ctx.accounts.asset.to_account_info();
+        let collection = ctx.accounts.collection.to_account_info();
+        let config = ctx.accounts.config.to_account_info();
+        let buyer = ctx.accounts.buyer.to_account_info();
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let mut builder = mpl_core::instructions::CreateV1CpiBuilder::new(&core_program);
+        builder
+            .asset(&asset)
+            .collection(Some(&collection))
+            .authority(Some(&config))
+            .payer(&buyer)
+            .owner(Some(&buyer))
+            .system_program(&system_program)
+            .data_state(mpl_core::types::DataState::AccountState)
+            .name(name)
+            .uri(uri);
+        builder.invoke_signed(signer_seeds)?;
+
+        ctx.accounts
+            .registry
+            .mark_allocated_after_core_success(nft_id)?;
+        ctx.accounts.config.public_minted = ctx
+            .accounts
+            .config
+            .public_minted
+            .checked_add(1)
+            .ok_or(error!(CumzillaraptorsError::ArithmeticOverflow))?;
         Ok(())
     }
 
@@ -336,6 +476,30 @@ pub struct SetClaimsSaleState<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(nft_id: u16, _name: String, _uri: String, _metadata_proof: Vec<[u8; 32]>)]
+pub struct MintNft<'info> {
+    #[account(mut, seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, CollectionConfig>,
+    #[account(mut, seeds = [b"allocation"], bump = registry.bump)]
+    pub registry: Account<'info, AllocationRegistry>,
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    /// CHECK: immutable config treasury is checked in the handler.
+    #[account(mut)]
+    pub treasury: UncheckedAccount<'info>,
+    /// CHECK: canonical collection key is checked against immutable config.
+    #[account(mut, address = config.collection @ CumzillaraptorsError::InvalidCollection)]
+    pub collection: UncheckedAccount<'info>,
+    /// CHECK: Metaplex Core creates this deterministic PDA during the CPI.
+    #[account(mut, seeds = [b"asset", &nft_id.to_be_bytes()], bump)]
+    pub asset: UncheckedAccount<'info>,
+    /// CHECK: checked against the canonical mpl-core program ID.
+    #[account(address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(
     nft_id: u16,
     _eth_address: [u8; 20],
@@ -405,6 +569,28 @@ pub struct SetupCollection<'info> {
     pub system_program: Program<'info, System>,
 }
 
+fn validate_treasury(treasury: Pubkey) -> Result<()> {
+    #[cfg(feature = "test-validation")]
+    {
+        require_keys_neq!(
+            treasury,
+            Pubkey::default(),
+            CumzillaraptorsError::InvalidTreasury
+        );
+        Ok(())
+    }
+
+    #[cfg(not(feature = "test-validation"))]
+    {
+        require_keys_eq!(
+            treasury,
+            core::PRIMARY_TREASURY,
+            CumzillaraptorsError::InvalidTreasury
+        );
+        Ok(())
+    }
+}
+
 fn validate_claims_sale_state_transition(current: SaleState, next: SaleState) -> Result<()> {
     require!(
         matches!(
@@ -454,11 +640,7 @@ fn validate_launch_parameters(
     claim_count: u16,
 ) -> Result<()> {
     validate_launch_authority(authority)?;
-    require_keys_neq!(
-        treasury,
-        Pubkey::default(),
-        CumzillaraptorsError::InvalidTreasury
-    );
+    validate_treasury(treasury)?;
     require_keys_eq!(
         core_program,
         mpl_core::ID,
@@ -700,7 +882,7 @@ mod tests {
         .is_err());
         assert!(validate_launch_parameters(
             launch_authority(),
-            Pubkey::new_unique(),
+            core::PRIMARY_TREASURY,
             mpl_core::ID,
             collection,
             valid,
@@ -711,6 +893,20 @@ mod tests {
             CLAIM_COUNT,
         )
         .is_ok());
+    }
+
+    #[cfg(not(feature = "test-validation"))]
+    #[test]
+    fn production_treasury_is_fixed_to_the_reviewed_primary_recipient() {
+        assert!(validate_treasury(core::PRIMARY_TREASURY).is_ok());
+        assert!(validate_treasury(Pubkey::new_unique()).is_err());
+    }
+
+    #[cfg(feature = "test-validation")]
+    #[test]
+    fn test_validation_allows_a_fresh_nondefault_local_treasury_only() {
+        assert!(validate_treasury(Pubkey::new_unique()).is_ok());
+        assert!(validate_treasury(Pubkey::default()).is_err());
     }
 
     #[test]

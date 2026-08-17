@@ -94,6 +94,12 @@ function claimData(local, expiryUnix) {
     string(local.metadata.name), string(local.metadata.uri), vectorBytes32(local.metadata.proof),
   ]);
 }
+function mintData(nftId, metadata) {
+  return Buffer.concat([
+    discriminator('mint_nft'), u16(nftId),
+    string(metadata.name), string(metadata.uri), vectorBytes32(metadata.proof),
+  ]);
+}
 async function submit(connection, web3, transaction, signers) {
   transaction.feePayer = signers[0].publicKey;
   transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
@@ -254,6 +260,66 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     keys: [{ pubkey: config, isSigner: false, isWritable: true }, { pubkey: authority.publicKey, isSigner: true, isWritable: false }],
     data: Buffer.concat([discriminator('set_claims_sale_state'), Buffer.from([2])]),
   })), [authority]);
+
+  const publicMetadata = JSON.parse(await (await import('node:fs/promises')).readFile(
+    new URL('../nft-data/metadata-merkle-v1.devnet.json', import.meta.url),
+    'utf8',
+  )).metadata['1'];
+  const [publicAsset] = PublicKey.findProgramAddressSync(
+    [Buffer.from('asset'), Buffer.from([0, 1])], programId,
+  );
+  const mintIx = ({ treasuryAccount = treasury, collectionAccount = collection.publicKey } = {}) => new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: config, isSigner: false, isWritable: true },
+      { pubkey: registry, isSigner: false, isWritable: true },
+      { pubkey: claimer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: treasuryAccount, isSigner: false, isWritable: true },
+      { pubkey: collectionAccount, isSigner: false, isWritable: true },
+      { pubkey: publicAsset, isSigner: false, isWritable: true },
+      { pubkey: coreProgram, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: mintData(1, publicMetadata),
+  });
+  const publicMintState = async () => {
+    const [configAccount, registryAccount, assetAccount] = await Promise.all([
+      connection.getAccountInfo(config), connection.getAccountInfo(registry), connection.getAccountInfo(publicAsset),
+    ]);
+    const registryBytes = Buffer.from(registryAccount.data);
+    return {
+      treasury: await connection.getBalance(treasury),
+      buyer: await connection.getBalance(claimer.publicKey),
+      publicMinted: Buffer.from(configAccount.data).readUInt16LE(265),
+      allocated: registryBytes[8 + 32 + (246 * 2)] & 1,
+      asset: accountFingerprint(assetAccount),
+    };
+  };
+  // The immutable treasury cannot be substituted: this rejection occurs before payment,
+  // Core CPI, allocation, or public counter mutation.
+  const mintBeforeSubstitution = await publicMintState();
+  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(
+    mintIx({ treasuryAccount: authority.publicKey }),
+  ), [claimer]));
+  assert.deepEqual(await publicMintState(), mintBeforeSubstitution, 'treasury substitution has no public-mint state effect');
+
+  // Execute the actual paid public mint through the real Core CreateV1 CPI.
+  const mintBefore = await publicMintState();
+  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(mintIx()), [claimer]);
+  const mintAfter = await publicMintState();
+  assert.equal(mintAfter.treasury - mintBefore.treasury, 1_000_000_000, 'immutable treasury receives exactly 1 SOL');
+  assert.ok(mintBefore.buyer - mintAfter.buyer > 1_000_000_000, 'buyer pays 1 SOL plus transaction/Core rent costs');
+  assert.equal(mintAfter.publicMinted, 1, 'public counter increments after Core success');
+  assert.equal(mintAfter.allocated, 1, 'public ID is allocated after Core success');
+  assert.equal(mintAfter.asset.owner, CORE_PROGRAM_TEXT, 'paid public mint creates a Core asset');
+  const { deserializeAssetV1: deserializePublicAssetV1 } = await import('@metaplex-foundation/mpl-core');
+  const decodedPublicAsset = deserializePublicAssetV1({
+    publicKey: publicAsset.toBase58(), data: Uint8Array.from((await connection.getAccountInfo(publicAsset)).data),
+    executable: false, lamports: (await connection.getAccountInfo(publicAsset)).lamports,
+    owner: CORE_PROGRAM_TEXT, rentEpoch: 0,
+  });
+  assert.equal(decodedPublicAsset.owner, claimer.publicKey.toBase58(), 'paid public asset owner is buyer');
+  assert.equal(decodedPublicAsset.updateAuthority.address, collection.publicKey.toBase58(), 'public asset authority derives from collection');
 
   const claimIx = (fixture = local, { recipient = claimer, expiry = expiryUnix } = {}) => {
     const accounts = claimAccounts(fixture);
