@@ -55,6 +55,14 @@ test('approved allocation policy is 246 public / 174 claim and reserves #360 for
   assert.match(stateText, /pub const CLAIM_COUNT: u16 = 174/);
 });
 
+test('the disabled public collection page shows the canonical 246 public / 174 claim allocation', async () => {
+  const page = await readFile(path.join(root, 'cumzillaraptors', 'index.html'), 'utf8');
+  assert.match(page, /246 public mints and 174 Ethereum-holder claims/);
+  assert.match(page, /246 raptors will be available for 1 SOL each/);
+  assert.match(page, /174 reserved raptors will require both an eligibility proof/);
+  assert.doesNotMatch(page, /247 public mints|173 Ethereum-holder claims|247 raptors will be available|173 reserved raptors/);
+});
+
 test('the legacy claim-artifact generator is present so legacy frontend data is reproducible', () => {
   assert.equal(existsSync(path.join(root, 'scripts', 'generate-legacy-claim-artifacts.js')), true);
 });
