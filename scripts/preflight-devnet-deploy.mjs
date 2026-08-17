@@ -2,18 +2,18 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 
 const EXPECTED = Object.freeze({
   cluster: 'devnet',
   rpc: 'https://api.devnet.solana.com',
   programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-  revision: '01ae96e2542717438112c3244394e0d484210f34',
-  artifactSha256: '2c88fe80ff4488e4034fdf2a724822a8413d0242b09176ed1710648eb110aa22',
+  revision: 'cc8e6242e884e0f90a8ce0b9ff58f406240fc4a6',
+  artifactSha256: '0691c0eba729f07ab2be110112d0954d4051f198e5ef4d9e85f501fcd0126bf5',
 });
 
 function usageError(message) {
-  throw new Error(`${message}\nUsage: node scripts/preflight-devnet-deploy.mjs --preflight --artifact-dir <CI-artifact deploy dir> --program-keypair <path> --payer-keypair <path> --upgrade-authority-keypair <path> [--rpc <url>]`);
+  throw new Error(`${message}\nUsage: node scripts/preflight-devnet-deploy.mjs --preflight --artifact-dir <CI-artifact deploy dir> --program-public-key <base58> --payer-public-key <base58> --upgrade-authority-public-key <base58> [--rpc <url>]`);
 }
 
 function parseArgs(argv) {
@@ -21,7 +21,7 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--preflight') parsed.preflight = true;
-    else if (['--artifact-dir', '--program-keypair', '--payer-keypair', '--upgrade-authority-keypair', '--rpc'].includes(argument)) {
+    else if (['--artifact-dir', '--program-public-key', '--payer-public-key', '--upgrade-authority-public-key', '--rpc'].includes(argument)) {
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) usageError(`Missing value for ${argument}.`);
       parsed[argument.slice(2).replaceAll('-', '_')] = value;
@@ -29,16 +29,18 @@ function parseArgs(argv) {
     } else usageError(`Unknown argument: ${argument}`);
   }
   if (!parsed.preflight) usageError('Refusing: pass --preflight for read-only validation.');
-  for (const field of ['artifact_dir', 'program_keypair', 'payer_keypair', 'upgrade_authority_keypair']) {
+  for (const field of ['artifact_dir', 'program_public_key', 'payer_public_key', 'upgrade_authority_public_key']) {
     if (!parsed[field]) usageError(`Missing required --${field.replaceAll('_', '-')}.`);
   }
   return parsed;
 }
 
-function keypairPublicKey(keypairPath, label) {
-  if (!existsSync(keypairPath)) throw new Error(`${label} keypair path does not exist: ${keypairPath}`);
-  const keypair = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(keypairPath, 'utf8'))));
-  return keypair.publicKey;
+function publicKey(value, label) {
+  try {
+    return new PublicKey(value);
+  } catch {
+    throw new Error(`${label} public key must be a valid base58 Solana address.`);
+  }
 }
 
 function sha256(filePath) {
@@ -70,11 +72,11 @@ async function preflight(options) {
   const artifactHash = sha256(programBinary);
   if (artifactHash !== EXPECTED.artifactSha256) throw new Error(`SBPF artifact SHA-256 mismatch: expected ${EXPECTED.artifactSha256}, received ${artifactHash}.`);
 
-  const programKeypair = keypairPublicKey(options.program_keypair, 'Program');
-  const payer = keypairPublicKey(options.payer_keypair, 'Payer');
-  const upgradeAuthority = keypairPublicKey(options.upgrade_authority_keypair, 'Upgrade authority');
+  const program = publicKey(options.program_public_key, 'Program');
+  const payer = publicKey(options.payer_public_key, 'Payer');
+  const upgradeAuthority = publicKey(options.upgrade_authority_public_key, 'Upgrade authority');
   const expectedProgram = new PublicKey(EXPECTED.programId);
-  if (!programKeypair.equals(expectedProgram)) throw new Error(`Program keypair mismatch: expected ${expectedProgram.toBase58()}, received ${programKeypair.toBase58()}.`);
+  if (!program.equals(expectedProgram)) throw new Error(`Program public key mismatch: expected ${expectedProgram.toBase58()}, received ${program.toBase58()}.`);
   if (payer.equals(upgradeAuthority)) throw new Error('Payer and upgrade authority must be separate public keys for pre-send review.');
 
   const connection = new Connection(options.rpc, 'confirmed');
