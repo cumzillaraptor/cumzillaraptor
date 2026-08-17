@@ -36,7 +36,8 @@ test('rehearsal planner emits a canonical no-send plan bound to reviewed artifac
   assert.equal(plan.allocation.claimCount, 174);
   assert.equal(plan.allocation.allocationHash, '0x78f593cb7ff7ddae906c7c35a38c75be2e19c580e02c8ea6ed6357210265785c');
   assert.equal(plan.allocation.publicMint.nftId, 2);
-  assert.equal(plan.allocation.claim.nftId, 1);
+  assert.equal(plan.allocation.claim.nftId, 4);
+  assert.equal(plan.allocation.claim.ethAddress, '0xb0e683427202d14366977b7183d228a508b5a19c');
   assert.equal(plan.allocation.claim.authorization, 'PENDING_EXTERNAL_ETH_SIGNATURE');
   assert.equal(plan.collection.uriFromProgram, 'ar://oGxXHkoQKnsq47U4KESzurJ0-qk0dJa2FWofHQc_-SQ');
   assert.equal(plan.collection.uriFromUriMap, 'ar://oGxXHkoQKnsq47U4KESzurJ0-qk0dJa2FWofHQc_-SQ');

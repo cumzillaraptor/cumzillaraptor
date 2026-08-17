@@ -20,6 +20,7 @@ const EXPECTED = Object.freeze({
   royaltyBasisPoints: 500,
   publicMintPriceLamports: 1_000_000_000,
   clusterTagHash: '0x2dc5e5e2ec5ca5eba43c565499822cae24d566819ddb33aaf598c37a70a06828',
+  rehearsalClaim: Object.freeze({ nftId: 4, ethAddress: '0xb0e683427202d14366977b7183d228a508b5a19c' }),
   fixtureSha256: Object.freeze({
     'nft-data/allocation-source/mint_list.csv': 'ea19c01acc366010dd825494674be07182acd47d3728924fefbb26a58e4379ef',
     'nft-data/allocation-source/reserve_list.csv': '8efd837bc74078b1e44ac9d4f23e8cb6ae9eae7ed241f477d0b5e851edf1a5b7',
@@ -86,10 +87,11 @@ function canonicalData(collection) {
   if (metadata.version !== 'CUMZILLARAPTORS_METADATA_V1' || metadata.cluster !== EXPECTED.cluster || metadata.programId !== EXPECTED.programId || metadata.totalMetadata !== 420) fail('Canonical metadata fixture mismatch.');
   const allIds = [...publicIds, ...claimIds].sort((left, right) => left - right);
   if (allIds.length !== 420 || allIds.some((id, index) => id !== index + 1)) fail('Canonical allocation partition is not an exact disjoint cover of IDs 1 through 420.');
-  if (!publicIds.includes(2) || claimIds.includes(2) || !claimIds.includes(1) || publicIds.includes(1)) fail('Controlled rehearsal IDs do not match the canonical allocation partition.');
+  const claimId = EXPECTED.rehearsalClaim.nftId;
+  if (!publicIds.includes(2) || claimIds.includes(2) || !claimIds.includes(claimId) || publicIds.includes(claimId)) fail('Controlled rehearsal IDs do not match the canonical allocation partition.');
   const publicMetadata = metadata.metadata['2'];
-  const claimMetadata = metadata.metadata['1'];
-  const claim = claims.claims.find((item) => item.nftId === 1);
+  const claimMetadata = metadata.metadata[String(claimId)];
+  const claim = claims.claims.find((item) => item.nftId === claimId && item.ethAddress === EXPECTED.rehearsalClaim.ethAddress);
   if (uriMap.version !== 'CUMZILLARAPTORS_URI_MAP_V1' || uriMap.cluster !== EXPECTED.cluster || uriMap.programId !== EXPECTED.programId || !/^ar:\/\/[A-Za-z0-9_-]{43}$/.test(uriMap.collectionUri)) fail('Canonical URI map mismatch.');
   if (!publicMetadata || !claimMetadata || !claim) fail('Controlled rehearsal fixture is missing.');
   return { publicIds, claimIds, claims, metadata, uriMap, publicMetadata, claimMetadata, claim, allocationHash: allocationHash(new PublicKey(EXPECTED.programId), collection, publicIds, claims.merkleRoot, metadata.merkleRoot) };
@@ -113,7 +115,7 @@ function plan(args) {
       publicCount: data.publicIds.length, claimCount: data.claimIds.length, claimRoot: data.claims.merkleRoot, metadataRoot: data.metadata.merkleRoot,
       clusterTagHash: EXPECTED.clusterTagHash, allocationHash: data.allocationHash,
       publicMint: { nftId: 2, name: data.publicMetadata.name, uri: data.publicMetadata.uri, metadataProofLength: data.publicMetadata.proof.length, assetPda: assetPda(program, 2).toBase58(), priceLamports: EXPECTED.publicMintPriceLamports },
-      claim: { nftId: 1, ethAddress: data.claim.ethAddress, name: data.claimMetadata.name, uri: data.claimMetadata.uri, claimProofLength: data.claim.proof.length, metadataProofLength: data.claimMetadata.proof.length, assetPda: assetPda(program, 1).toBase58(), authorization: 'PENDING_EXTERNAL_ETH_SIGNATURE' },
+      claim: { nftId: EXPECTED.rehearsalClaim.nftId, ethAddress: data.claim.ethAddress, name: data.claimMetadata.name, uri: data.claimMetadata.uri, claimProofLength: data.claim.proof.length, metadataProofLength: data.claimMetadata.proof.length, assetPda: assetPda(program, EXPECTED.rehearsalClaim.nftId).toBase58(), authorization: 'PENDING_EXTERNAL_ETH_SIGNATURE' },
     },
     steps: [
       { id: 'deploy-program', signerRoles: ['payer', 'program-keypair', 'upgrade-authority'], stateEffect: 'create program and program-data accounts only' },
@@ -123,7 +125,7 @@ function plan(args) {
       { id: 'verify-collection', signerRoles: [], stateEffect: 'read-only Core owner/authority/URI/royalty verification' },
       { id: 'enable-sale', signerRoles: ['launch-authority'], stateEffect: 'Setup to Live' },
       { id: 'controlled-public-mint', signerRoles: ['buyer'], stateEffect: 'buyer pays exactly 1 SOL to fixed treasury; create asset #2' },
-      { id: 'controlled-eth-claim', signerRoles: ['claimer', 'external Ethereum holder for claim #1'], stateEffect: 'create asset #1 and claim receipt after a valid external signature' },
+      { id: 'controlled-eth-claim', signerRoles: ['claimer', 'external Ethereum holder for claim #4'], stateEffect: 'create asset #4 and claim receipt after a valid external signature' },
       { id: 'verify-rehearsal-state', signerRoles: [], stateEffect: 'read-only counters, allocation, ownership, receipt, and fee evidence' },
     ],
     blockingFindings: EXPECTED.collectionUri === data.uriMap.collectionUri ? [] : ['BLOCKED_CANONICAL_URI_MISMATCH'],

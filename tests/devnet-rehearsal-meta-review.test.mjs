@@ -39,6 +39,8 @@ test('static review emits exact deterministic rehearsal account metas and an unq
   assert.equal(claim.precedingInstruction.program, 'KeccakSecp256k11111111111111111111111111111');
   assert.equal(claim.precedingInstruction.accounts.length, 0);
   assert.equal(claim.authorization.status, 'PENDING_EXTERNAL_ETH_SIGNATURE');
+  assert.equal(claim.authorization.nftId, 4);
+  assert.equal(claim.authorization.ethAddress, '0xb0e683427202d14366977b7183d228a508b5a19c');
   assert.match(output.blockers.join('\n'), /fresh collection and buffer public keys are user attestations/i);
 });
 
