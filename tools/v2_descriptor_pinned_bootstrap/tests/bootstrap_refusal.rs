@@ -4,8 +4,9 @@ const TEST_SOURCE: &str = include_str!("bootstrap_refusal.rs");
 use v2_descriptor_pinned_bootstrap::{
     BootstrapRefusal, DescriptorAdapter, DescriptorFault, DirectoryDescriptor, EntryFacts,
     FileDescriptor, FileKind, RelativeComponent, RelativeFile, RootDescriptor, RunRecord,
-    StageFileIdentity, StageParentDescriptor, SyntheticRootIdentity, acquire_validated_source,
-    verify_validated_source_to_fresh_stage,
+    StageFileIdentity, StageParentDescriptor, SyntheticByteSourceClassification,
+    SyntheticRootIdentity, V5DescriptorAdapter, V5FixtureFacts, V5InventoryEntry, V5ReleaseRefusal,
+    acquire_v5_validated_source, acquire_validated_source, verify_validated_source_to_fresh_stage,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,6 +60,7 @@ struct FakeAdapter {
     stage_exists: SyntheticExistence,
     destination_exists: SyntheticExistence,
     stage_kind: FileKind,
+    v5_fixture_facts: V5FixtureFacts,
     calls: Vec<RunRecord>,
 }
 
@@ -86,6 +88,7 @@ impl FakeAdapter {
             stage_exists: SyntheticExistence::Absent,
             destination_exists: SyntheticExistence::Absent,
             stage_kind: FileKind::Regular,
+            v5_fixture_facts: approved_v5_fixture_facts(),
             calls: Vec::new(),
         }
     }
@@ -253,6 +256,31 @@ impl DescriptorAdapter for FakeAdapter {
 
     fn record_staged_hash(&mut self) {
         self.calls.push(RunRecord::HashStaged);
+    }
+}
+
+fn approved_v5_fixture_facts() -> V5FixtureFacts {
+    V5FixtureFacts {
+        release_revision: "8b5bcf1d9278b61780be33dc2e4a9707859155da",
+        artifact_sha256: "7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b",
+        artifact_size: 411_944,
+        authority: "71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r",
+        stage_id: "step3-refresh-v5",
+        inventory: vec![
+            V5InventoryEntry::ReviewSource,
+            V5InventoryEntry::PrepareExecutor,
+            V5InventoryEntry::Manifest,
+            V5InventoryEntry::SbpfArtifact,
+            V5InventoryEntry::RevisionMarker,
+        ],
+        byte_source: SyntheticByteSourceClassification::SyntheticFixture,
+    }
+}
+
+impl V5DescriptorAdapter for FakeAdapter {
+    fn observe_v5_fixture_facts(&mut self) -> V5FixtureFacts {
+        self.calls.push(RunRecord::ObserveV5FixtureRelease);
+        self.v5_fixture_facts.clone()
     }
 }
 
@@ -668,6 +696,148 @@ fn nonconforming_staged_vec_over_cap_refuses_before_hash() {
 }
 
 #[test]
+fn v5_fixture_binds_only_the_fixed_release_before_any_staged_copy_or_hash() {
+    let mut adapter = FakeAdapter::approved();
+
+    let source = acquire_v5_validated_source(&mut adapter).expect("fixed v5 fixture accepted");
+    assert!(source.is_fixed_v5_fixture());
+
+    assert_eq!(
+        adapter.calls().last(),
+        Some(&RunRecord::ObserveV5FixtureRelease)
+    );
+    assert!(!adapter.calls().iter().any(|call| {
+        matches!(
+            call,
+            RunRecord::InspectStageExistence
+                | RunRecord::InspectDestinationExistence
+                | RunRecord::AcquireApprovedStageParent
+                | RunRecord::CreateExclusiveStageNoFollow
+                | RunRecord::ReadValidatedSource
+                | RunRecord::WriteStage
+                | RunRecord::FstatStageFile
+                | RunRecord::ReadStaged
+                | RunRecord::HashStaged
+        )
+    }));
+}
+
+fn assert_v5_identity_mismatch(facts: V5FixtureFacts) {
+    let mut adapter = FakeAdapter::approved();
+    adapter.v5_fixture_facts = facts;
+
+    assert_eq!(
+        acquire_v5_validated_source(&mut adapter),
+        Err(V5ReleaseRefusal::FixedReleaseIdentityMismatch)
+    );
+    assert_eq!(
+        adapter.calls().last(),
+        Some(&RunRecord::ObserveV5FixtureRelease)
+    );
+    assert!(!adapter.calls().iter().any(|call| {
+        matches!(
+            call,
+            RunRecord::InspectStageExistence
+                | RunRecord::InspectDestinationExistence
+                | RunRecord::AcquireApprovedStageParent
+                | RunRecord::CreateExclusiveStageNoFollow
+                | RunRecord::ReadValidatedSource
+                | RunRecord::WriteStage
+                | RunRecord::FstatStageFile
+                | RunRecord::ReadStaged
+                | RunRecord::HashStaged
+        )
+    }));
+}
+
+#[test]
+fn v5_fixture_each_identity_field_mutation_refuses_before_any_staged_copy_or_hash() {
+    let approved = approved_v5_fixture_facts();
+    let mut cases = Vec::new();
+
+    let mut wrong_revision = approved.clone();
+    wrong_revision.release_revision = "wrong-revision";
+    cases.push(wrong_revision);
+    let mut wrong_sha256 = approved.clone();
+    wrong_sha256.artifact_sha256 = "wrong-sha256";
+    cases.push(wrong_sha256);
+    let mut wrong_size = approved.clone();
+    wrong_size.artifact_size += 1;
+    cases.push(wrong_size);
+    let mut wrong_authority = approved.clone();
+    wrong_authority.authority = "wrong-authority";
+    cases.push(wrong_authority);
+    let mut wrong_stage_id = approved.clone();
+    wrong_stage_id.stage_id = "wrong-stage-id";
+    cases.push(wrong_stage_id);
+    let mut nonsynthetic_source = approved;
+    nonsynthetic_source.byte_source = SyntheticByteSourceClassification::NotSyntheticFixture;
+    cases.push(nonsynthetic_source);
+
+    for facts in cases {
+        assert_v5_identity_mismatch(facts);
+    }
+}
+
+#[test]
+fn v5_fixture_wrong_reordered_missing_and_extra_inventory_refuse() {
+    let approved = approved_v5_fixture_facts();
+    let mut cases = Vec::new();
+
+    let mut wrong = approved.clone();
+    wrong.inventory[0] = V5InventoryEntry::Manifest;
+    cases.push(wrong);
+    let mut reordered = approved.clone();
+    reordered.inventory.swap(0, 1);
+    cases.push(reordered);
+    let mut missing = approved.clone();
+    missing.inventory.pop();
+    cases.push(missing);
+    let mut extra = approved;
+    extra.inventory.push(V5InventoryEntry::ReviewSource);
+    cases.push(extra);
+
+    for facts in cases {
+        assert_v5_identity_mismatch(facts);
+    }
+}
+
+#[test]
+fn v5_release_model_has_fixed_identity_and_no_caller_configurable_source() {
+    for required in [
+        "8b5bcf1d9278b61780be33dc2e4a9707859155da",
+        "7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b",
+        "411944",
+        "71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r",
+        "step3-refresh-v5",
+        "ReviewSource",
+        "PrepareExecutor",
+        "Manifest",
+        "SbpfArtifact",
+        "RevisionMarker",
+        "private policy constants",
+    ] {
+        assert!(
+            MODEL_SOURCE.contains(required),
+            "missing fixed v5 binding: {required}"
+        );
+    }
+    for forbidden in [
+        "V5ReleaseIdentity {",
+        "v5_release_identity:",
+        "v5_source_path:",
+        "V5FixtureObservation",
+        "FixedReleaseFixture",
+        "observe_v5_fixture_release",
+    ] {
+        assert!(
+            !MODEL_SOURCE.contains(forbidden),
+            "caller-configurable v5 identity surface: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn validated_source_public_shape_is_single_use_and_documents_synthetic_trust_boundary() {
     let source = MODEL_SOURCE;
     assert!(
@@ -682,6 +852,11 @@ fn validated_source_public_shape_is_single_use_and_documents_synthetic_trust_bou
             .contains("Public synthetic descriptor constants are only trusted adapter test tokens")
     );
     assert!(source.contains("capabilities."));
+    assert!(source.contains("source: ValidatedSource,"));
+    assert!(
+        !source.contains("impl From<V5ValidatedSource> for ValidatedSource"),
+        "V5ValidatedSource must not convert into the generic staged-seal proof"
+    );
 }
 
 #[test]

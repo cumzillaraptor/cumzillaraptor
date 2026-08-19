@@ -162,9 +162,15 @@ pub enum RunRecord {
     EntryFacts,
     RequireOpenat2,
     AcquireFixedRoot,
-    OpenBeneathNoSymlinks { component: RelativeComponent },
-    OpenSourceBeneathNoSymlinks { file: RelativeFile },
+    OpenBeneathNoSymlinks {
+        component: RelativeComponent,
+    },
+    OpenSourceBeneathNoSymlinks {
+        file: RelativeFile,
+    },
     FstatSourceFile,
+    /// Records synthetic-only inspection of the fixed Step 3 v5 fixture facts.
+    ObserveV5FixtureRelease,
     InspectStageExistence,
     InspectDestinationExistence,
     AcquireApprovedStageParent,
@@ -292,6 +298,115 @@ pub trait DescriptorAdapter {
 
     /// Records that local post-copy hashing is about to be performed in this synthetic model.
     fn record_staged_hash(&mut self);
+}
+
+// This extension is deliberately a fixed, repository-only Step 3 v5 model. These are release
+// identity literals, not location, authority, or byte-acquisition instructions.
+const V5_RELEASE_REVISION: &str = "8b5bcf1d9278b61780be33dc2e4a9707859155da";
+const V5_ARTIFACT_SHA256: &str = "7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b";
+#[allow(clippy::unreadable_literal)] // Keep the canonical approved decimal spelling visible.
+const V5_ARTIFACT_SIZE: usize = 411944;
+const V5_AUTHORITY: &str = "71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r";
+const V5_STAGE_IDENTITY: &str = "step3-refresh-v5";
+
+/// The five fixed labels that comprise the v5 synthetic inventory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum V5InventoryEntry {
+    ReviewSource,
+    PrepareExecutor,
+    Manifest,
+    SbpfArtifact,
+    RevisionMarker,
+}
+
+const V5_CLOSED_INVENTORY: [V5InventoryEntry; 5] = [
+    V5InventoryEntry::ReviewSource,
+    V5InventoryEntry::PrepareExecutor,
+    V5InventoryEntry::Manifest,
+    V5InventoryEntry::SbpfArtifact,
+    V5InventoryEntry::RevisionMarker,
+];
+
+/// Classification of the injected source for the synthetic v5 fixture.
+///
+/// This is not a source seal and it carries neither bytes nor a source location.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SyntheticByteSourceClassification {
+    SyntheticFixture,
+    NotSyntheticFixture,
+}
+
+/// Individually injected synthetic facts for the fixed Step 3 v5 fixture.
+///
+/// These facts contain no host bytes, paths, source seal, or authority material. The acquisition
+/// API compares every field to private policy constants and exposes only an opaque mismatch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct V5FixtureFacts {
+    pub release_revision: &'static str,
+    pub artifact_sha256: &'static str,
+    pub artifact_size: usize,
+    pub authority: &'static str,
+    pub stage_id: &'static str,
+    pub inventory: Vec<V5InventoryEntry>,
+    pub byte_source: SyntheticByteSourceClassification,
+}
+
+/// Synthetic extension for observing individual facts about the one fixed Step 3 v5 fixture.
+///
+/// It has no filesystem, process, network, or environment capability. Its byte-source
+/// classification is injected fixture evidence only, never a claim of actual host artifact
+/// acquisition.
+pub trait V5DescriptorAdapter: DescriptorAdapter {
+    fn observe_v5_fixture_facts(&mut self) -> V5FixtureFacts;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum V5ReleaseRefusal {
+    SourceRefusal(BootstrapRefusal),
+    FixedReleaseIdentityMismatch,
+}
+
+/// Opaque source proof bound to both the generic descriptor model and the fixed v5 fixture facts.
+/// It intentionally has no staging or transfer API: a later reviewed boundary must not reuse the
+/// generic synthetic-only fixed seal for the v5 artifact.
+#[derive(Debug, Eq, PartialEq)]
+pub struct V5ValidatedSource {
+    source: ValidatedSource,
+}
+
+impl V5ValidatedSource {
+    #[must_use]
+    pub const fn is_fixed_v5_fixture(&self) -> bool {
+        let _ = &self.source;
+        true
+    }
+}
+
+fn matches_fixed_v5_fixture(facts: &V5FixtureFacts) -> bool {
+    facts.release_revision == V5_RELEASE_REVISION
+        && facts.artifact_sha256 == V5_ARTIFACT_SHA256
+        && facts.artifact_size == V5_ARTIFACT_SIZE
+        && facts.authority == V5_AUTHORITY
+        && facts.stage_id == V5_STAGE_IDENTITY
+        && facts.inventory.as_slice() == V5_CLOSED_INVENTORY
+        && facts.byte_source == SyntheticByteSourceClassification::SyntheticFixture
+}
+
+/// Acquires the generic synthetic descriptor proof, then binds it to the fixed v5 fixture before
+/// any staged copy or post-copy hash equivalent. This validates injected synthetic facts only; it
+/// does not acquire, seal, or claim to have seen an actual host artifact.
+///
+/// # Errors
+///
+/// Returns the generic descriptor refusal or a non-echoing fixed-release mismatch.
+pub fn acquire_v5_validated_source<A: V5DescriptorAdapter>(
+    adapter: &mut A,
+) -> Result<V5ValidatedSource, V5ReleaseRefusal> {
+    let source = acquire_validated_source(adapter).map_err(V5ReleaseRefusal::SourceRefusal)?;
+    if !matches_fixed_v5_fixture(&adapter.observe_v5_fixture_facts()) {
+        return Err(V5ReleaseRefusal::FixedReleaseIdentityMismatch);
+    }
+    Ok(V5ValidatedSource { source })
 }
 
 #[derive(Debug, Eq, PartialEq)]
