@@ -10,7 +10,7 @@ const EXPECTED = Object.freeze({
 });
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REVIEW_SCRIPT = path.join(SCRIPT_DIR, 'review-devnet-deployment.mjs');
-const APPROVED_REVIEW_SCRIPT_SHA256 = 'eed10be9a2b5cb11dce9c5a217fad0419a6f096f5597b80671ed0d0e30b0bdae';
+const APPROVED_REVIEW_SCRIPT_SHA256 = '3bedf4c582185eeddd80c8854ffbdb26f04a2af9936a406918e0b86d57d2fab9';
 
 function safeErrorMessage(error, rpc) {
   const message = error instanceof Error ? error.message : String(error);
@@ -121,10 +121,10 @@ function parseReviewOutput(stdout) {
   }
 }
 
-function runReview(options, spawn = spawnSync) {
+function runReview(options) {
   const { stagingDir, staged } = stageTrustedReviewScript();
   try {
-    const { status, stdout } = spawn(process.execPath, [staged, ...buildReviewArgs(options).slice(1)], { cwd: SCRIPT_DIR, encoding: 'utf8' });
+    const { status, stdout } = spawnSync(process.execPath, [staged, ...buildReviewArgs(options).slice(1)], { cwd: SCRIPT_DIR, encoding: 'utf8' });
     if (status !== 0) throw new Error('Fresh unsigned deployment review failed; refusing to continue.');
     return parseReviewOutput(stdout);
   } finally {
@@ -164,4 +164,4 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   }
 }
 
-export { EXPECTED, parseArgs, buildReviewArgs, stageTrustedReviewScript, requireTrustedKeypair, stageTrustedKeypairs, runReview, execute };
+export { EXPECTED, parseArgs, buildReviewArgs, stageTrustedReviewScript, requireTrustedKeypair, stageTrustedKeypairs, parseReviewOutput, runReview, execute };

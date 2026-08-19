@@ -8,8 +8,10 @@ const EXPECTED = Object.freeze({
   cluster: 'devnet',
   rpc: 'https://api.devnet.solana.com',
   programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-  revision: 'cc8e6242e884e0f90a8ce0b9ff58f406240fc4a6',
-  artifactSha256: '0691c0eba729f07ab2be110112d0954d4051f198e5ef4d9e85f501fcd0126bf5',
+  revision: '8b5bcf1d9278b61780be33dc2e4a9707859155da',
+  artifactSha256: '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b',
+  artifactBytes: 411944,
+  upgradeAuthority: '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r',
 });
 
 function usageError(message) {
@@ -71,12 +73,16 @@ async function preflight(options) {
   expectText(revisionMarker, EXPECTED.revision, 'Artifact revision marker');
   const artifactHash = sha256(programBinary);
   if (artifactHash !== EXPECTED.artifactSha256) throw new Error(`SBPF artifact SHA-256 mismatch: expected ${EXPECTED.artifactSha256}, received ${artifactHash}.`);
+  const artifactBytes = statSync(programBinary).size;
+  if (artifactBytes !== EXPECTED.artifactBytes) throw new Error(`SBPF artifact byte-length mismatch: expected ${EXPECTED.artifactBytes}, received ${artifactBytes}.`);
 
   const program = publicKey(options.program_public_key, 'Program');
   const payer = publicKey(options.payer_public_key, 'Payer');
   const upgradeAuthority = publicKey(options.upgrade_authority_public_key, 'Upgrade authority');
   const expectedProgram = new PublicKey(EXPECTED.programId);
+  const expectedUpgradeAuthority = new PublicKey(EXPECTED.upgradeAuthority);
   if (!program.equals(expectedProgram)) throw new Error(`Program public key mismatch: expected ${expectedProgram.toBase58()}, received ${program.toBase58()}.`);
+  if (!upgradeAuthority.equals(expectedUpgradeAuthority)) throw new Error(`Upgrade authority public key mismatch: expected ${expectedUpgradeAuthority.toBase58()}, received ${upgradeAuthority.toBase58()}.`);
   if (payer.equals(upgradeAuthority)) throw new Error('Payer and upgrade authority must be separate public keys for pre-send review.');
 
   const connection = new Connection(options.rpc, 'confirmed');

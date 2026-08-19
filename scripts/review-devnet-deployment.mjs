@@ -20,9 +20,10 @@ const EXPECTED = Object.freeze({
   devnetGenesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
   rpc: 'https://api.devnet.solana.com',
   programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-  revision: '01ae96e2542717438112c3244394e0d484210f34',
-  artifactSha256: '2c88fe80ff4488e4034fdf2a724822a8413d0242b09176ed1710648eb110aa22',
-  artifactBytes: 397040,
+  revision: '8b5bcf1d9278b61780be33dc2e4a9707859155da',
+  artifactSha256: '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b',
+  artifactBytes: 411944,
+  upgradeAuthority: '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r',
   bufferChunkBytes: 900,
   programDataMetadataBytes: 45,
   programAccountBytes: 36,
@@ -143,7 +144,9 @@ async function review(options) {
   const payerKeypair = keypairFromPath(options.payer_keypair, 'Payer');
   const upgradeAuthorityKeypair = keypairFromPath(options.upgrade_authority_keypair, 'Upgrade authority');
   const expectedProgram = new PublicKey(EXPECTED.programId);
+  const expectedUpgradeAuthority = new PublicKey(EXPECTED.upgradeAuthority);
   if (!programKeypair.publicKey.equals(expectedProgram)) throw new Error(`Program keypair mismatch: expected ${expectedProgram.toBase58()}, received ${programKeypair.publicKey.toBase58()}.`);
+  if (!upgradeAuthorityKeypair.publicKey.equals(expectedUpgradeAuthority)) throw new Error(`Upgrade authority keypair mismatch: expected ${expectedUpgradeAuthority.toBase58()}, received ${upgradeAuthorityKeypair.publicKey.toBase58()}.`);
   if (payerKeypair.publicKey.equals(upgradeAuthorityKeypair.publicKey)) throw new Error('Payer and upgrade authority must be separate public keys.');
 
   const programBytes = readFileSync(programBinary);

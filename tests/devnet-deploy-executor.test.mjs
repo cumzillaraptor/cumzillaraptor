@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts', 'execute-devnet-deployment.mjs');
-const { EXPECTED, parseArgs, buildReviewArgs, stageTrustedReviewScript, stageTrustedKeypairs, runReview, execute } = await import(pathToFileURL(script).href);
+const { EXPECTED, parseArgs, buildReviewArgs, stageTrustedReviewScript, stageTrustedKeypairs, parseReviewOutput, execute } = await import(pathToFileURL(script).href);
 
 const required = [
   '--artifact-dir', '/tmp/artifact',
@@ -35,20 +35,13 @@ test('executor resolves review tool from its own directory, not caller cwd', () 
   assert.ok(path.isAbsolute(reviewScript));
 });
 
-test('trusted review script is owner-only, hash-pinned, and staged before execution', () => {
-  const { stagingDir, staged } = stageTrustedReviewScript();
-  try {
-    assert.match(staged, /\.review-stage-/);
-    assert.equal(path.basename(staged), 'review-devnet-deployment.mjs');
-  } finally {
-    chmodSync(stagingDir, 0o700);
-    rmSync(stagingDir, { recursive: true, force: true });
-  }
+test('production trusted-review staging rejects the insecure checkout reviewer', () => {
+  assert.throws(() => stageTrustedReviewScript(), /owner-only regular file/);
 });
 
 test('executor pins the current approved review script source', async () => {
   const source = await readFile(script, 'utf8');
-  assert.match(source, /APPROVED_REVIEW_SCRIPT_SHA256 = 'eed10be9a2b5cb11dce9c5a217fad0419a6f096f5597b80671ed0d0e30b0bdae'/);
+  assert.match(source, /APPROVED_REVIEW_SCRIPT_SHA256 = '3bedf4c582185eeddd80c8854ffbdb26f04a2af9936a406918e0b86d57d2fab9'/);
 });
 
 test('keypairs are copied to owner-only staging before review or CLI use', async () => {
@@ -76,24 +69,31 @@ test('keypairs are copied to owner-only staging before review or CLI use', async
   }
 });
 
-test('runReview returns exactly one validated reviewer object without forwarding stdout', () => {
+test('parseReviewOutput returns exactly one validated reviewer object', () => {
   const review = { mode: 'UNSIGNED REVIEW', artifact: { sha256: 'a'.repeat(64) } };
-  const result = runReview({ artifact_dir: '/tmp/artifact' }, () => ({
-    status: 0,
-    stdout: JSON.stringify(review),
-  }));
+  const result = parseReviewOutput(JSON.stringify(review));
   assert.deepEqual(result, review);
 });
 
-test('runReview rejects malformed or concatenated reviewer JSON', () => {
+test('parseReviewOutput rejects malformed or concatenated reviewer JSON', () => {
   assert.throws(
-    () => runReview({ artifact_dir: '/tmp/artifact' }, () => ({ status: 0, stdout: '{"review":true}\n{"second":true}' })),
+    () => parseReviewOutput('{"review":true}\n{"second":true}'),
     /single JSON object/,
   );
   assert.throws(
-    () => runReview({ artifact_dir: '/tmp/artifact' }, () => ({ status: 0, stdout: 'not json' })),
+    () => parseReviewOutput('not json'),
     /single JSON object/,
   );
+});
+
+test('runReview accepts no dependencies and directly stages the trusted reviewer', async () => {
+  const source = await readFile(script, 'utf8');
+  const runReviewBody = source.match(/function runReview\(options\) \{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(runReviewBody, 'runReview must accept only options');
+  assert.match(runReviewBody, /const \{ stagingDir, staged \} = stageTrustedReviewScript\(\);/);
+  assert.match(runReviewBody, /spawnSync\(process\.execPath/);
+  assert.match(runReviewBody, /removeStagingDirectory\(stagingDir\);/);
+  assert.doesNotMatch(runReviewBody, /dependenc|stageReviewScript|const spawn\s*=|const cleanup\s*=/);
 });
 
 test('execute emits one canonical JSON report preserving unsigned review data and completion guarantees', () => {
