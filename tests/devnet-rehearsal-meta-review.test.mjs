@@ -24,8 +24,8 @@ test('static review emits exact deterministic rehearsal account metas and an unq
   const output = review(args(inputs));
   assert.equal(output.mode, 'STATIC PRE-SEND DEVNET REHEARSAL REVIEW');
   assert.equal(output.guarantee, 'No transaction will be constructed, serialized, signed, or sent.');
-  assert.equal(output.artifact.revision, 'cc8e6242e884e0f90a8ce0b9ff58f406240fc4a6');
-  assert.equal(output.artifact.sha256, '0691c0eba729f07ab2be110112d0954d4051f198e5ef4d9e85f501fcd0126bf5');
+  assert.equal(output.artifact.revision, '8b5bcf1d9278b61780be33dc2e4a9707859155da');
+  assert.equal(output.artifact.sha256, '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b');
   assert.equal(output.feePolicy.maxNetworkFeeLamports, 10000000);
   assert.equal(output.feePolicy.maxPriorityFeeLamports, 0);
   assert.equal(output.feePolicy.estimatedNetworkFeeLamports, 'NOT_QUOTED_NO_RPC');
