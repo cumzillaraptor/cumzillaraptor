@@ -8,10 +8,10 @@ const root = path.resolve(import.meta.dirname, '..');
 const documentPath = path.join(root, 'docs', 'operations', 'devnet-deployment-approval-package-schema.md');
 const PREDECESSOR = '262dfb8d69105edd5b97efec0145203574440f99';
 const PROGRAM = 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY';
-const REVISION = '8b5bcf1d9278b61780be33dc2e4a9707859155da';
+const REVISION = '51d225d87ee36b6ac74e523cf8fdec86df35ea9b';
 const ARTIFACT_SHA256 = '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b';
 const AUTHORITY = '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r';
-const EXPECTED_SCHEMA_SHA256 = 'bc6c25058cb1ca356e5e3b8aa08eeba92d0d217b10032ac0bf1dc6408d21be2d';
+const EXPECTED_SCHEMA_SHA256 = '6754232acb3d75a8acd6657e11553a669a095f7314d94431c9d6e16953f24f58';
 
 function sha256(source) {
   return createHash('sha256').update(source).digest('hex');

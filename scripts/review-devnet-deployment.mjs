@@ -20,7 +20,7 @@ const EXPECTED = Object.freeze({
   devnetGenesisHash: 'EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG',
   rpc: 'https://api.devnet.solana.com',
   programId: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY',
-  revision: '8b5bcf1d9278b61780be33dc2e4a9707859155da',
+  revision: '51d225d87ee36b6ac74e523cf8fdec86df35ea9b',
   artifactSha256: '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b',
   artifactBytes: 411944,
   upgradeAuthority: '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r',

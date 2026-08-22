@@ -6,7 +6,7 @@ This is a repository-only schema for a later short-lived Devnet deployment appro
 
 - Published predecessor commit: `262dfb8d69105edd5b97efec0145203574440f99`
 - Program ID: `AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY`
-- SBPF revision: `8b5bcf1d9278b61780be33dc2e4a9707859155da`
+- SBPF revision: `51d225d87ee36b6ac74e523cf8fdec86df35ea9b`
 - SBPF SHA-256: `7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b`
 - SBPF byte length: `411944`
 - Upgrade authority: `71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r`

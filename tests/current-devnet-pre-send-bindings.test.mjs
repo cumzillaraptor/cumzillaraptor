@@ -9,7 +9,7 @@ const script = path.join(root, 'scripts', 'preflight-devnet-deploy.mjs');
 const { EXPECTED } = await import(pathToFileURL(script).href);
 
 const PROGRAM_ID = 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY';
-const REVISION = '8b5bcf1d9278b61780be33dc2e4a9707859155da';
+const REVISION = '51d225d87ee36b6ac74e523cf8fdec86df35ea9b';
 const SHA256 = '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b';
 const BYTES = 411944;
 const UPGRADE_AUTHORITY = '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r';

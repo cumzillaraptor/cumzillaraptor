@@ -8,7 +8,7 @@ import { keccak256 } from '@ethersproject/keccak256';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const E = Object.freeze({
-  program: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY', revision: '8b5bcf1d9278b61780be33dc2e4a9707859155da', sha256: '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b', bytes: 411944,
+  program: 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY', revision: '51d225d87ee36b6ac74e523cf8fdec86df35ea9b', sha256: '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b', bytes: 411944,
   authority: '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r', treasury: 'FiHKQhwq2ZKkD2ZbBf3mPYgyw2Y9QDzNYykpMGErovU6', core: 'CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d', claimId: 4, claimEthAddress: '0xb0e683427202d14366977b7183d228a508b5a19c',
   system: '11111111111111111111111111111111', instructions: 'Sysvar1nstructions1111111111111111111111111', secp: 'KeccakSecp256k11111111111111111111111111111', rent: 'SysvarRent111111111111111111111111111', clock: 'SysvarC1ock11111111111111111111111111111111', loader: 'BPFLoaderUpgradeab1e11111111111111111111111', chunk: 900,
   fixtures: Object.freeze({

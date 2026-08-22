@@ -33,7 +33,7 @@ test('deployment review refuses to run without the explicit review-only switch',
 });
 
 test('deployment review pins the current x86 CI SBPF artifact and upgrade authority identity', () => {
-  assert.equal(EXPECTED.revision, '8b5bcf1d9278b61780be33dc2e4a9707859155da');
+  assert.equal(EXPECTED.revision, '51d225d87ee36b6ac74e523cf8fdec86df35ea9b');
   assert.equal(EXPECTED.artifactSha256, '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b');
   assert.equal(EXPECTED.artifactBytes, 411944);
   assert.equal(EXPECTED.upgradeAuthority, '71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r');
@@ -67,7 +67,7 @@ test('live Devnet deployment review emits unsigned transaction details and does 
   assert.match(report.guarantee, /No transaction will be signed or sent/);
   assert.equal(report.rpc, 'https://api.devnet.solana.com');
   assert.doesNotMatch(result.stdout, /TOP_SECRET_MUST_NOT_APPEAR/);
-  assert.equal(report.artifact.revision, '8b5bcf1d9278b61780be33dc2e4a9707859155da');
+  assert.equal(report.artifact.revision, '51d225d87ee36b6ac74e523cf8fdec86df35ea9b');
   assert.equal(report.artifact.sha256, '7af3f53c050aa613fd0a68ca461d93b51620e941775188f258ba33eb5305b44b');
   assert.equal(report.artifact.bytes, 411944);
   assert.equal(report.identities.programId, 'AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY');
@@ -100,7 +100,7 @@ test('deployment review rejects an artifact hash mismatch before building a tran
   const temporaryDir = await mkdtemp(path.join(tmpdir(), 'cumz-deploy-review-'));
   try {
     await writeFile(path.join(temporaryDir, 'cumzillaraptors.so'), 'not the approved SBPF artifact');
-    await writeFile(path.join(temporaryDir, 'cumzillaraptors.build-revision'), '8b5bcf1d9278b61780be33dc2e4a9707859155da\n');
+    await writeFile(path.join(temporaryDir, 'cumzillaraptors.build-revision'), '51d225d87ee36b6ac74e523cf8fdec86df35ea9b\n');
     const result = spawnSync('node', [
       script, '--review-only', '--artifact-dir', temporaryDir,
       '--program-keypair', '/nonexistent/program.json',
