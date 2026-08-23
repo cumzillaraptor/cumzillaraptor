@@ -1,0 +1,121 @@
+name: Deploy Program to Devnet
+
+# Manual dispatch only. Signs with repository secrets inside the runner;
+# key material is written to temp files and deleted before the job ends.
+# Never echoes secret contents; prints public keys and tx signature only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CLUSTER: devnet
+  PROGRAM_ID: 2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2
+  EXPECTED_AUTHORITY: 71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r
+  EXPECTED_PAYER: 2yNePQ9iVnMJC1i2fErzZEjUyKXop3b8qpk2fLeoABmF
+
+jobs:
+  deploy-devnet:
+    name: Build and deploy to Devnet
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Solana CLI 1.18.26
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSfL \
+            "https://release.anza.xyz/v1.18.26/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            -o /tmp/solana.tar.bz2
+          tar -xjf /tmp/solana.tar.bz2 -C /tmp
+          echo "/tmp/solana-release/bin" >> "$GITHUB_PATH"
+          export PATH="/tmp/solana-release/bin:$PATH"
+          solana --version
+          cargo-build-sbf --version
+
+      - name: Build program with SBPF platform tools v1.54
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          mkdir -p "$HOME/.cache/solana"
+          test -d "$HOME/.cache/solana"
+          RUST_BACKTRACE=1 cargo-build-sbf \
+            --manifest-path programs/cumzillaraptors/Cargo.toml \
+            --tools-version v1.54 \
+            --force-tools-install \
+            --arch sbfv2 \
+            --verbose
+
+      - name: Verify binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          PROGRAM_SO=$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)
+          test -n "$PROGRAM_SO"
+          ls -lh "$PROGRAM_SO"
+          sha256sum "$PROGRAM_SO"
+
+      - name: Materialize keypairs from secrets (never printed)
+        shell: bash
+        env:
+          AUTHORITY_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
+          PAYER_JSON: ${{ secrets.CUMZ_DEVNET_PAYER_KEYPAIR_JSON }}
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          umask 077
+          printf '%s' "$AUTHORITY_JSON" > /tmp/authority.json
+          printf '%s' "$PAYER_JSON" > /tmp/payer.json
+          # Identity checks: fail closed if either secret derives to the wrong pubkey.
+          ACTUAL_AUTHORITY=$(solana-keygen pubkey /tmp/authority.json)
+          ACTUAL_PAYER=$(solana-keygen pubkey /tmp/payer.json)
+          echo "authority pubkey: $ACTUAL_AUTHORITY"
+          echo "payer pubkey:     $ACTUAL_PAYER"
+          test "$ACTUAL_AUTHORITY" = "$EXPECTED_AUTHORITY" || { echo "::error::authority secret mismatch"; exit 1; }
+          test "$ACTUAL_PAYER" = "$EXPECTED_PAYER" || { echo "::error::payer secret mismatch"; exit 1; }
+
+      - name: Confirm Devnet balances
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          solana config set --url "$CLUSTER" >/dev/null
+          solana balance /tmp/payer.json
+          solana balance /tmp/authority.json
+
+      - name: Deploy program (payer + upgrade authority from secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          PROGRAM_SO=$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)
+          test -n "$PROGRAM_SO"
+          solana program deploy "$PROGRAM_SO" \
+            --url "$CLUSTER" \
+            --keypair /tmp/payer.json \
+            --upgrade-authority /tmp/authority.json \
+            --program-id "$PROGRAM_ID" \
+            --with-compute-unit-price 10000 \
+            --max-sign-attempts 20 \
+            --output json | tee /tmp/deploy-result.json
+          SIGNATURE=$(/usr/bin/python3 -c 'import json;print(json.load(open("/tmp/deploy-result.json"))["signature"])')
+          echo "deploy signature: $SIGNATURE"
+
+      - name: Verify deployed authority
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          solana program show "$PROGRAM_ID" --url "$CLUSTER" || true
+
+      - name: Shred keypair temp files
+        if: ${{ always() }}
+        shell: bash
+        run: shred -u /tmp/authority.json /tmp/payer.json 2>/dev/null || rm -f /tmp/authority.json /tmp/payer.json
