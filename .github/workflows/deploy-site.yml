@@ -1,0 +1,55 @@
+name: Deploy Site to Cloudflare Pages
+
+# Publishes the static site (homepage, mint, claim) to the existing
+# Cloudflare Pages project on every push to main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'assets/**'
+      - 'config/site.js'
+      - 'cumzillaraptors/mint/**'
+      - 'cumzillaraptors/claim/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Assemble a clean publish directory containing only public site files.
+      # Nothing from programs/, scripts/, nft-data/, tests/, docs/ ships to the CDN.
+      - name: Assemble site bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist/assets dist/config dist/cumzillaraptors/mint/data dist/cumzillaraptors/claim/data
+          cp index.html dist/
+          cp assets/cumz.css assets/cumzillaraptor116.svg assets/cumzillaraptor-transparent.png assets/Chewy-Regular.ttf dist/assets/
+          cp config/site.js dist/config/
+
+          # mint page + its client + data
+          cp cumzillaraptors/mint/index.html cumzillaraptors/mint/pool-order.js dist/cumzillaraptors/mint/
+          cp cumzillaraptors/client/chain.js dist/cumzillaraptors/mint/
+          cp cumzillaraptors/client/data/metadata-slim.json dist/cumzillaraptors/mint/data/
+
+          # claim page + its client + data
+          cp cumzillaraptors/claim/index.html dist/cumzillaraptors/claim/
+          cp cumzillaraptors/client/chain.js dist/cumzillaraptors/claim/
+          cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/claims-by-eth.json dist/cumzillaraptors/claim/data/
+
+          # /mint/ and /claim/ convenience redirects
+          printf '/mint/ /cumzillaraptors/mint/ 200\n/claim/ /cumzillaraptors/claim/ 200\n' > dist/_redirects
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=cumzillaraptor --branch=main --commit-dirty=true
