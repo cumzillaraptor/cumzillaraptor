@@ -1,0 +1,47 @@
+name: Devnet Enable Sale
+
+# Manual dispatch. Sets sale state Setup -> Live with the authority secret.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_AUTHORITY: 71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r
+
+jobs:
+  enable-sale:
+    name: Set sale state Live
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Materialize authority keypair from secret
+        shell: bash
+        env:
+          AUTHORITY_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$AUTHORITY_JSON" > /tmp/authority.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { Keypair } from '@solana/web3.js';
+            const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync('/tmp/authority.json','utf8'))));
+            if (kp.publicKey.toBase58() !== '$EXPECTED_AUTHORITY') { console.error('authority mismatch'); process.exit(1); }
+            console.log('authority ok');
+          "
+
+      - name: Enable sale (Setup -> Live)
+        run: node scripts/execute-devnet-enable-sale.mjs /tmp/authority.json
+
+      - name: Shred keypair temp file
+        if: ${{ always() }}
+        shell: bash
+        run: shred -u /tmp/authority.json 2>/dev/null || rm -f /tmp/authority.json
