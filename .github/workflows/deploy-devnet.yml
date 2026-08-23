@@ -118,8 +118,7 @@ jobs:
             --url "$CLUSTER" \
             --keypair /tmp/payer.json \
             --upgrade-authority /tmp/authority.json \
-            --program-keypair /tmp/program.json \
-            --program-id "$PROGRAM_ID" \
+            --program-id /tmp/program.json \
             --with-compute-unit-price 10000 \
             --max-sign-attempts 20 \
             --output json | tee /tmp/deploy-result.json
