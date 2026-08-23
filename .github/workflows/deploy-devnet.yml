@@ -15,7 +15,7 @@ env:
   CLUSTER: devnet
   PROGRAM_ID: 2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2
   EXPECTED_AUTHORITY: 71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r
-  EXPECTED_PAYER: 2yNePQ9iVnMJC1i2fErzZEjUyKXop3b8qpk2fLeoABmF
+  EXPECTED_PAYER: 5EFxpuoUGpXr2fhAvHMeKceWaYS7yHyULeb4mfdfGps9
 
 jobs:
   deploy-devnet:
@@ -80,6 +80,18 @@ jobs:
           test "$ACTUAL_AUTHORITY" = "$EXPECTED_AUTHORITY" || { echo "::error::authority secret mismatch"; exit 1; }
           test "$ACTUAL_PAYER" = "$EXPECTED_PAYER" || { echo "::error::payer secret mismatch"; exit 1; }
 
+      - name: Fund payer via devnet airdrop (runner IP, best effort)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          solana config set --url "$CLUSTER" >/dev/null
+          for i in 1 2 3 4 5; do
+            solana airdrop 5 "$(solana-keygen pubkey /tmp/payer.json)" || true
+            sleep 5
+          done
+          solana balance /tmp/payer.json || true
+
       - name: Confirm Devnet balances
         shell: bash
         run: |
@@ -88,6 +100,8 @@ jobs:
           solana config set --url "$CLUSTER" >/dev/null
           solana balance /tmp/payer.json
           solana balance /tmp/authority.json
+          BAL=$(solana balance /tmp/payer.json | cut -d' ' -f1)
+          awk -v b="$BAL" 'BEGIN{exit !(b >= 4.1)}' || { echo "::error::payer balance below 4.1 SOL needed for deploy rent"; exit 1; }
 
       - name: Deploy program (payer + upgrade authority from secrets)
         shell: bash
