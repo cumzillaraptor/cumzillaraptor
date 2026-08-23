@@ -36,7 +36,8 @@ function ethAddressFor(privateKeyBytes) {
 // Produce a canonical 65-byte secp256k1 signature (r||s||v) over a 32-byte
 // digest. v is 27/28 (EIP-191), matching what the in-program secp256k1_recover
 // normalizes to recovery id 0/1.
-function signDigest(signingKey, digestHex) {
+function signDigest(privateKeyBytes, digestHex) {
+  const signingKey = new SigningKey(`0x${Buffer.from(privateKeyBytes).toString('hex')}`);
   const sig = signingKey.signDigest(digestHex);
   const r = Buffer.from(sig.r.slice(2).padStart(64, '0'), 'hex');
   const s = Buffer.from(sig.s.slice(2).padStart(64, '0'), 'hex');
