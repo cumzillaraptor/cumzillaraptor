@@ -1,0 +1,14 @@
+{
+  "network": "devnet",
+  "rpcUrl": "https://api.devnet.solana.com",
+  "programId": "AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY",
+  "mplCoreProgramId": "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+  "priceLamports": 1000000000,
+  "publicCount": 246,
+  "claimCount": 174,
+  "claimRoot": "0x8443ba0a33024e5edbbf59ecc82a30e27255c2774884d190fb1f0ae11b9ebdef",
+  "metadataRoot": "0x689ab71d32efff276df2a0e14f72ee9eb159da3508cfe9d337a9fcc3c2220211",
+  "claimDomain": "CUMZILLARAPTORS_CLAIM_V1",
+  "cluster": "devnet",
+  "expiryUnix": 2000000000
+}

@@ -3,154 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#202320">
-  <meta name="description" content="cumzillaraptor — 💦ing soon">
-  <title>cumzillaraptor — 💦ing soon</title>
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="cumzillaraptors — 420 Solana raptors. Public mint + Ethereum-holder claim.">
+  <title>cumzillaraptors 🦖💦</title>
   <link rel="icon" type="image/svg+xml" href="assets/cumzillaraptor116.svg">
+  <link rel="stylesheet" href="assets/cumz.css">
   <style>
-    @font-face {
-      font-family: "Chewy";
-      src: url("assets/Chewy-Regular.ttf") format("truetype");
-      font-style: normal;
-      font-weight: 400;
-      font-display: swap;
-    }
-
-    :root {
-      --green: #6dfe41;
-      --charcoal: #000000;
-      --panel: #0b0c0b;
-      --ink: #f4f6ef;
-      --muted: #aab1a7;
-      --line: rgba(109, 254, 65, .22);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { min-height: 100%; }
-
-    body {
-      margin: 0;
-      overflow-x: hidden;
-      color: var(--ink);
-      background: var(--charcoal);
-      font-family: "Chewy", system-ui, sans-serif;
-    }
-
-    button, a { -webkit-tap-highlight-color: transparent; }
-
-    .menu-button {
-      position: fixed;
-      top: clamp(20px, 3vw, 34px);
-      left: clamp(20px, 3vw, 34px);
-      z-index: 40;
-      width: 54px;
-      height: 54px;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      color: var(--green);
-      background: rgba(32, 35, 32, .86);
-      border: 1px solid var(--line);
-      border-radius: 50%;
-      cursor: pointer;
-      backdrop-filter: blur(8px);
-      transition: transform 180ms ease, background 180ms ease;
-    }
-
-    .menu-button:hover { background: #111411; transform: scale(1.04); }
-    .menu-button:focus-visible, .menu-link:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
-
-    .hamburger,
-    .hamburger::before,
-    .hamburger::after {
-      width: 22px;
-      height: 2px;
-      display: block;
-      background: var(--green);
-      box-shadow: 0 0 9px rgba(109, 254, 65, .3);
-      transition: transform 180ms ease, opacity 180ms ease;
-      transform-origin: center;
-    }
-
-    .hamburger { position: relative; }
-    .hamburger::before, .hamburger::after { content: ""; position: absolute; left: 0; top: 0; }
-    .hamburger::before { transform: translateY(-7px); }
-    .hamburger::after { transform: translateY(7px); }
-    .menu-button[aria-expanded="true"] .hamburger { background: transparent; box-shadow: none; }
-    .menu-button[aria-expanded="true"] .hamburger::before { transform: translateY(0) rotate(45deg); }
-    .menu-button[aria-expanded="true"] .hamburger::after { transform: translateY(0) rotate(-45deg); }
-
-    .menu-panel {
-      position: fixed;
-      inset: 0 auto 0 0;
-      z-index: 30;
-      width: min(440px, 92vw);
-      display: flex;
-      align-items: center;
-      padding: 105px clamp(26px, 5vw, 48px) 42px;
-      background: var(--panel);
-      border-right: 1px solid var(--line);
-      transform: translateX(-102%);
-      visibility: hidden;
-      transition: transform 420ms cubic-bezier(.16, 1, .3, 1), visibility 420ms;
-    }
-
-    .menu-panel[data-open="true"] { transform: translateX(0); visibility: visible; }
-    .menu-list { width: 100%; margin: 0; padding: 0; list-style: none; }
-    .menu-list li { border-top: 1px solid var(--line); }
-    .menu-list li:last-child { border-bottom: 1px solid var(--line); }
-
-    .menu-link {
-      position: relative;
-      min-height: 84px;
-      display: flex;
-      align-items: center;
-      padding: 18px 2px;
-      color: var(--green);
-      font-size: clamp(20px, 5vw, 29px);
-      font-weight: 400;
-      letter-spacing: .01em;
-      text-decoration: none;
-      transition: color 150ms ease, transform 150ms ease;
-    }
-
-    .menu-link[target="_blank"]::after { content: "↗"; margin-left: auto; color: var(--green); font-size: .7em; }
-    .menu-link:not(.disabled):hover { color: var(--ink); transform: translateX(7px); }
-
-    .menu-link.disabled {
-      color: #687066;
-      cursor: not-allowed;
-      user-select: none;
-    }
-
-    .scrim {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      border: 0;
-      background: rgba(0, 0, 0, .48);
-      opacity: 0;
-      visibility: hidden;
-      cursor: pointer;
-      transition: opacity 280ms ease, visibility 280ms;
-    }
-
-    .scrim[data-open="true"] { opacity: 1; visibility: visible; }
-
     main {
       min-height: 100svh;
       display: grid;
       place-items: center;
       padding: clamp(40px, 5vh, 64px) 22px clamp(32px, 5vh, 56px);
     }
-
-    .hero {
-      width: min(100%, 860px);
-      display: grid;
-      justify-items: center;
-      text-align: center;
-    }
-
+    .hero { width: min(100%, 860px); display: grid; justify-items: center; text-align: center; }
     .art-stage {
       position: relative;
       width: min(64vw, 490px);
@@ -159,115 +24,64 @@
       place-items: center;
       isolation: isolate;
     }
-
     .splash {
-      position: absolute;
-      z-index: -1;
-      inset: 5%;
-      opacity: 0;
-      will-change: transform, opacity;
-      backface-visibility: hidden;
+      position: absolute; z-index: -1; inset: 5%; opacity: 0;
+      will-change: transform, opacity; backface-visibility: hidden;
       filter: drop-shadow(0 0 38px rgba(109, 254, 65, .15));
       transform: scale(.45) rotate(-15deg);
       animation: splash-enter 920ms cubic-bezier(.16, 1, .3, 1) 500ms forwards;
     }
-
-    .splash svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-    }
-
+    .splash svg { display: block; width: 100%; height: 100%; overflow: visible; }
     .mascot-wrap {
-      width: 42%;
-      opacity: 0;
-      will-change: transform, opacity;
-      backface-visibility: hidden;
+      width: 42%; opacity: 0;
+      will-change: transform, opacity; backface-visibility: hidden;
       transform: translateY(40px) scale(.88);
       animation: mascot-enter 1000ms cubic-bezier(.16, 1, .3, 1) 500ms forwards;
     }
-
     .mascot {
-      display: block;
-      width: 100%;
-      height: auto;
-      will-change: transform;
-      backface-visibility: hidden;
+      display: block; width: 100%; height: auto;
+      will-change: transform; backface-visibility: hidden;
       filter: drop-shadow(0 28px 22px rgba(0, 0, 0, .26));
     }
-
     .caption {
-      position: relative;
-      z-index: 3;
+      position: relative; z-index: 3;
       margin: clamp(-8px, -0.5vh, 4px) 0 0;
-      opacity: 0;
-      color: var(--ink);
+      opacity: 0; color: var(--ink);
       font-family: "Chewy", system-ui, sans-serif;
       font-size: clamp(40px, 6.7vw, 72px);
-      font-weight: 400;
-      font-style: normal;
-      line-height: .95;
-      letter-spacing: -.055em;
-      text-shadow: 0 2px 0 rgba(0, 0, 0, .55);
+      font-weight: 400; line-height: .95; letter-spacing: -.055em;
       text-transform: lowercase;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, .55);
       animation: caption-enter 720ms cubic-bezier(.16, 1, .3, 1) 820ms forwards;
     }
-
-    .caption .date { color: var(--green); text-shadow: 0 2px 0 rgba(0, 0, 0, .72); }
-
     .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: clamp(10px, 2vw, 18px);
+      display: flex; flex-wrap: wrap; gap: clamp(10px, 2vw, 18px);
       justify-content: center;
-      margin: clamp(28px, 4vh, 44px) 0 0;
+      margin: clamp(24px, 3.4vh, 36px) 0 18px;
     }
-
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: clamp(10px, 1.2vw, 14px) clamp(22px, 3vw, 36px);
-      background: var(--green);
-      color: var(--charcoal);
-      font-family: "Chewy", system-ui, sans-serif;
-      font-size: clamp(16px, 2.2vw, 24px);
-      font-weight: 400;
-      line-height: 1;
-      text-decoration: none;
-      border-radius: 50px;
-      opacity: 0;
-      transition: transform 180ms ease, opacity 180ms ease;
-    }
-
-    .action-btn:nth-child(1) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1400ms forwards; }
-    .action-btn:nth-child(2) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1550ms forwards; }
-
-    .action-btn:hover { transform: scale(1.06); }
-    .action-btn:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+    .status-wrap { margin-top: 6px; display: grid; gap: 8px; justify-items: center; width: min(100%, 640px); }
 
     @keyframes splash-enter {
       0% { opacity: 0; transform: scale(.45) rotate(-15deg); }
       70% { opacity: 1; transform: scale(1.04) rotate(2deg); }
       100% { opacity: 1; transform: scale(1) rotate(0); }
     }
-
     @keyframes mascot-enter {
       0% { opacity: 0; transform: translateY(40px) scale(.88) rotate(-2deg); }
       65% { opacity: 1; transform: translateY(-7px) scale(1.02) rotate(.7deg); }
       100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
     }
-
     @keyframes caption-enter {
       0% { opacity: 0; transform: translateY(24px) scale(.96); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
     }
-
     @keyframes credit-enter {
       0% { opacity: 0; transform: translateY(12px); }
       100% { opacity: 1; transform: translateY(0); }
     }
+    .action-btn:nth-child(1) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1400ms forwards; opacity: 0; }
+    .action-btn:nth-child(2) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1550ms forwards; opacity: 0; }
+    .action-btn:nth-child(3) { animation: credit-enter 620ms cubic-bezier(.16, 1, .3, 1) 1700ms forwards; opacity: 0; }
 
     @media (max-width: 560px) {
       main { padding: 76px 16px 30px; }
@@ -276,14 +90,9 @@
       .mascot-wrap { width: 45%; }
       .caption { margin-top: 2px; font-size: clamp(37px, 11.5vw, 52px); }
     }
-
     @media (max-height: 700px) and (min-width: 561px) {
       .art-stage { width: min(65vh, 500px); }
       .caption { margin-top: 0; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-delay: 0ms !important; }
     }
   </style>
 </head>
@@ -294,8 +103,9 @@
 
   <nav class="menu-panel" id="site-menu" aria-label="Main navigation" data-open="false">
     <ul class="menu-list">
+      <li><a class="menu-link" href="/mint/">Mint 🎲</a></li>
+      <li><a class="menu-link" href="/claim/">Claim 🆓</a></li>
       <li><a class="menu-link" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">$CUM 💦</a></li>
-      <li><a class="menu-link" href="/cumzillaraptors/">cumzillaraptors 🦖</a></li>
       <li><span class="menu-link disabled" aria-disabled="true">cumzillaraptor live (18+) ▶️</span></li>
       <li><span class="menu-link disabled" aria-disabled="true">auction ⚡</span></li>
       <li><span class="menu-link disabled" aria-disabled="true">merch ☕️</span></li>
@@ -304,7 +114,7 @@
   <button class="scrim" type="button" aria-label="Close menu" tabindex="-1" data-open="false"></button>
 
   <main>
-    <section class="hero" aria-labelledby="launch-title">
+    <section class="hero" aria-labelledby="hero-title">
       <div class="art-stage">
         <div class="splash" aria-hidden="true">
           <svg viewBox="0 0 600 600" role="presentation">
@@ -318,20 +128,32 @@
           <img class="mascot" src="assets/cumzillaraptor116.svg" width="569" height="577" alt="Pixel-art cumzillaraptor">
         </div>
       </div>
-      <h1 class="caption" id="launch-title">💦ing <span class="date">soon</span></h1>
+      <h1 class="caption" id="hero-title">mint a <span style="color: var(--green); text-shadow: 0 2px 0 rgba(0,0,0,.72);">raptor</span> 🦖</h1>
+
       <div class="actions">
+        <a class="action-btn" id="btn-mint" href="/mint/">mint 🎲 · 1 sol</a>
+        <a class="action-btn" id="btn-claim" href="/claim/">claim 🆓 (eth holders)</a>
         <a class="action-btn" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">buy $CUM 💦</a>
-        <a class="action-btn" href="/cumzillaraptors/">buy a cumzillaraptor 🦖</a>
+      </div>
+
+      <div class="status-wrap">
+        <div class="status-bar" id="status-bar" role="status" aria-live="polite">
+          <span>minted <strong id="stat-minted">…</strong>/246</span>
+          <span>claimed <strong id="stat-claimed">…</strong>/174</span>
+          <span id="stat-state"></span>
+        </div>
+        <p class="status-note" id="status-note">devnet beta — no real-value purchase; test SOL only.</p>
       </div>
     </section>
   </main>
 
+  <script src="config/site.js"></script>
   <script>
+    // menu
     const menuButton = document.querySelector('.menu-button');
     const menu = document.querySelector('.menu-panel');
     const scrim = document.querySelector('.scrim');
     const firstLink = menu.querySelector('a');
-
     function setMenu(open) {
       menuButton.setAttribute('aria-expanded', String(open));
       menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
@@ -339,15 +161,57 @@
       scrim.dataset.open = String(open);
       scrim.tabIndex = open ? 0 : -1;
       document.body.style.overflow = open ? 'hidden' : '';
-      if (open) firstLink.focus();
-      else menuButton.focus();
+      if (open) firstLink.focus(); else menuButton.focus();
     }
-
     menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
     scrim.addEventListener('click', () => setMenu(false));
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') setMenu(false);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && menuButton.getAttribute('aria-expanded') === 'true') setMenu(false);
     });
+
+    // status bar — reads CollectionConfig PDA on-chain
+    const cfg = window.CUMZ_CONFIG;
+    const SALE_STATES = { 0: "setup", 1: "live", 2: "paused" }; // SaleState enum order per program state.rs
+
+    async function fetchConfigPda() {
+      const { Connection, PublicKey } = await import("https://esm.sh/@solana/web3.js@1.95.8");
+      const conn = new Connection(cfg.clusterApiUrl, "confirmed");
+      const programId = new PublicKey(cfg.programId);
+      const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], programId);
+      const info = await conn.getAccountInfo(configPda);
+      if (!info) return null;
+      // Anchor account layout after 8-byte discriminator:
+      // launch_authority(32) treasury(32) core_program(32) collection(32)
+      // allocation_hash(32) claim_root(32) metadata_root(32) cluster_tag_hash(32)
+      // sale_state(u8) public_minted(u16le) claims_minted(u16le) bump(u8)
+      const d = info.data;
+      return {
+        collection: new PublicKey(d.subarray(8+128, 8+160)).toBase58(),
+        saleState: d[8+256],
+        publicMinted: d.readUInt16LE(8+257),
+        claimsMinted: d.readUInt16LE(8+259),
+      };
+    }
+
+    (async () => {
+      const elMinted = document.getElementById('stat-minted');
+      const elClaimed = document.getElementById('stat-claimed');
+      const elState = document.getElementById('stat-state');
+      try {
+        const c = await fetchConfigPda();
+        if (!c) throw new Error("launch not initialized");
+        elMinted.textContent = c.publicMinted;
+        elClaimed.textContent = c.claimsMinted;
+        elState.innerHTML = 'sale: <strong>' + (SALE_STATES[c.saleState] ?? "unknown") + '</strong>';
+        if (cfg.collection === null && c.collection) cfg.collection = c.collection; // learn it live
+      } catch (err) {
+        elMinted.textContent = "—";
+        elClaimed.textContent = "—";
+        elState.textContent = "";
+        document.getElementById('status-note').textContent =
+          "devnet status unavailable — launch setup may not be complete yet.";
+      }
+    })();
   </script>
 </body>
 </html>
