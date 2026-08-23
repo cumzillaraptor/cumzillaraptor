@@ -13,7 +13,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CLUSTER: devnet
-  PROGRAM_ID: 2YTAvP54MuSd7uUGbG9LrWiXCYh5UNHyqvy6XqxCTda2
+  PROGRAM_ID: AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY
   EXPECTED_AUTHORITY: 71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r
   EXPECTED_PAYER: 5EFxpuoUGpXr2fhAvHMeKceWaYS7yHyULeb4mfdfGps9
 
@@ -66,19 +66,23 @@ jobs:
         env:
           AUTHORITY_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
           PAYER_JSON: ${{ secrets.CUMZ_DEVNET_PAYER_KEYPAIR_JSON }}
+          PROGRAM_JSON: ${{ secrets.CUMZ_DEVNET_PROGRAM_KEYPAIR_JSON }}
         run: |
           set -euo pipefail
           export PATH="/tmp/solana-release/bin:$PATH"
           umask 077
           printf '%s' "$AUTHORITY_JSON" > /tmp/authority.json
           printf '%s' "$PAYER_JSON" > /tmp/payer.json
+          printf '%s' "$PROGRAM_JSON" > /tmp/program.json
           # Identity checks: fail closed if either secret derives to the wrong pubkey.
           ACTUAL_AUTHORITY=$(solana-keygen pubkey /tmp/authority.json)
           ACTUAL_PAYER=$(solana-keygen pubkey /tmp/payer.json)
+          ACTUAL_PROGRAM=$(solana-keygen pubkey /tmp/program.json)
           echo "authority pubkey: $ACTUAL_AUTHORITY"
           echo "payer pubkey:     $ACTUAL_PAYER"
           test "$ACTUAL_AUTHORITY" = "$EXPECTED_AUTHORITY" || { echo "::error::authority secret mismatch"; exit 1; }
           test "$ACTUAL_PAYER" = "$EXPECTED_PAYER" || { echo "::error::payer secret mismatch"; exit 1; }
+          test "$ACTUAL_PROGRAM" = "$PROGRAM_ID" || { echo "::error::program secret mismatch"; exit 1; }
 
       - name: Fund payer via devnet airdrop (runner IP, best effort)
         shell: bash
@@ -114,6 +118,7 @@ jobs:
             --url "$CLUSTER" \
             --keypair /tmp/payer.json \
             --upgrade-authority /tmp/authority.json \
+            --program-keypair /tmp/program.json \
             --program-id "$PROGRAM_ID" \
             --with-compute-unit-price 10000 \
             --max-sign-attempts 20 \
@@ -132,4 +137,4 @@ jobs:
       - name: Shred keypair temp files
         if: ${{ always() }}
         shell: bash
-        run: shred -u /tmp/authority.json /tmp/payer.json 2>/dev/null || rm -f /tmp/authority.json /tmp/payer.json
+        run: shred -u /tmp/authority.json /tmp/payer.json /tmp/program.json 2>/dev/null || rm -f /tmp/authority.json /tmp/payer.json /tmp/program.json
