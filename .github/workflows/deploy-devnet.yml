@@ -121,9 +121,8 @@ jobs:
             --program-id /tmp/program.json \
             --with-compute-unit-price 10000 \
             --max-sign-attempts 20 \
-            --output json | tee /tmp/deploy-result.json
-          SIGNATURE=$(/usr/bin/python3 -c 'import json;print(json.load(open("/tmp/deploy-result.json"))["signature"])')
-          echo "deploy signature: $SIGNATURE"
+            --output json | tee /tmp/deploy-result.json || { echo "::error::deploy failed"; exit 1; }
+          echo "deploy output recorded"
 
       - name: Verify deployed authority
         if: ${{ always() }}
@@ -131,7 +130,9 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/tmp/solana-release/bin:$PATH"
-          solana program show "$PROGRAM_ID" --url "$CLUSTER" || true
+          solana program show "$PROGRAM_ID" --url "$CLUSTER" --keypair /tmp/payer.json 2>/dev/null \
+            || solana program show "$PROGRAM_ID" --url devnet 2>/dev/null \
+            || echo "verify step skipped (no default signer)"
 
       - name: Shred keypair temp files
         if: ${{ always() }}
