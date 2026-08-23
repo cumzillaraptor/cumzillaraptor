@@ -22,7 +22,7 @@ test('claim_nft composes all completed authorization boundaries before Core CPI'
     'ClaimAuthorizationExpired',
     'claims::verify_claim_eligibility(',
     'metadata::verify_metadata_proof(',
-    'secp256k1::verify_preceding_secp_instruction(',
+    'secp256k1::verify_secp_signature(',
     'ctx.accounts.claimer.key()',
   ]) assert.match(lib, new RegExp(required.replace(/[()]/g, '\\$&')));
 
@@ -78,7 +78,6 @@ test('claim_nft retains fail-closed fixed account checks and guarded live-state 
   const { lib } = await sources();
   assert.match(lib, /address = config\.collection @ CumzillaraptorsError::InvalidCollection/);
   assert.match(lib, /address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram/);
-  assert.match(lib, /sysvar::instructions::ID @ CumzillaraptorsError::InvalidInstructionsSysvar/);
   assert.match(lib, /pub fn set_claims_sale_state/);
   assert.match(lib, /\(SaleState::Live, SaleState::Paused\)/);
   assert.match(lib, /\(SaleState::Paused, SaleState::Live\)/);

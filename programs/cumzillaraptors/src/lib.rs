@@ -286,6 +286,7 @@ pub mod cumzillaraptors {
         name: String,
         uri: String,
         metadata_proof: Vec<[u8; 32]>,
+        signature: [u8; 65],
     ) -> Result<()> {
         require!(
             ctx.accounts.config.sale_state == SaleState::Live,
@@ -353,12 +354,8 @@ pub mod cumzillaraptors {
             nonce,
             expiry_unix,
         )?;
-        let preimage = secp256k1::eip191_preimage(&message)?;
-        secp256k1::verify_preceding_secp_instruction(
-            &ctx.accounts.instructions.to_account_info(),
-            &eth_address,
-            &preimage,
-        )?;
+        let message_hash = secp256k1::claim_message_hash(&message)?;
+        secp256k1::verify_secp_signature(&signature, &eth_address, &message_hash)?;
         require_keys_eq!(
             ctx.accounts.receipt.key(),
             expected_receipt,
@@ -508,7 +505,8 @@ pub struct MintNft<'info> {
     _claim_proof: Vec<[u8; 32]>,
     _name: String,
     _uri: String,
-    _metadata_proof: Vec<[u8; 32]>
+    _metadata_proof: Vec<[u8; 32]>,
+    _signature: [u8; 65]
 )]
 pub struct ClaimNft<'info> {
     #[account(mut, seeds = [b"config"], bump = config.bump)]
@@ -530,9 +528,6 @@ pub struct ClaimNft<'info> {
     /// CHECK: checked against the canonical mpl-core program ID.
     #[account(address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
     pub mpl_core_program: UncheckedAccount<'info>,
-    /// CHECK: Instructions sysvar is checked by the verifier.
-    #[account(address = anchor_lang::solana_program::sysvar::instructions::ID @ CumzillaraptorsError::InvalidInstructionsSysvar)]
-    pub instructions: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 

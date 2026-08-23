@@ -27,6 +27,9 @@ anchor-lang = { version = "0.32.1" }
 mpl-core = { version = "0.12.1", default-features = false, features = ["anchor-0-32"] }
 # Keep the allocation manifest protocol on Solana-compatible Keccak-256, not SHA-256.
 solana-keccak-hasher = { version = "3.1.0", features = ["sha3"] }
+# In-program secp256k1 recovery for the claim signature. Anchor 0.32's solana_program
+# facade does not re-export this, so depend on the split crate directly.
+solana-secp256k1-recover = "2.2.1"
 
 [profile.release]
 overflow-checks = true

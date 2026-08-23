@@ -92,6 +92,7 @@ function claimData(local, expiryUnix) {
     discriminator('claim_nft'), u16(local.claim.nftId), bytes32(`0x${local.claim.ethAddress.slice(2).padStart(64, '0')}`).subarray(12),
     bytes32(local.claim.nonceHex), u64(expiryUnix), vectorBytes32(local.claim.proof),
     string(local.metadata.name), string(local.metadata.uri), vectorBytes32(local.metadata.proof),
+    Buffer.from(local.signature.slice(2), 'hex'), // r‖s‖v 65-byte signature arg
   ]);
 }
 function mintData(nftId, metadata) {
@@ -167,20 +168,25 @@ test('local ephemeral fixture is explicitly opt-in and cannot be mistaken for co
   assert.throws(requireLocalEphemeralClaimRootGuard, new RegExp(LOCAL_EPHEMERAL_CLAIM_ROOT_ENV));
 });
 
-test('explicit local fixture creates an actual secp precompile instruction for only its runtime leaf', { skip: !enabled }, () => {
+test('explicit local fixture signs its runtime leaf with an in-program 65-byte signature', { skip: !enabled }, () => {
   const local = createLocalEphemeralClaimFixture({
     claimant: '8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg',
     expiryUnix: 2_000_000_000,
   });
-  const secp = local.buildSecpInstruction();
-  assert.equal(secp.programId.toBase58(), 'KeccakSecp256k11111111111111111111111111111');
-  assert.equal(secp.data[0], 1, 'canonical instruction contains exactly one secp signature');
+  assert.equal(local.signature.length, 132, 'signature is 65 bytes (r‖s‖v) as 0x hex');
+  const v = Number.parseInt(local.signature.slice(130), 16);
+  assert.ok(v === 27 || v === 28, `EIP-191 recovery id v is 27/28, got ${v}`);
   assert.equal(local.claimRoot, local.claim.leaf, 'single-leaf local tree has an empty proof');
   assert.deepEqual(local.claim.proof, []);
   assert.equal(local.metadataRoot, V1_CLAIM_FIXTURE.metadataRoot);
   assert.notEqual(local.claim.ethAddress, V1_CLAIM_FIXTURE.claim.ethAddress);
   assert.match(local.authorization.message, new RegExp(`eth_address: ${local.claim.ethAddress}`));
   assert.match(local.authorization.message, new RegExp(`nonce: ${local.claim.nonceHex}`));
+  assert.equal(
+    local.authorization.messageHash,
+    keccak256(local.authorization.preimage),
+    'message hash is keccak256 of the EIP-191 preimage',
+  );
 });
 
 test('x86 local validator: authentic secp claim uses an ephemeral local root and immutable production metadata root', { skip: !canRun }, async () => {
@@ -329,24 +335,23 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
         { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
         { pubkey: recipient.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
         { pubkey: accounts.asset, isSigner: false, isWritable: true }, { pubkey: accounts.receipt, isSigner: false, isWritable: true },
-        { pubkey: coreProgram, isSigner: false, isWritable: false }, { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: coreProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
       data: claimData(fixture, expiry),
     });
   };
-  // The authentic claim carries the full reviewed nine-element metadata proof and
-  // a two-element local claim proof. Its legacy encoding exceeds Solana's 1232-byte
-  // packet ceiling, so use a validator-created ALT plus a v0 transaction. The
-  // precompile remains instruction 0 and claim_nft remains instruction 1.
+  // The authentic claim embeds the 65-byte secp signature directly in claim_nft
+  // data and verifies it in-program over the 32-byte EIP-191 message hash. This
+  // drops the 343-byte preimage from the transaction, so the full 7/8-proof
+  // production claim fits the 1232-byte packet ceiling as a legacy transaction.
   const claimWeb3 = {
     AddressLookupTableProgram, PublicKey, Transaction, TransactionMessage, VersionedTransaction,
   };
   const claimLookupTable = await createAndActivateClaimLookupTable(connection, claimWeb3, authority, [
     config, registry, collection.publicKey,
     asset, receipt, replayAccounts.asset, replayAccounts.receipt, publicAccounts.asset, publicAccounts.receipt,
-    coreProgram,
-    SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram.programId,
+    coreProgram, SystemProgram.programId,
   ]);
   const submitClaim = (transaction, signers) => submitClaimV0(
     connection, claimWeb3, transaction, signers, claimLookupTable,
@@ -378,19 +383,22 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   const substitute = Keypair.generate();
   const substituteAirdrop = await connection.requestAirdrop(substitute.publicKey, 1_000_000_000);
   await connection.confirmTransaction(substituteAirdrop, 'confirmed');
-  await rejectWithoutStateChange('wrong secp signer', new Transaction().add(replayLocal.buildSecpInstruction(), claimIx()), [claimer]);
-  await rejectWithoutStateChange('non-adjacent secp instruction', new Transaction().add(
-    local.buildSecpInstruction(), SystemProgram.transfer({ fromPubkey: claimer.publicKey, toPubkey: authority.publicKey, lamports: 1 }), claimIx(),
-  ), [claimer]);
-  await rejectWithoutStateChange('recipient substitution', new Transaction().add(local.buildSecpInstruction(), claimIx(local, { recipient: substitute })), [substitute]);
-  await rejectWithoutStateChange('expired authorization', new Transaction().add(local.buildSecpInstruction(), claimIx(local, { expiry: 1 })), [claimer]);
+  // The signature is now embedded in claim_nft data and verified in-program. A
+  // signature from a different ETH key must fail the in-program recovery check.
+  const wrongSignerFixture = createLocalEphemeralClaimFixture({ claimant: claimer.publicKey.toBase58(), expiryUnix });
+  const wrongSigClaim = { ...local, signature: wrongSignerFixture.signature };
+  await rejectWithoutStateChange('wrong secp signer', new Transaction().add(claimIx(wrongSigClaim)), [claimer]);
+  const badRecoveryClaim = { ...local, signature: `0x${local.signature.slice(2, 130)}04` };
+  await rejectWithoutStateChange('malformed recovery id', new Transaction().add(claimIx(badRecoveryClaim)), [claimer]);
+  await rejectWithoutStateChange('recipient substitution', new Transaction().add(claimIx(local, { recipient: substitute })), [substitute]);
+  await rejectWithoutStateChange('expired authorization', new Transaction().add(claimIx(local, { expiry: 1 })), [claimer]);
 
   const badClaimProof = { ...local, claim: { ...local.claim, proof: [`0x${'00'.repeat(32)}`] } };
-  await rejectWithoutStateChange('invalid local claim proof', new Transaction().add(local.buildSecpInstruction(), claimIx(badClaimProof)), [claimer]);
+  await rejectWithoutStateChange('invalid local claim proof', new Transaction().add(claimIx(badClaimProof)), [claimer]);
   const badMetadata = { ...local, metadata: { ...local.metadata, proof: [...local.metadata.proof] } };
   badMetadata.metadata.proof[0] = `0x${Buffer.from(bytes32(badMetadata.metadata.proof[0]).map((byte, index) => index === 0 ? byte ^ 1 : byte)).toString('hex')}`;
-  await rejectWithoutStateChange('invalid immutable metadata proof', new Transaction().add(local.buildSecpInstruction(), claimIx(badMetadata)), [claimer]);
-  await rejectWithoutStateChange('public-pool ID', new Transaction().add(publicLocal.buildSecpInstruction(), claimIx(publicLocal)), [claimer], publicLocal);
+  await rejectWithoutStateChange('invalid immutable metadata proof', new Transaction().add(claimIx(badMetadata)), [claimer]);
+  await rejectWithoutStateChange('public-pool ID', new Transaction().add(claimIx(publicLocal)), [claimer], publicLocal);
 
   // A rent-exempt system account is a pre-existing receipt and must not be
   // overwritten. Modern validators reject a 1-lamport transfer because it
@@ -401,7 +409,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     toPubkey: replayAccounts.receipt,
     lamports: minimumSystemAccountRent,
   })), [authority]);
-  await rejectWithoutStateChange('pre-existing receipt', new Transaction().add(replayLocal.buildSecpInstruction(), claimIx(replayLocal)), [claimer], replayLocal);
+  await rejectWithoutStateChange('pre-existing receipt', new Transaction().add(claimIx(replayLocal)), [claimer], replayLocal);
 
   // Force the real CreateV1 CPI to fail after all pre-CPI validations. Keep the
   // claimant rent-exempt, but below the measured rent needed for Core AssetV1 +
@@ -416,7 +424,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
     toPubkey: authority.publicKey,
     lamports: claimerBalance - insufficientForCoreAndReceipt,
   })), [claimer]);
-  await assert.rejects(submitClaim(new Transaction().add(local.buildSecpInstruction(), claimIx()), [authority, claimer]));
+  await assert.rejects(submitClaim(new Transaction().add(claimIx()), [authority, claimer]));
   await assertNoDurableClaimState('failed real Core CreateV1 CPI');
   // Fund the claimant from the already-confirmed local authority instead of
   // relying on an RPC airdrop becoming visible after the deliberate failure.
@@ -444,9 +452,9 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   assert.equal(dustedAsset.lamports, dustLamports);
   const claimerLamportsBeforeSuccess = await connection.getBalance(claimer.publicKey);
 
-  // The precompile is instruction 0; claim_nft is instruction 1. This executes
-  // the production verifier's strict immediately-preceding-instruction path.
-  const success = await submitClaim(new Transaction().add(local.buildSecpInstruction(), claimIx()), [claimer]);
+  // claim_nft embeds its own signature and verifies it in-program over the
+  // 32-byte message hash. This executes the production verifier's recovery path.
+  const success = await submitClaim(new Transaction().add(claimIx()), [claimer]);
   assert.equal(success.message.version, 0, 'success claim is a v0 transaction using the local ALT');
   assert.ok(success.serializedLength <= 1232, 'full authentic proof transaction fits Solana packet size');
   const successSignature = success.signature;
@@ -514,7 +522,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
 
   // A second authentic authorization for the same allocation must not mutate the
   // already-created Core asset, the pre-existing receipt, bitmap, or counter.
-  await rejectWithoutStateChange('already allocated ID', new Transaction().add(replayLocal.buildSecpInstruction(), claimIx(replayLocal)), [claimer], replayLocal);
+  await rejectWithoutStateChange('already allocated ID', new Transaction().add(claimIx(replayLocal)), [claimer], replayLocal);
 
   // Exact harness limitation, deliberately not represented as false coverage: this
   // validator has no helper program and a PDA cannot sign a SystemProgram assign or

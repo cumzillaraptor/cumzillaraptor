@@ -680,6 +680,7 @@ dependencies = [
  "anchor-lang 0.32.1",
  "mpl-core",
  "solana-keccak-hasher 3.1.0",
+ "solana-secp256k1-recover 2.2.1",
 ]
 
 [[package]]

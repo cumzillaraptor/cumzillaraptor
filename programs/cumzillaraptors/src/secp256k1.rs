@@ -1,7 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::sysvar::instructions::{
-    load_current_index_checked, load_instruction_at_checked,
-};
 use solana_keccak_hasher::hashv;
 #[cfg(test)]
 use std::str::FromStr;
@@ -14,23 +11,6 @@ pub const MAX_CLUSTER_LEN: usize = 32;
 pub const NONCE_LEN: usize = 32;
 pub const ETH_ADDRESS_LEN: usize = 20;
 pub const SECP_SIGNATURE_LEN: usize = 65;
-const OFFSETS_LEN: usize = 11;
-const HEADER_LEN: usize = 1 + OFFSETS_LEN;
-const SECP256K1_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
-    4, 198, 252, 32, 240, 80, 204, 240, 85, 132, 215, 33, 28, 159, 140, 245, 158, 193, 71, 133,
-    187, 22, 106, 30, 40, 48, 232, 18, 32, 0, 0, 0,
-]);
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct SecpOffsets {
-    signature_offset: usize,
-    signature_instruction_index: u8,
-    eth_address_offset: usize,
-    eth_address_instruction_index: u8,
-    message_offset: usize,
-    message_size: usize,
-    message_instruction_index: u8,
-}
 
 fn require_canonical_cluster(cluster: &str) -> Result<()> {
     require!(
@@ -103,203 +83,112 @@ pub fn claim_message_hash(message: &str) -> Result<[u8; 32]> {
     Ok(hashv(&[&preimage]).to_bytes())
 }
 
-fn parse_offsets(data: &[u8]) -> Result<SecpOffsets> {
-    require!(
-        data.len() >= HEADER_LEN,
-        CumzillaraptorsError::MalformedSecpInstruction
-    );
-    require!(data[0] == 1, CumzillaraptorsError::MalformedSecpInstruction);
-    let read_u16 = |offset: usize| -> Result<usize> {
-        let bytes: [u8; 2] = data
-            .get(offset..offset + 2)
-            .ok_or(error!(CumzillaraptorsError::MalformedSecpInstruction))?
-            .try_into()
-            .map_err(|_| error!(CumzillaraptorsError::MalformedSecpInstruction))?;
-        Ok(u16::from_le_bytes(bytes) as usize)
-    };
-    Ok(SecpOffsets {
-        signature_offset: read_u16(1)?,
-        signature_instruction_index: *data
-            .get(3)
-            .ok_or(error!(CumzillaraptorsError::MalformedSecpInstruction))?,
-        eth_address_offset: read_u16(4)?,
-        eth_address_instruction_index: *data
-            .get(6)
-            .ok_or(error!(CumzillaraptorsError::MalformedSecpInstruction))?,
-        message_offset: read_u16(7)?,
-        message_size: read_u16(9)?,
-        message_instruction_index: *data
-            .get(11)
-            .ok_or(error!(CumzillaraptorsError::MalformedSecpInstruction))?,
-    })
-}
-
-fn checked_slice<'a>(data: &'a [u8], offset: usize, size: usize) -> Result<&'a [u8]> {
-    let end = offset
-        .checked_add(size)
-        .ok_or(error!(CumzillaraptorsError::MalformedSecpInstruction))?;
-    data.get(offset..end)
-        .ok_or(error!(CumzillaraptorsError::MalformedSecpInstruction))
-}
-
-/// Validates a canonical one-signature secp precompile instruction. All referenced bytes must be
-/// embedded in that same precompile instruction and point at its transaction instruction index.
-pub fn verify_secp_instruction_data(
-    data: &[u8],
-    secp_instruction_index: u8,
+/// Recovers the secp256k1 public key from the 65-byte signature (r‖s‖v) over the
+/// 32-byte message hash and asserts it derives the authorized ETH address. This
+/// replaces the old precompile-preceded design: the full EIP-191 preimage (up to
+/// ~440 bytes) is never placed on-chain, so a real 7/8-proof claim fits the
+/// 1232-byte transaction limit. The signature is supplied as claim_nft data and
+/// recovered in-program via the secp256k1_recover syscall.
+pub fn verify_secp_signature(
+    signature: &[u8; SECP_SIGNATURE_LEN],
     expected_eth_address: &[u8; ETH_ADDRESS_LEN],
-    expected_preimage: &[u8],
+    message_hash: &[u8; 32],
 ) -> Result<()> {
-    let offsets = parse_offsets(data)?;
+    // v is 27/28 for EIP-191 personal_sign; recover uses 0/1.
+    let recovery_id = match signature[64] {
+        27 | 28 => signature[64] - 27,
+        other => other,
+    };
+    let recovered_pubkey = solana_secp256k1_recover::secp256k1_recover(
+        message_hash,
+        recovery_id,
+        &signature[..64],
+    )
+    .map_err(|_| error!(CumzillaraptorsError::WrongSecpSigner))?;
+    let pubkey_bytes = recovered_pubkey.to_bytes();
+    // ETH address = last 20 bytes of keccak256(uncompressed pubkey x‖y).
+    let digest = hashv(&[&pubkey_bytes]).to_bytes();
+    let recovered_eth: [u8; ETH_ADDRESS_LEN] = digest[12..32]
+        .try_into()
+        .map_err(|_| error!(CumzillaraptorsError::WrongSecpSigner))?;
     require!(
-        offsets.signature_instruction_index == secp_instruction_index
-            && offsets.eth_address_instruction_index == secp_instruction_index
-            && offsets.message_instruction_index == secp_instruction_index,
-        CumzillaraptorsError::CrossInstructionSecpData
-    );
-    let signature = checked_slice(data, offsets.signature_offset, SECP_SIGNATURE_LEN)?;
-    require!(
-        signature[64] <= 3,
-        CumzillaraptorsError::MalformedSecpInstruction
-    );
-    let eth_address = checked_slice(data, offsets.eth_address_offset, ETH_ADDRESS_LEN)?;
-    require!(
-        eth_address == expected_eth_address,
+        recovered_eth == *expected_eth_address,
         CumzillaraptorsError::WrongSecpSigner
     );
-    let message = checked_slice(data, offsets.message_offset, offsets.message_size)?;
-    require!(
-        message == expected_preimage,
-        CumzillaraptorsError::WrongSecpMessage
-    );
     Ok(())
-}
-
-/// Loads only the immediately preceding transaction instruction and applies strict verification.
-pub fn verify_preceding_secp_instruction(
-    instructions_sysvar: &AccountInfo,
-    expected_eth_address: &[u8; ETH_ADDRESS_LEN],
-    expected_preimage: &[u8],
-) -> Result<()> {
-    let current_index = load_current_index_checked(instructions_sysvar)
-        .map_err(|_| error!(CumzillaraptorsError::InvalidInstructionsSysvar))?;
-    require!(
-        current_index > 0,
-        CumzillaraptorsError::MissingSecpInstruction
-    );
-    let secp_instruction =
-        load_instruction_at_checked(usize::from(current_index - 1), instructions_sysvar)
-            .map_err(|_| error!(CumzillaraptorsError::MissingSecpInstruction))?;
-    require_keys_eq!(
-        secp_instruction.program_id,
-        SECP256K1_PROGRAM_ID,
-        CumzillaraptorsError::InvalidSecpProgram
-    );
-    require!(
-        secp_instruction.accounts.is_empty(),
-        CumzillaraptorsError::MalformedSecpInstruction
-    );
-    let secp_instruction_index = u8::try_from(current_index - 1)
-        .map_err(|_| error!(CumzillaraptorsError::MalformedSecpInstruction))?;
-    verify_secp_instruction_data(
-        &secp_instruction.data,
-        secp_instruction_index,
-        expected_eth_address,
-        expected_preimage,
-    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ETH: [u8; 20] = [
-        0xb9, 0xb1, 0xd4, 0x25, 0x14, 0x16, 0x06, 0x6a, 0xff, 0x6c, 0x06, 0xe4, 0xab, 0x7a, 0x8e,
-        0xe4, 0xd2, 0x31, 0x2e, 0x29,
+    /// Committed production vector: ETH holder 0xb0e683... signs the claim for
+    /// NFT #4 to recipient 8eCKWEH... on devnet (message hash 0x2ce0e1...).
+    /// This is the exact authorization captured during the devnet rehearsal.
+    const ETH4: [u8; 20] = [
+        0xb0, 0xe6, 0x83, 0x42, 0x72, 0x02, 0xd1, 0x43, 0x66, 0x97, 0x7b, 0x71, 0x83, 0xd2, 0x28,
+        0xa5, 0x08, 0xb5, 0xa1, 0x9c,
     ];
-    const NONCE: [u8; 32] = [
-        0x9c, 0xb8, 0x97, 0xd3, 0x25, 0xed, 0xc9, 0xa7, 0x70, 0x17, 0x50, 0x2c, 0x75, 0xaf, 0xcc,
-        0xe6, 0x54, 0x1a, 0x51, 0x78, 0x40, 0x48, 0x35, 0x88, 0xdd, 0x4a, 0x21, 0x15, 0xcc, 0xa6,
-        0x4a, 0x3f,
+    const NONCE4: [u8; 32] = [
+        0x0c, 0x05, 0xb4, 0x8c, 0xa9, 0x16, 0x81, 0x6d, 0x5f, 0xeb, 0x03, 0x5d, 0x5e, 0x0b, 0x75,
+        0xd0, 0xc8, 0xc8, 0x6d, 0xf0, 0x23, 0x32, 0x37, 0xe9, 0xf6, 0xb0, 0x1a, 0x51, 0x8e, 0x70,
+        0x25, 0xc6,
+    ];
+    const SIG4: [u8; 65] = [
+        0x16, 0x71, 0x85, 0xbc, 0x59, 0x81, 0x08, 0x63, 0x99, 0xef, 0x6d, 0xdf, 0x15, 0xca, 0xf7,
+        0x6d, 0x3b, 0xf0, 0x49, 0x98, 0xac, 0x27, 0x8a, 0xd1, 0xd2, 0xcd, 0x47, 0xe0, 0x14, 0xdb,
+        0x6e, 0x72, 0x51, 0x3c, 0x1f, 0xf6, 0x24, 0x5e, 0xf1, 0x41, 0x86, 0xc7, 0x29, 0xec, 0x30,
+        0x1f, 0xb6, 0x06, 0x5e, 0x54, 0x72, 0x73, 0xf4, 0xae, 0x72, 0xf7, 0x04, 0x5d, 0x8b, 0x02,
+        0x67, 0x6a, 0xa1, 0x9d, 0x1c,
     ];
 
-    fn fixture_preimage() -> Vec<u8> {
+    fn claim4_message() -> String {
         let program = parse_pubkey("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
-        let recipient = parse_pubkey("8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg").unwrap();
-        eip191_preimage(
-            &build_claim_message("devnet", program, recipient, 1, ETH, NONCE, 2_000_000_000)
-                .unwrap(),
-        )
-        .unwrap()
-    }
-
-    fn encoded_instruction(preimage: &[u8]) -> Vec<u8> {
-        let signature_offset = HEADER_LEN;
-        let eth_offset = signature_offset + SECP_SIGNATURE_LEN;
-        let message_offset = eth_offset + ETH_ADDRESS_LEN;
-        let mut data = vec![0; message_offset + preimage.len()];
-        data[0] = 1;
-        data[1..3].copy_from_slice(&(signature_offset as u16).to_le_bytes());
-        data[3] = 0;
-        data[4..6].copy_from_slice(&(eth_offset as u16).to_le_bytes());
-        data[6] = 0;
-        data[7..9].copy_from_slice(&(message_offset as u16).to_le_bytes());
-        data[9..11].copy_from_slice(&(preimage.len() as u16).to_le_bytes());
-        data[11] = 0;
-        data[signature_offset + 64] = 1;
-        data[eth_offset..eth_offset + ETH_ADDRESS_LEN].copy_from_slice(&ETH);
-        data[message_offset..].copy_from_slice(preimage);
-        data
+        let recipient = parse_pubkey("8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d").unwrap();
+        build_claim_message("devnet", program, recipient, 4, ETH4, NONCE4, 1_787_526_746).unwrap()
     }
 
     #[test]
     fn v1_message_and_eip191_hash_match_committed_vector() {
-        let preimage = fixture_preimage();
-        let digest = hashv(&[&preimage]).to_bytes();
+        let message = claim4_message();
+        let digest = claim_message_hash(&message).unwrap();
+        // Committed by the devnet rehearsal (the ETH holder signed this exact hash).
         assert_eq!(
             encode_hex(&digest),
-            "47dc375605fc532da556baa3355a317d16fd1079eb6e5e2f85eb1d8acfdda8d2"
+            "2ce0e14b5b391043fef75b88f4f13564f11b69aa829f9357f6b880a33d1e971f"
         );
+        let preimage = eip191_preimage(&message).unwrap();
         assert!(std::str::from_utf8(&preimage)
             .unwrap()
             .starts_with("\x19Ethereum Signed Message:\n"));
     }
 
     #[test]
-    fn canonical_single_signature_layout_is_accepted() {
-        let preimage = fixture_preimage();
-        assert!(
-            verify_secp_instruction_data(&encoded_instruction(&preimage), 0, &ETH, &preimage)
-                .is_ok()
-        );
+    fn valid_production_signature_recovers_expected_eth_address() {
+        let message = claim4_message();
+        let digest = claim_message_hash(&message).unwrap();
+        assert!(verify_secp_signature(&SIG4, &ETH4, &digest).is_ok());
     }
 
     #[test]
-    fn parser_rejects_multi_signature_cross_instruction_bad_recovery_and_substitution() {
-        let preimage = fixture_preimage();
-        let valid = encoded_instruction(&preimage);
-        let mut multi = valid.clone();
-        multi[0] = 2;
-        assert!(verify_secp_instruction_data(&multi, 0, &ETH, &preimage).is_err());
-        let mut cross_instruction = valid.clone();
-        cross_instruction[3] = 1;
-        assert!(verify_secp_instruction_data(&cross_instruction, 0, &ETH, &preimage).is_err());
-        let mut bad_recovery = valid.clone();
-        bad_recovery[HEADER_LEN + 64] = 4;
-        assert!(verify_secp_instruction_data(&bad_recovery, 0, &ETH, &preimage).is_err());
-        let mut out_of_bounds = valid.clone();
-        out_of_bounds[7..9].copy_from_slice(&u16::MAX.to_le_bytes());
-        assert!(verify_secp_instruction_data(&out_of_bounds, 0, &ETH, &preimage).is_err());
-        let mut transaction_index_one = valid.clone();
-        transaction_index_one[3] = 1;
-        transaction_index_one[6] = 1;
-        transaction_index_one[11] = 1;
-        assert!(verify_secp_instruction_data(&transaction_index_one, 1, &ETH, &preimage).is_ok());
-        let mut wrong_signer = ETH;
+    fn rejects_wrong_signer_bad_recovery_and_malformed_signatures() {
+        let message = claim4_message();
+        let digest = claim_message_hash(&message).unwrap();
+
+        let mut wrong_signer = ETH4;
         wrong_signer[0] ^= 1;
-        assert!(verify_secp_instruction_data(&valid, 0, &wrong_signer, &preimage).is_err());
-        let mut wrong_message = preimage.clone();
-        *wrong_message.last_mut().unwrap() ^= 1;
-        assert!(verify_secp_instruction_data(&valid, 0, &ETH, &wrong_message).is_err());
+        assert!(verify_secp_signature(&SIG4, &wrong_signer, &digest).is_err());
+
+        let mut bad_recovery = SIG4;
+        bad_recovery[64] = 4;
+        assert!(verify_secp_signature(&bad_recovery, &ETH4, &digest).is_err());
+
+        let mut truncated_r = SIG4;
+        truncated_r[0] ^= 0xff;
+        assert!(verify_secp_signature(&truncated_r, &ETH4, &digest).is_err());
+
+        let mut wrong_hash = digest;
+        wrong_hash[0] ^= 1;
+        assert!(verify_secp_signature(&SIG4, &ETH4, &wrong_hash).is_err());
     }
 }

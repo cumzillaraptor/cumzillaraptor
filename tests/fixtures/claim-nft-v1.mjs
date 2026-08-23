@@ -58,6 +58,10 @@ export function claimAuthorizationFor(fixture, claimant, expiryUnix) {
       Buffer.from(`\x19Ethereum Signed Message:\n${Buffer.byteLength(message)}`),
       Buffer.from(message),
     ]),
+    messageHash: keccak256(Buffer.concat([
+      Buffer.from(`\x19Ethereum Signed Message:\n${Buffer.byteLength(message)}`),
+      Buffer.from(message),
+    ])),
   };
 }
 

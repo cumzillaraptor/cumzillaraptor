@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import { keccak256 } from '@ethersproject/keccak256';
 import { SigningKey } from '@ethersproject/signing-key';
-import { PublicKey, Secp256k1Program } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 
 import { V1_CLAIM_FIXTURE, claimAuthorizationFor, claimLeaf } from './claim-nft-v1.mjs';
 
@@ -27,7 +27,21 @@ function privateKey() {
 
 function ethAddressFor(privateKeyBytes) {
   const publicKey = new SigningKey(`0x${Buffer.from(privateKeyBytes).toString('hex')}`).publicKey;
-  return Secp256k1Program.publicKeyToEthAddress(Buffer.from(publicKey.slice(4), 'hex'));
+  // SigningKey.publicKey is an uncompressed 65-byte hex (0x04||X||Y); the ETH
+  // address is keccak256(X||Y) truncated to the last 20 bytes.
+  const xy = Buffer.from(publicKey.slice(4), 'hex');
+  return `0x${keccak256(xy).slice(-40)}`;
+}
+
+// Produce a canonical 65-byte secp256k1 signature (r||s||v) over a 32-byte
+// digest. v is 27/28 (EIP-191), matching what the in-program secp256k1_recover
+// normalizes to recovery id 0/1.
+function signDigest(signingKey, digestHex) {
+  const sig = signingKey.signDigest(digestHex);
+  const r = Buffer.from(sig.r.slice(2).padStart(64, '0'), 'hex');
+  const s = Buffer.from(sig.s.slice(2).padStart(64, '0'), 'hex');
+  const v = 27 + sig.recoveryParam;
+  return `0x${Buffer.concat([r, s, Buffer.from([v])]).toString('hex')}`;
 }
 
 export function requireLocalEphemeralClaimRootGuard() {
@@ -42,7 +56,7 @@ export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId =
   const ethAddress = ethAddressFor(signingKey);
   const claim = {
     nftId,
-    ethAddress: `0x${ethAddress.toString('hex')}`,
+    ethAddress,
     // A local-only root is not a production artifact; use fresh entropy for the
     // leaf nonce too, so no reviewed claimant authorization is represented.
     nonceHex: `0x${randomBytes(32).toString('hex')}`,
@@ -52,6 +66,10 @@ export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId =
     cluster: V1_CLAIM_FIXTURE.cluster,
     claim,
   });
+  const authorization = claimAuthorizationFor({
+    ...V1_CLAIM_FIXTURE,
+    claim,
+  }, claimant, expiryUnix);
   const local = {
     kind: 'LOCAL_EPHEMERAL_TEST_ROOT_ONLY',
     programId: V1_CLAIM_FIXTURE.programId,
@@ -62,23 +80,15 @@ export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId =
     // Metadata must remain the immutable reviewed V1 metadata commitment.
     metadataRoot: V1_CLAIM_FIXTURE.metadataRoot,
     metadata: V1_CLAIM_FIXTURE.metadata,
-    authorization: claimAuthorizationFor({
-      programId: V1_CLAIM_FIXTURE.programId,
-      cluster: V1_CLAIM_FIXTURE.cluster,
-      claim,
-    }, claimant, expiryUnix),
+    authorization,
   };
   return {
     ...local,
-    buildSecpInstruction() {
-      return Secp256k1Program.createInstructionWithPrivateKey({
-        privateKey: signingKey,
-        // Resolve the fixture at call time so the test signs the exact local
-        // recipient/nft/ETH/nonce/expiry authorization it submits.
-        message: this.authorization.preimage,
-        instructionIndex: 0,
-      });
-    },
+    // The in-program claim verifier recovers the signer from this 65-byte
+    // signature over the EIP-191 message hash (keccak of the preimage).
+    signature: signDigest(signingKey, authorization.messageHash),
+    // Retained for compatibility with assertions that inspect the fixture shape.
+    signingKeyPublicEthAddress: ethAddress,
   };
 }
 
