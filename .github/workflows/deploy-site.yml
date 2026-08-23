@@ -44,12 +44,14 @@ jobs:
           cp cumzillaraptors/client/chain.js dist/cumzillaraptors/claim/
           cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/claims-by-eth.json dist/cumzillaraptors/claim/data/
 
-          # /mint/ and /claim/ convenience redirects
-          printf '/mint/ /cumzillaraptors/mint/ 200\n/claim/ /cumzillaraptors/claim/ 200\n' > dist/_redirects
+          # /mint/ and /claim/ convenience paths (Workers static assets: no _redirects support)
+          mkdir -p dist/mint dist/claim
+          cp dist/cumzillaraptors/mint/index.html dist/mint/index.html
+          cp dist/cumzillaraptors/claim/index.html dist/claim/index.html
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Worker (static assets)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=cumzillaraptor --branch=main --commit-dirty=true
+          command: deploy

@@ -1,0 +1,6 @@
+# Cloudflare Worker (static assets) config for cumzillaraptor.com
+name = "cumzillaraptor"
+compatibility_date = "2026-08-01"
+
+[assets]
+directory = "./dist"
