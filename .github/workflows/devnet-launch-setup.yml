@@ -1,0 +1,61 @@
+name: Devnet Launch Setup
+
+# Manual dispatch. Signs initialize_launch, initialize_allocation_registry, and
+# setup_collection with the launch authority secret inside the runner.
+# Key material never printed; temp keypair shredded.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CLUSTER: devnet
+  PROGRAM_ID: AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY
+  EXPECTED_AUTHORITY: 71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r
+
+jobs:
+  launch-setup:
+    name: Initialize config, registry, collection
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Materialize authority keypair from secret
+        shell: bash
+        env:
+          AUTHORITY_JSON: ${{ secrets.CUMZ_DEVNET_LAUNCH_AUTHORITY_KEYPAIR_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$AUTHORITY_JSON" > /tmp/authority.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { Keypair } from '@solana/web3.js';
+            const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync('/tmp/authority.json','utf8'))));
+            const expected = '$EXPECTED_AUTHORITY';
+            if (kp.publicKey.toBase58() !== expected) { console.error('authority mismatch'); process.exit(1); }
+            console.log('authority ok:', kp.publicKey.toBase58());
+          "
+
+      - name: Run devnet launch setup (initialize + registry + collection)
+        env:
+          NODE_OPTIONS: '--max-old-space-size=3000'
+        run: |
+          set -euo pipefail
+          node scripts/execute-devnet-launch-setup.mjs /tmp/authority.json
+
+      - name: Shred keypair temp file
+        if: ${{ always() }}
+        shell: bash
+        run: shred -u /tmp/authority.json 2>/dev/null || rm -f /tmp/authority.json
