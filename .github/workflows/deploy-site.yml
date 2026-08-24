@@ -29,25 +29,13 @@ jobs:
       - name: Assemble site bundle
         run: |
           set -euo pipefail
-          mkdir -p dist/assets dist/config dist/cumzillaraptors/mint/data dist/cumzillaraptors/claim/data
+          mkdir -p dist/assets dist/config dist/mint dist/claim
           cp index.html dist/
           cp assets/cumz.css assets/cumzillaraptor116.svg assets/cumzillaraptor-transparent.png assets/Chewy-Regular.ttf dist/assets/
           cp config/site.js dist/config/
-
-          # mint page + its client + data
-          cp cumzillaraptors/mint/index.html cumzillaraptors/mint/pool-order.js dist/cumzillaraptors/mint/
-          cp cumzillaraptors/client/chain.js dist/cumzillaraptors/mint/
-          cp cumzillaraptors/client/data/metadata-slim.json dist/cumzillaraptors/mint/data/
-
-          # claim page + its client + data
-          cp cumzillaraptors/claim/index.html dist/cumzillaraptors/claim/
-          cp cumzillaraptors/client/chain.js dist/cumzillaraptors/claim/
-          cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/claims-by-eth.json dist/cumzillaraptors/claim/data/
-
-          # /mint/ and /claim/ convenience paths (Workers static assets: no _redirects support)
-          mkdir -p dist/mint dist/claim
-          cp dist/cumzillaraptors/mint/index.html dist/mint/index.html
-          cp dist/cumzillaraptors/claim/index.html dist/claim/index.html
+          # /mint/ and /claim/ placeholders until the fresh pages land (subdomains kept)
+          printf '<!DOCTYPE html><html><head><meta charset="utf-8"><title>cumzillaraptors — mint</title></head><body style="background:#000;color:#6dfe41;font-family:sans-serif;text-align:center;padding-top:40vh"><h1>mint — coming soon</h1></body></html>' > dist/mint/index.html
+          printf '<!DOCTYPE html><html><head><meta charset="utf-8"><title>cumzillaraptors — claim</title></head><body style="background:#000;color:#6dfe41;font-family:sans-serif;text-align:center;padding-top:40vh"><h1>claim — coming soon</h1></body></html>' > dist/claim/index.html
 
       - name: Deploy to Cloudflare Worker (static assets)
         uses: cloudflare/wrangler-action@v3
