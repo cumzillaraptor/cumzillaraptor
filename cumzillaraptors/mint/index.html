@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="Mint a cumzillaraptor — 246 public raptors at 1 devnet SOL each.">
+  <title>mint — cumzillaraptors</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/cumzillaraptor116.svg">
+  <link rel="stylesheet" href="/assets/cumz.css">
+  <style>
+    main {
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: clamp(40px, 6vh, 72px) 22px;
+    }
+    .wrap { width: min(100%, 560px); display: grid; justify-items: center; text-align: center; }
+    h1 {
+      margin: 0 0 4px;
+      color: var(--green);
+      font-size: clamp(38px, 7vw, 60px);
+      font-weight: 400;
+      line-height: .95;
+      letter-spacing: -.04em;
+      text-transform: lowercase;
+      text-shadow: 0 2px 0 rgba(0,0,0,.55);
+    }
+    .tagline { color: var(--muted); font-size: clamp(15px, 2.2vw, 19px); margin: 0 0 22px; }
+    .panel { width: 100%; text-align: left; display: grid; gap: 12px; font-family: system-ui, sans-serif; }
+    .kv { display: flex; justify-content: space-between; gap: 14px; font-size: 13.5px; }
+    .kv span { color: var(--muted); white-space: nowrap; }
+    .kv strong { color: var(--ink); font-weight: 500; word-break: break-all; text-align: right; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; justify-content: center; }
+    .msg { min-height: 22px; font-size: 14px; text-align: center; word-break: break-all; }
+    .msg.ok { color: var(--green); }
+    .msg.err { color: #ff7a7a; }
+    .fineprint { color: var(--muted); font-size: 12px; max-width: 420px; line-height: 1.55; margin-top: 10px; }
+    a.explorer { color: var(--green); }
+  </style>
+</head>
+<body>
+  <button class="menu-button" aria-label="Open menu" aria-expanded="false"><span class="hamburger"></span></button>
+  <nav class="menu-panel" data-open="false">
+    <ul class="menu-list">
+      <li><a class="menu-link" href="/">home</a></li>
+      <li><a class="menu-link" href="/mint/" aria-current="page">mint</a></li>
+      <li><a class="menu-link" href="/claim/">claim</a></li>
+    </ul>
+  </nav>
+  <button class="scrim" tabindex="-1"></button>
+
+  <main>
+    <div class="wrap">
+      <h1>mint</h1>
+      <p class="tagline">246 public raptors · 1 SOL each</p>
+      <div class="beta-banner">devnet beta — test SOL only, no real-value purchase</div>
+
+      <section class="panel panel-box">
+        <div class="status-bar" id="stat-bar" role="status" aria-live="polite">loading on-chain status…</div>
+        <div class="panel" style="margin:14px 0 0;">
+          <div class="kv"><span>raptor</span><strong id="v-nft">—</strong></div>
+          <div class="kv"><span>collection</span><strong id="v-collection">—</strong></div>
+          <div class="kv"><span>treasury</span><strong id="v-treasury">—</strong></div>
+          <div class="kv"><span>price</span><strong>1 SOL</strong></div>
+          <div class="kv"><span>wallet</span><strong id="v-wallet">not connected</strong></div>
+        </div>
+        <div class="actions">
+          <button class="action-btn" id="btn-connect">connect wallet</button>
+          <button class="action-btn" id="btn-mint" aria-disabled="true">mint — 1 sol</button>
+        </div>
+        <p class="msg" id="mint-msg" aria-live="polite"></p>
+      </section>
+
+      <p class="fineprint">minting picks the lowest unallocated public raptor from the reviewed pool order and pays exactly 1 devnet SOL to the immutable treasury. the Core asset is created in the same atomic transaction.</p>
+    </div>
+  </main>
+
+  <script src="/config/site.js"></script>
+  <script type="module">
+    import { Connection, PublicKey, Transaction } from "https://esm.sh/@solana/web3.js@1.95.8";
+    import {
+      fetchLaunchState, fetchAllocatedIds, getConfigPda, getAllocationPda,
+      getAssetPda, buildMintInstruction,
+    } from "/cumzillaraptors/mint/chain.js";
+
+    const cfg = window.CUMZ_CONFIG;
+    if (cfg.network !== "devnet") throw new Error("this build targets devnet only");
+    const PROGRAM_ID = new PublicKey(cfg.programId);
+    const MPL_CORE = new PublicKey(cfg.mplCoreProgramId);
+    const TREASURY = new PublicKey(cfg.treasury);
+
+    const $ = (id) => document.getElementById(id);
+    const conn = new Connection(cfg.rpcUrl, "confirmed");
+
+    let provider = null, walletPubkey = null, launch = null, poolOrder = null;
+
+    // ---- menu ----
+    const menuButton = document.querySelector('.menu-button'), menu = document.querySelector('.menu-panel'), scrim = document.querySelector('.scrim');
+    function setMenu(open) {
+      menuButton.setAttribute('aria-expanded', String(open));
+      menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      menu.dataset.open = String(open);
+      scrim.dataset.open = String(open);
+      scrim.tabIndex = open ? 0 : -1;
+      document.body.style.overflow = open ? 'hidden' : '';
+    }
+    menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
+    scrim.addEventListener('click', () => setMenu(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+    // ---- status ----
+    async function refreshStatus() {
+      try {
+        launch = await fetchLaunchState(cfg.rpcUrl, cfg.programId);
+        if (!launch) throw new Error('not initialized');
+        $('stat-bar').innerHTML =
+          'sale: <strong>' + launch.saleState + '</strong>' +
+          ' · minted: <strong>' + launch.publicMinted + '/' + cfg.publicCount + '</strong>' +
+          ' · claimed: <strong>' + launch.claimsMinted + '/' + cfg.claimCount + '</strong>';
+        $('v-collection').textContent = launch.collection;
+        $('v-treasury').textContent = short(launch.treasury);
+        if (!launch.isLive) $('stat-bar').innerHTML += ' · minting is not live';
+      } catch (e) {
+        $('stat-bar').textContent = 'devnet status unavailable — launch setup may be incomplete.';
+      }
+      updateButtons();
+    }
+
+    const short = (s) => s.length > 18 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
+    function setMsg(text, cls) { const el = $('mint-msg'); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
+
+    function updateButtons() {
+      const ready = !!(provider && walletPubkey && launch && launch.isLive && launch.publicMinted < cfg.publicCount);
+      $('btn-mint').setAttribute('aria-disabled', String(!ready));
+    }
+
+    // ---- wallet ----
+    function getProvider() {
+      const w = window;
+      if (w.phantom?.solana?.isPhantom) return w.phantom.solana;
+      if (w.solflare?.isSolflare) return w.solflare;
+      return null;
+    }
+    $('btn-connect').addEventListener('click', async () => {
+      provider = getProvider();
+      if (!provider) { setMsg('no Phantom or Solflare wallet found — install one and reload.', 'err'); return; }
+      try {
+        const res = await provider.connect();
+        walletPubkey = new PublicKey(res.publicKey ?? provider.publicKey);
+        $('btn-connect').textContent = 'connected';
+        updateButtons();
+        // preview next raptor once connected
+        await previewNext();
+      } catch (e) {
+        setMsg('wallet connect rejected or blocked.', 'err');
+      }
+    });
+
+    // ---- pool pick (lowest unallocated id in published order) ----
+    async function pickNextNftId() {
+      if (!poolOrder) {
+        poolOrder = await (await fetch('/cumzillaraptors/mint/data/pool-order.json')).json();
+        if (!Array.isArray(poolOrder) || poolOrder.length !== cfg.publicCount) {
+          throw new Error('pool order file failed validation');
+        }
+      }
+      const allocated = await fetchAllocatedIds(cfg.rpcUrl, cfg.programId);
+      for (const id of poolOrder) if (!allocated.has(id)) return id;
+      throw new Error('all public raptors are minted!');
+    }
+    async function previewNext() {
+      try {
+        const id = await pickNextNftId();
+        $('v-nft').textContent = 'cumzillaraptor #' + id;
+      } catch (e) { $('v-nft').textContent = e.message; }
+    }
+
+    // ---- mint ----
+    $('btn-mint').addEventListener('click', async () => {
+      if ($('btn-mint').getAttribute('aria-disabled') === 'true') return;
+      setMsg('');
+      try {
+        setMsg('picking your raptor from the pool…');
+        const nftId = await pickNextNftId();
+        const metaAll = await (await fetch('/cumzillaraptors/mint/data/metadata-slim.json')).json();
+        const meta = metaAll[String(nftId)];
+        if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + nftId);
+        const name = 'cumzillaraptor #' + nftId;
+
+        const ok = confirm(
+          'Confirm mint:\n\n' +
+          'raptor: ' + name + '\n' +
+          'collection: ' + launch.collection + '\n' +
+          'treasury: ' + launch.treasury + '\n' +
+          'price: 1 devnet SOL (+ fees)\n' +
+          'you receive the Core asset at:\n' + getAssetPda(PROGRAM_ID, nftId).toBase58()
+        );
+        if (!ok) { setMsg('cancelled.'); return; }
+
+        setMsg('building transaction…');
+        const ix = await buildMintInstruction({
+          programId: PROGRAM_ID,
+          configPda: getConfigPda(PROGRAM_ID),
+          registryPda: getAllocationPda(PROGRAM_ID),
+          buyer: walletPubkey,
+          treasury: TREASURY,
+          collection: new PublicKey(launch.collection),
+          assetPda: getAssetPda(PROGRAM_ID, nftId),
+          mplCore: MPL_CORE,
+          nftId, name, uri: meta.u, metadataProof: meta.p,
+        });
+        const tx = new Transaction().add(ix);
+        tx.feePayer = walletPubkey;
+        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = blockhash;
+
+        setMsg('approve in your wallet…');
+        let sig;
+        if (provider.signAndSendTransaction) {
+          sig = (await provider.signAndSendTransaction(tx)).signature;
+        } else {
+          const signed = await provider.signTransaction(tx);
+          sig = await conn.sendRawTransaction(signed.serialize());
+        }
+        setMsg('submitted — confirming…', 'ok');
+        const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+        if (conf.value.err) throw new Error('on-chain error: ' + JSON.stringify(conf.value.err));
+        setMsg('✅ minted ' + name + ' — ' + sig, 'ok');
+        const link = document.createElement('a');
+        link.className = 'explorer';
+        link.href = 'https://explorer.solana.com/tx/' + sig + '?cluster=devnet';
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'view on explorer';
+        $('mint-msg').append(document.createElement('br'), link);
+        refreshStatus();
+        previewNext();
+      } catch (e) {
+        setMsg(prettyError(e), 'err');
+      }
+    });
+
+    function prettyError(e) {
+      const msg = e?.message || String(e);
+      if (/UserRejected|rejected/i.test(msg)) return 'you rejected the transaction.';
+      if (/insufficient|Insufficient/i.test(msg)) return 'not enough SOL in your wallet (need 1 SOL + fees).';
+      if (/0x1771|Custom/i.test(msg) === false && /blockhash/i.test(msg)) return 'transaction timed out — try again.';
+      return msg;
+    }
+
+    refreshStatus();
+    setInterval(refreshStatus, 30000);
+  </script>
+</body>
+</html>
