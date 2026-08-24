@@ -8,9 +8,11 @@ export default {
     const url = new URL(request.url);
     const host = url.hostname;
 
-    // with html_handling "none", resolve bare "/" ourselves on every host
+    // with html_handling "none", resolve "/" and directory paths ourselves on every host
     if (url.pathname === "/" || url.pathname === "") {
       url.pathname = "/index.html";
+    } else if (url.pathname.endsWith("/")) {
+      url.pathname += "index.html";
     }
 
     if (host === "mint.cumzillaraptor.com" || host === "claim.cumzillaraptor.com") {
