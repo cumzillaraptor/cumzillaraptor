@@ -33,7 +33,7 @@ jobs:
           cp index.html dist/
           cp assets/cumz.css assets/cumzillaraptor116.svg assets/cumzillaraptor-transparent.png assets/Chewy-Regular.ttf dist/assets/
           mkdir -p dist/assets/vendor
-          cp assets/vendor/solana-web3-1.95.8.iife.js dist/assets/vendor/
+          cp assets/vendor/*.js dist/assets/vendor/
           cp config/site.js dist/config/
 
           # mint page + shared client + data
