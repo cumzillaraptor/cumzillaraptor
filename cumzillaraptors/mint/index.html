@@ -318,9 +318,9 @@
 
     // ---- raptor portrait ----
     const BG_COLORS = {
-      green: '#1d4d1f', red: '#5a1a1a', teal: '#12494c', indigo: '#232a63',
-      orange: '#6b3a10', grey: '#3a3f3a', gold: '#6b5510', pink: '#5c2440',
-      'vanilla ice': '#dfe8df',
+      green: '#88cc75', red: '#e05252', teal: '#39b8ae', indigo: '#5c66e0',
+      orange: '#e08b39', grey: '#9aa39a', gold: '#e0b239', pink: '#f08ac0',
+      'vanilla ice': '#f4f8ef',
     };
     function isPlaceholderImage(uri) { return /PLACEHOLDER/i.test(uri || ''); }
     // Real images live on Arweave; placeholders get the mascot on a background-colored stage.
@@ -334,60 +334,59 @@
 
     // ---- slot machine spin ----
     function spinReveal(finalId, meta) {
-      return new Promise((resolve) => {
-        const box = $('reveal-box'), nameEl = $('slot-name'), traitsEl = $('slot-traits');
-        box.classList.remove('revealed');
-        box.classList.add('spinning');
+      // Spins random ids INDEFINITELY until .settle() — called only AFTER the wallet has
+      // approved the 1 SOL payment. The result is never shown before acceptance.
+      let resolveSettled;
+      const settled = new Promise((r) => { resolveSettled = r; });
+      const box = $('reveal-box'), nameEl = $('slot-name'), traitsEl = $('slot-traits');
+      box.classList.remove('revealed');
+      box.classList.add('spinning');
+      traitsEl.innerHTML = '';
+      $('raptor-stage').hidden = true;
+
+      function showFinal() {
+        box.classList.remove('spinning');
+        box.classList.add('revealed');
+        nameEl.textContent = meta.name || ('cumzillaraptor #' + finalId);
+
+        const stage = $('raptor-stage'), img = $('raptor-img');
+        stage.hidden = false;
+        stage.style.backgroundColor = bgTraitColor(meta) || '#1c1c28';
+        const realUrl = raptorImageUrl(meta);
+        const mascot = '/assets/cumzillaraptor116.svg';
+        if (realUrl) {
+          const probe = new Image();
+          probe.onload = () => { img.src = realUrl; };
+          probe.onerror = () => { img.src = mascot; };
+          probe.src = realUrl;
+        } else {
+          img.src = mascot;
+        }
+        img.alt = meta.name || ('cumzillaraptor #' + finalId);
+
         traitsEl.innerHTML = '';
-        $('raptor-stage').hidden = true;
-        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (reduced) {
-          showFinal(); return;
+        for (const [type, value] of (meta.t || [])) {
+          const chip = document.createElement('span');
+          chip.className = 'trait-chip';
+          const b = document.createElement('b'); b.textContent = type + ': ';
+          chip.append(b, document.createTextNode(value));
+          traitsEl.append(chip);
         }
-        let ticks = 0;
-        const maxTicks = 26;                       // ~1.8s at 70ms
+        resolveSettled();
+      }
+
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        // no animation: hold "rolling…" text until approval, then reveal instantly
+        nameEl.textContent = 'waiting for approval…';
+      } else {
         const timer = setInterval(() => {
-          // cycle random ids from the full range while spinning
-          const fakeId = 1 + Math.floor(Math.random() * cfg.publicCount + cfg.claimCount);
+          const fakeId = 1 + Math.floor(Math.random() * (cfg.publicCount + cfg.claimCount));
           nameEl.textContent = 'cumzillaraptor #' + String(fakeId).padStart(3, '0');
-          ticks++;
-          if (ticks >= maxTicks) { clearInterval(timer); showFinal(); }
         }, 70);
+        settled.then(() => clearInterval(timer));
+      }
 
-        function showFinal() {
-          box.classList.remove('spinning');
-          box.classList.add('revealed');
-          nameEl.textContent = meta.name || ('cumzillaraptor #' + finalId);
-
-          // portrait: real arweave image if uploaded, else mascot over the raptor's background color
-          const stage = $('raptor-stage'), img = $('raptor-img');
-          stage.hidden = false;
-          stage.style.backgroundColor = bgTraitColor(meta) || '#1c1c28';
-          // try the metadata image; placeholder/unfunded ar:// ids won't load, so probe first
-          // and fall back to the mascot — the portrait is never broken
-          const realUrl = raptorImageUrl(meta);
-          const mascot = '/assets/cumzillaraptor116.svg';
-          if (realUrl) {
-            const probe = new Image();
-            probe.onload = () => { img.src = realUrl; };
-            probe.onerror = () => { img.src = mascot; };
-            probe.src = realUrl;
-          } else {
-            img.src = mascot;
-          }
-          img.alt = meta.name || ('cumzillaraptor #' + finalId);
-
-          traitsEl.innerHTML = '';
-          for (const [type, value] of (meta.t || [])) {
-            const chip = document.createElement('span');
-            chip.className = 'trait-chip';
-            const b = document.createElement('b'); b.textContent = type + ': ';
-            chip.append(b, document.createTextNode(value));
-            traitsEl.append(chip);
-          }
-          resolve();
-        }
-      });
+      return { settled, settle: showFinal };
     }
 
     // ---- confetti (self-contained, no deps) ----
@@ -446,8 +445,8 @@
         if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + nftId);
         const name = 'cumzillaraptor #' + nftId;
 
-        // start the slot machine WHILE the tx is in flight — reveal lands with confirmation
-        const spinDone = spinReveal(nftId, meta);
+        // spin starts now but can ONLY settle after the wallet approves the payment
+        const spin = spinReveal(nftId, meta);
         const ix = await buildMintInstruction({
           programId: PROGRAM_ID,
           configPda: getConfigPda(PROGRAM_ID),
@@ -464,13 +463,14 @@
         const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
         tx.recentBlockhash = blockhash;
 
-        setMsg('approve in your wallet…');
-        const sig = await wc.signAndSend(tx);
-        setMsg('confirming on-chain…');
+        setMsg('approve the 1 SOL payment in your wallet…');
+        const sig = await wc.signAndSend(tx);   // payment accepted HERE
+        setMsg('payment accepted — confirming on-chain…');
         const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
         if (conf.value.err) throw new Error('on-chain error: ' + JSON.stringify(conf.value.err));
 
-        await spinDone;                    // slot machine settles on your actual raptor
+        spin.settle();                     // only now does the drum land on your raptor
+        await spin.settled;
         setMsg('');
         fireConfetti();
         const link = document.createElement('a');
