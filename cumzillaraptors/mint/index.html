@@ -338,11 +338,14 @@
         stage.hidden = false;
         // raw png from arweave, unfiltered; mascot only as fallback
         const myRoll = window.__cumzRollToken;
-        img.removeAttribute('src');   // empty until the raw png arrives
+        // keep the slot truly blank: no src, no alt, hidden until the png is fully decoded
+        img.removeAttribute('src');
+        img.alt = '';
+        img.style.visibility = 'hidden';
+        img.onload = () => { if (window.__cumzRollToken === myRoll && img.src) img.style.visibility = 'visible'; };
         fetchRaptorImageUrl(meta.u).then((url) => {
           if (url && window.__cumzRollToken === myRoll) img.src = url;
         });
-        img.alt = meta.name || ('cumzillaraptor #' + finalId);
 
         traitsEl.innerHTML = '';
         for (const [type, value] of (meta.t || [])) {
