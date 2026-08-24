@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 import { keccak256 } from '@ethersproject/keccak256';
 import { SigningKey } from '@ethersproject/signing-key';
@@ -125,6 +126,11 @@ export function createLocalEphemeralBatchFixture({ claimant, expiryUnix, nftIds 
   requireLocalEphemeralClaimRootGuard();
   const signingKey = privateKey();
   const ethAddress = ethAddressFor(signingKey);
+  // Metadata is per-id against the immutable production metadata root: each
+  // member must use ITS OWN reviewed name/uri/proof, never another id's.
+  const metadataByNftId = JSON.parse(
+    readFileSync(new URL('../../nft-data/metadata-merkle-v1.devnet.json', import.meta.url), 'utf8'),
+  ).metadata;
   const claims = nftIds.map((nftId) => {
     const nonceHex = `0x${randomBytes(32).toString('hex')}`;
     const leaf = claimLeaf({
@@ -143,12 +149,18 @@ export function createLocalEphemeralBatchFixture({ claimant, expiryUnix, nftIds 
     expiryUnix,
   });
   const signature = signDigest(signingKey, eip191Hash(message));
+  const metadataById = Object.fromEntries(nftIds.map((id) => [String(id), {
+    nftId: id,
+    name: metadataByNftId[String(id)].name,
+    uri: metadataByNftId[String(id)].uri,
+    proof: metadataByNftId[String(id)].proof,
+  }]));
   return {
     kind: 'LOCAL_EPHEMERAL_BATCH_ROOT_ONLY',
     programId: V1_CLAIM_FIXTURE.programId,
     cluster: V1_CLAIM_FIXTURE.cluster,
     metadataRoot: V1_CLAIM_FIXTURE.metadataRoot,
-    metadata: V1_CLAIM_FIXTURE.metadata,
+    metadataById,
     nftIds,
     expiryUnix,
     ethAddress,

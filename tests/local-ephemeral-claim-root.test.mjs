@@ -97,6 +97,8 @@ function claimData(local, expiryUnix) {
   ]);
 }
 function claimBatchData(batch, nftId, nonceHex, proof, expiryUnix) {
+  const meta = batch.metadataById[String(nftId)];
+  if (!meta) throw new Error('no reviewed metadata for batch id ' + nftId);
   return Buffer.concat([
     discriminator('claim_nft_batch'),
     vectorU16(batch.nftIds),
@@ -105,7 +107,7 @@ function claimBatchData(batch, nftId, nonceHex, proof, expiryUnix) {
     bytes32(nonceHex), // per-id deterministic nonce, bound by the leaf
     u64(expiryUnix),
     vectorBytes32(proof),
-    string(batch.metadata.name), string(batch.metadata.uri), vectorBytes32(batch.metadata.proof),
+    string(meta.name), string(meta.uri), vectorBytes32(meta.proof),
     Buffer.from(batch.signature.slice(2), 'hex'), // r‖s‖v batch signature arg
   ]);
 }
