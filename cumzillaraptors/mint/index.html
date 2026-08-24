@@ -48,6 +48,18 @@
       box-shadow: 0 0 12px rgba(109,254,65,.35);
     }
 
+    /* ---- minted raptor portrait ---- */
+    .raptor-stage {
+      width: 148px; height: 148px;
+      margin: 0 auto 8px;
+      display: grid; place-items: center;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      transition: background-color 400ms ease;
+    }
+    .raptor-stage img { width: 78%; height: auto; display: block; }
+    .reveal.revealed .raptor-stage { border-color: var(--green); }
+
     /* ---- slot machine reveal ---- */
     .reveal {
       position: relative;
@@ -155,7 +167,8 @@
 
         <!-- slot machine -->
         <div class="reveal" id="reveal-box" aria-live="polite">
-          <div>
+          <div style="width:100%;">
+            <div class="raptor-stage" id="raptor-stage" hidden><img id="raptor-img" alt="your raptor"></div>
             <div class="slot-name" id="slot-name">roll to reveal 🎲</div>
             <div class="traits" id="slot-traits"></div>
           </div>
@@ -303,6 +316,22 @@
       return available[Math.floor(Math.random() * available.length)];
     }
 
+    // ---- raptor portrait ----
+    const BG_COLORS = {
+      green: '#1d4d1f', red: '#5a1a1a', teal: '#12494c', indigo: '#232a63',
+      orange: '#6b3a10', grey: '#3a3f3a', gold: '#6b5510', pink: '#5c2440',
+      'vanilla ice': '#dfe8df',
+    };
+    function isPlaceholderImage(uri) { return /PLACEHOLDER/i.test(uri || ''); }
+    // Real images live on Arweave; placeholders get the mascot on a background-colored stage.
+    function raptorImageUrl(meta) {
+      return (meta.u && !isPlaceholderImage(meta.u)) ? meta.u.replace(/^ar:\/\//, 'https://arweave.net/') : null;
+    }
+    function bgTraitColor(meta) {
+      const t = (meta.t || []).find(([k]) => k === 'background');
+      return BG_COLORS[(t && t[1])] || null;
+    }
+
     // ---- slot machine spin ----
     function spinReveal(finalId, meta) {
       return new Promise((resolve) => {
@@ -310,6 +339,7 @@
         box.classList.remove('revealed');
         box.classList.add('spinning');
         traitsEl.innerHTML = '';
+        $('raptor-stage').hidden = true;
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (reduced) {
           showFinal(); return;
@@ -328,6 +358,14 @@
           box.classList.remove('spinning');
           box.classList.add('revealed');
           nameEl.textContent = meta.name || ('cumzillaraptor #' + finalId);
+
+          // portrait: real arweave image if uploaded, else mascot over the raptor's background color
+          const stage = $('raptor-stage'), img = $('raptor-img');
+          stage.hidden = false;
+          stage.style.backgroundColor = bgTraitColor(meta) || '#1c1c28';
+          img.src = raptorImageUrl(meta) || '/assets/cumzillaraptor116.svg';
+          img.alt = meta.name || ('cumzillaraptor #' + finalId);
+
           traitsEl.innerHTML = '';
           for (const [type, value] of (meta.t || [])) {
             const chip = document.createElement('span');
@@ -439,6 +477,7 @@
         box.classList.remove('spinning', 'revealed');
         $('slot-name').textContent = 'roll to reveal 🎲';
         $('slot-traits').innerHTML = '';
+        $('raptor-stage').hidden = true;
         setMsg(prettyError(e), 'err');
       } finally {
         spinning = false; updateButtons();
