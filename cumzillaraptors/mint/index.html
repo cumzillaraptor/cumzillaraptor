@@ -247,7 +247,7 @@
     }
 
     function updateButtons() {
-      const ready = !!(provider && walletPubkey && launch && launch.isLive &&
+      const ready = !!(wc.publicKey && launch && launch.isLive &&
                         launch.publicMinted < cfg.publicCount && !spinning);
       $('btn-mint').setAttribute('aria-disabled', String(!ready));
     }
