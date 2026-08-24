@@ -1,5 +1,8 @@
 // Verify the fresh browser client module (chain.js) against live devnet state.
 // Runs the same code paths the pages will use, via ESM import.
+const _sha3mod = await import('js-sha3');
+const _sha3 = _sha3mod.keccak256 ? _sha3mod : _sha3mod.default;
+globalThis.window = { keccak256: _sha3.keccak256 };
 const mod = await import('../cumzillaraptors/client/chain.js');
 const {
   deterministicNonceHex, claimLeafHex, metadataLeafHex,

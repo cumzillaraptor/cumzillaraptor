@@ -32,16 +32,18 @@ jobs:
           mkdir -p dist/assets dist/config dist/cumzillaraptors/mint/data dist/cumzillaraptors/claim/data
           cp index.html dist/
           cp assets/cumz.css assets/cumzillaraptor116.svg assets/cumzillaraptor-transparent.png assets/Chewy-Regular.ttf dist/assets/
+          mkdir -p dist/assets/vendor
+          cp assets/vendor/solana-web3-1.95.8.iife.js dist/assets/vendor/
           cp config/site.js dist/config/
 
           # mint page + shared client + data
           cp cumzillaraptors/mint/index.html dist/cumzillaraptors/mint/
-          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js dist/cumzillaraptors/mint/
+          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js dist/cumzillaraptors/mint/
           cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/pool-order.json dist/cumzillaraptors/mint/data/
 
           # claim page + shared client + data
           cp cumzillaraptors/claim/index.html dist/cumzillaraptors/claim/
-          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js dist/cumzillaraptors/claim/
+          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js dist/cumzillaraptors/claim/
           cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/claims-by-eth.json dist/cumzillaraptors/claim/data/
 
           # /mint/ and /claim/ convenience paths (Workers static assets: no _redirects support)

@@ -13,7 +13,7 @@
 //   await wc.connect();        // throws with a user-actionable message on failure
 //   wc.publicKey               // PublicKey | null
 //   wc.signAndSend(tx)         // -> signature string (tries provider API then wallet-standard then self-send)
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction } from "./web3-shim.js";
 
 const DETECT_GRACE_MS = 2500;     // how long to wait for late-injecting wallets
 const DETECT_POLL_MS = 150;
@@ -56,8 +56,7 @@ function detectStandardWallets() {
 }
 
 function standardConnectFeature(wallet) {
-  return wallet.features?.["standard:connect"]
-      ?? wallet.features?.["solana:signAndSendTransaction"] && wallet.features["standard:connect"];
+  return wallet.features?.["standard:connect"] ?? null;
 }
 
 export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccountChange } = {}) {

@@ -116,6 +116,33 @@
   </main>
 
   <script src="/config/site.js"></script>
+  <script src="/assets/vendor/solana-web3-1.95.8.iife.js"></script>
+  <script src="/assets/vendor/js-sha3-0.9.3.min.js"></script>
+  <script>
+    // ---- page chrome: menu works regardless of any later failures (no imports) ----
+    (function () {
+      var menuButton = document.querySelector('.menu-button');
+      var menu = document.querySelector('.menu-panel');
+      var scrim = document.querySelector('.scrim');
+      if (!menuButton || !menu || !scrim) return;
+      function setMenu(open) {
+        menuButton.setAttribute('aria-expanded', String(open));
+        menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        menu.dataset.open = String(open);
+        scrim.dataset.open = String(open);
+        scrim.tabIndex = open ? 0 : -1;
+        document.body.style.overflow = open ? 'hidden' : '';
+      }
+      window.__cumzSetMenu = setMenu;
+      menuButton.addEventListener('click', function () {
+        setMenu(menuButton.getAttribute('aria-expanded') !== 'true');
+      });
+      scrim.addEventListener('click', function () { setMenu(false); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') setMenu(false);
+      });
+    })();
+  </script>
   <script type="module">
     import { Connection, PublicKey, Transaction } from "https://esm.sh/@solana/web3.js@1.95.8";
     import { BrowserProvider } from "https://esm.sh/ethers@6.13.4";
@@ -229,6 +256,9 @@
         if (!walletPubkey) { setMsg('sign-msg', 'connect your solana wallet first (step 3).', 'err'); return; }
 
         setMsg('sign-msg', 'waiting for ethereum signature…');
+        let BrowserProvider;
+        try { ({ BrowserProvider } = await import("https://esm.sh/ethers@6.13.4")); }
+        catch { throw new Error('could not load the ethereum signing library — check connection and retry.'); }
         const browserProvider = new BrowserProvider(window.ethereum, 'any');
         // one message per raptor; sign them sequentially
         ethSignature = [];

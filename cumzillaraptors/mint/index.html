@@ -176,9 +176,37 @@
   <canvas class="confetti-canvas" id="confetti"></canvas>
 
   <script src="/config/site.js"></script>
+  <script src="/assets/vendor/solana-web3-1.95.8.iife.js"></script>
+  <script src="/assets/vendor/js-sha3-0.9.3.min.js"></script>
+  <script>
+    // ---- page chrome: menu works regardless of any later failures (no imports) ----
+    (function () {
+      var menuButton = document.querySelector('.menu-button');
+      var menu = document.querySelector('.menu-panel');
+      var scrim = document.querySelector('.scrim');
+      if (!menuButton || !menu || !scrim) return;
+      function setMenu(open) {
+        menuButton.setAttribute('aria-expanded', String(open));
+        menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+        menu.dataset.open = String(open);
+        scrim.dataset.open = String(open);
+        scrim.tabIndex = open ? 0 : -1;
+        document.body.style.overflow = open ? 'hidden' : '';
+      }
+      window.__cumzSetMenu = setMenu;
+      menuButton.addEventListener('click', function () {
+        setMenu(menuButton.getAttribute('aria-expanded') !== 'true');
+      });
+      scrim.addEventListener('click', function () { setMenu(false); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') setMenu(false);
+      });
+    })();
+  </script>
   <script type="module">
-    import { Connection, PublicKey, Transaction } from "https://esm.sh/@solana/web3.js@1.95.8";
+    // web3 comes from the vendored IIFE via /cumzillaraptors/mint/chain.js (web3-shim)
     import {
+      Connection, PublicKey, Transaction,
       fetchLaunchState, fetchAllocatedIds, getConfigPda, getAllocationPda,
       getAssetPda, buildMintInstruction,
     } from "/cumzillaraptors/mint/chain.js";
@@ -195,20 +223,6 @@
 
     let provider = null, walletPubkey = null, launch = null;
     let poolOrder = null, metaCache = null, spinning = false;
-
-    // ---- menu ----
-    const menuButton = document.querySelector('.menu-button'), menu = document.querySelector('.menu-panel'), scrim = document.querySelector('.scrim');
-    function setMenu(open) {
-      menuButton.setAttribute('aria-expanded', String(open));
-      menuButton.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      menu.dataset.open = String(open);
-      scrim.dataset.open = String(open);
-      scrim.tabIndex = open ? 0 : -1;
-      document.body.style.overflow = open ? 'hidden' : '';
-    }
-    menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
-    scrim.addEventListener('click', () => setMenu(false));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
 
     const short = (s) => s.length > 18 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
     function setMsg(text, cls) { const el = $('mint-msg'); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }

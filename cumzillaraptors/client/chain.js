@@ -9,8 +9,11 @@
 //       || id_be || u16(name_len) || name || u16(uri_len) || uri), name = "cumzillaraptor #<id>"
 //   - claim-message-v1.js nonce: keccak(DOMAIN_NONCE_V1 || program || cluster || eth || id_be)
 //   - SaleState enum per state.rs: Setup=0, Paused=1, Live=2
-import { Connection, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
-import { keccak256 } from "@ethersproject/keccak256";
+import { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "./web3-shim.js";
+import { keccak256 } from "./keccak-shim.js";
+
+// re-exports so pages import everything from this one module
+export { Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction };
 
 export const CLAIM_DOMAIN = "CUMZILLARAPTORS_CLAIM_V1";
 export const METADATA_DOMAIN = "CUMZILLARAPTORS_METADATA_V1";
