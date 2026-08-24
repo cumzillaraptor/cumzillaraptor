@@ -363,7 +363,18 @@
           const stage = $('raptor-stage'), img = $('raptor-img');
           stage.hidden = false;
           stage.style.backgroundColor = bgTraitColor(meta) || '#1c1c28';
-          img.src = raptorImageUrl(meta) || '/assets/cumzillaraptor116.svg';
+          // try the metadata image; placeholder/unfunded ar:// ids won't load, so probe first
+          // and fall back to the mascot — the portrait is never broken
+          const realUrl = raptorImageUrl(meta);
+          const mascot = '/assets/cumzillaraptor116.svg';
+          if (realUrl) {
+            const probe = new Image();
+            probe.onload = () => { img.src = realUrl; };
+            probe.onerror = () => { img.src = mascot; };
+            probe.src = realUrl;
+          } else {
+            img.src = mascot;
+          }
           img.alt = meta.name || ('cumzillaraptor #' + finalId);
 
           traitsEl.innerHTML = '';
