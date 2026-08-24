@@ -127,7 +127,7 @@ jobs:
               --url "$CLUSTER" \
               --keypair /tmp/payer.json \
               --upgrade-authority /tmp/authority.json
-            solana program show --url "$CLUSTER" "$PROGRAM_ID"
+            solana program show --url "$CLUSTER" "$PROGRAM_ID" --keypair /tmp/payer.json
           fi
 
       - name: Reclaim lamports from stranded deploy buffers
