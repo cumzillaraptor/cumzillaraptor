@@ -253,7 +253,9 @@
     function getSolProvider() {
       const w = window;
       if (w.phantom?.solana?.isPhantom) return w.phantom.solana;
-      if (w.solflare?.isSolflare) return w.solflare;
+      if (w.solflare) return w.solflare;
+      // Solflare mobile dapp browser often injects only window.solana
+      if (w.solana && (w.solana.isPhantom || w.solana.isSolflare || w.solana.publicKey || w.solana.connect)) return w.solana;
       return null;
     }
     async function connectSolana() {

@@ -233,21 +233,35 @@
     }
 
     // ---- wallet ----
+    // Detection order: Phantom legacy → Solflare legacy → generic window.solana
+    // (Solflare's mobile dapp browser often injects only window.solana).
     function getProvider() {
       const w = window;
       if (w.phantom?.solana?.isPhantom) return w.phantom.solana;
-      if (w.solflare?.isSolflare) return w.solflare;
+      if (w.solflare) return w.solflare;
+      if (w.solana && (w.solana.isPhantom || w.solana.isSolflare || w.solana.publicKey || w.solana.connect)) return w.solana;
       return null;
     }
     $('btn-connect').addEventListener('click', async () => {
+      const found = [];
+      if (window.phantom?.solana?.isPhantom) found.push('phantom');
+      if (window.solflare) found.push('solflare');
+      if (window.solana) found.push('window.solana' + (window.solana.isSolflare ? ' (solflare)' : window.solana.isPhantom ? ' (phantom)' : ''));
       provider = getProvider();
-      if (!provider) { setMsg('no phantom or solflare wallet found — install one and reload.', 'err'); return; }
+      if (!provider) {
+        setMsg('no wallet provider detected. seen: ' + (found.length ? found.join(', ') : 'none') +
+          '. install/open in phantom or solflare and reload.', 'err');
+        return;
+      }
       try {
         const res = await provider.connect();
-        walletPubkey = new PublicKey(res.publicKey ?? provider.publicKey);
-        $('btn-connect').textContent = 'connected';
+        const pk = res?.publicKey ?? provider.publicKey;
+        walletPubkey = new PublicKey(pk.toBase58 ? pk.toBase58() : pk);
+        $('btn-connect').textContent = 'connected · ' + short(walletPubkey.toBase58());
         updateButtons();
-      } catch { setMsg('wallet connect rejected or blocked.', 'err'); }
+      } catch (e) {
+        setMsg('connect failed: ' + (e?.message || 'rejected or blocked.'), 'err');
+      }
     });
 
     // ---- data ----
