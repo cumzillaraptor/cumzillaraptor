@@ -4,13 +4,11 @@ compatibility_date = "2026-08-01"
 
 main = "worker.js"
 
-[assets]
-directory = "./dist"
-binding = "ASSETS"
-
-# Subdomain routes — mint/ and claim/ paths remain valid too (same asset bundle).
-# DNS: mint + claim records must be proxied (orange cloud) in the cumzillaraptor.com zone.
 routes = [
   { pattern = "mint.cumzillaraptor.com", custom_domain = true },
   { pattern = "claim.cumzillaraptor.com", custom_domain = true }
 ]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
