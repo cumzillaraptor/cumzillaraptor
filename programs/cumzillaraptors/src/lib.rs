@@ -471,7 +471,7 @@ pub mod cumzillaraptors {
     /// (strictly increasing); `nft_id` must be a member.
     #[allow(clippy::too_many_arguments)]
     pub fn claim_nft_batch(
-        ctx: Context<ClaimNft>,
+        ctx: Context<ClaimNftBatch>,
         nft_ids: Vec<u16>,
         nft_id: u16,
         eth_address: [u8; 20],
@@ -724,6 +724,44 @@ pub struct MintNft<'info> {
     _signature: [u8; 65]
 )]
 pub struct ClaimNft<'info> {
+    #[account(mut, seeds = [b"config"], bump = config.bump)]
+    pub config: Account<'info, CollectionConfig>,
+    #[account(mut, seeds = [b"allocation"], bump = registry.bump)]
+    pub registry: Account<'info, AllocationRegistry>,
+    #[account(mut)]
+    pub claimer: Signer<'info>,
+    /// CHECK: canonical collection key is checked against immutable config.
+    #[account(mut, address = config.collection @ CumzillaraptorsError::InvalidCollection)]
+    pub collection: UncheckedAccount<'info>,
+    /// CHECK: Metaplex Core creates this deterministic PDA during the CPI.
+    #[account(mut, seeds = [b"asset", &nft_id.to_be_bytes()], bump)]
+    pub asset: UncheckedAccount<'info>,
+    /// CHECK: handler derives and validates this receipt PDA from the canonical
+    /// verified claim leaf; creation occurs only after the Core CPI succeeds.
+    #[account(mut)]
+    pub receipt: UncheckedAccount<'info>,
+    /// CHECK: checked against the canonical mpl-core program ID.
+    #[account(address = mpl_core::ID @ CumzillaraptorsError::InvalidCoreProgram)]
+    pub mpl_core_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Batch variant: identical accounts to ClaimNft but the instruction args lead
+/// with nft_ids: Vec<u16>, so the #[instruction] offset list must match.
+#[derive(Accounts)]
+#[instruction(
+    _nft_ids: Vec<u16>,
+    nft_id: u16,
+    _eth_address: [u8; 20],
+    _nonce: [u8; 32],
+    _expiry_unix: u64,
+    _claim_proof: Vec<[u8; 32]>,
+    _name: String,
+    _uri: String,
+    _metadata_proof: Vec<[u8; 32]>,
+    _signature: [u8; 65]
+)]
+pub struct ClaimNftBatch<'info> {
     #[account(mut, seeds = [b"config"], bump = config.bump)]
     pub config: Account<'info, CollectionConfig>,
     #[account(mut, seeds = [b"allocation"], bump = registry.bump)]
