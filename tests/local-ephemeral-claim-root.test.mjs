@@ -96,14 +96,13 @@ function claimData(local, expiryUnix) {
     Buffer.from(local.signature.slice(2), 'hex'), // r‖s‖v 65-byte signature arg
   ]);
 }
-function claimBatchData(batch, nftId, proof, expiryUnix) {
-  const member = batch.claims.find((claim) => claim.nftId === nftId);
+function claimBatchData(batch, nftId, nonceHex, proof, expiryUnix) {
   return Buffer.concat([
     discriminator('claim_nft_batch'),
     vectorU16(batch.nftIds),
     u16(nftId),
     Buffer.from(batch.ethAddress.slice(2), 'hex'),
-    bytes32(member.nonceHex), // per-id deterministic nonce, bound by the leaf
+    bytes32(nonceHex), // per-id deterministic nonce, bound by the leaf
     u64(expiryUnix),
     vectorBytes32(proof),
     string(batch.metadata.name), string(batch.metadata.uri), vectorBytes32(batch.metadata.proof),
@@ -568,7 +567,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
         { pubkey: coreProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
-      data: claimBatchData(batch, id, proof, expiryUnix),
+      data: claimBatchData(batch, id, claim.nonceHex, proof, expiryUnix),
     });
   };
   const batchStateOf = async (id) => {
@@ -603,7 +602,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
         { pubkey: coreProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
-      data: claimBatchData(batch, foreignId, [], expiryUnix),
+      data: claimBatchData(batch, foreignId, member.nonceHex, [], expiryUnix),
     })), [claimer]);
   }
   // Wrong list order breaks canonical serialization → signature mismatch.
@@ -621,7 +620,7 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
         { pubkey: coreProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
-      data: claimBatchData({ ...batch, nftIds: [...batch.nftIds].reverse() }, id, proof, expiryUnix),
+      data: claimBatchData({ ...batch, nftIds: [...batch.nftIds].reverse() }, id, claim.nonceHex, proof, expiryUnix),
     })), [claimer], { ...local, claim });
   }
   // Happy path: both members claimed from the single batch signature.
