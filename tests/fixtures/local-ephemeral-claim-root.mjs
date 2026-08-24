@@ -51,6 +51,30 @@ export function requireLocalEphemeralClaimRootGuard() {
   }
 }
 
+const BATCH_DOMAIN = 'CUMZILLARAPTORS_CLAIM_V1_BATCH';
+
+// Canonical one-signature batch authorization message. Must stay byte-identical
+// to programs/cumzillaraptors/src/secp256k1.rs build_batch_claim_message.
+export function buildBatchClaimMessage({ cluster, programId, recipient, nftIds, ethAddress, expiryUnix }) {
+  return [
+    BATCH_DOMAIN,
+    `cluster: ${cluster}`,
+    `program: ${programId}`,
+    `recipient: ${recipient}`,
+    `nft_ids: ${nftIds.join(',')}`,
+    `eth_address: ${ethAddress.toLowerCase()}`,
+    `expiry_unix: ${String(expiryUnix)}`,
+  ].join('\n');
+}
+
+function eip191Hash(message) {
+  const bytes = Buffer.from(message, 'utf8');
+  return keccak256(Buffer.concat([
+    Buffer.from(`\x19Ethereum Signed Message:\n${bytes.length}`, 'utf8'),
+    bytes,
+  ]));
+}
+
 export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId = V1_CLAIM_FIXTURE.claim.nftId }) {
   requireLocalEphemeralClaimRootGuard();
   const signingKey = privateKey();
@@ -90,6 +114,48 @@ export function createLocalEphemeralClaimFixture({ claimant, expiryUnix, nftId =
     signature: signDigest(signingKey, authorization.messageHash),
     // Retained for compatibility with assertions that inspect the fixture shape.
     signingKeyPublicEthAddress: ethAddress,
+  };
+}
+
+// A batch fixture: ONE ephemeral ETH key signs a single batch message covering
+// every listed id. Each id's claim leaf keeps its own deterministic nonce
+// (bound by the immutable claim root); the batch message itself carries no
+// nonce. Replay protection comes from the per-leaf receipt PDA.
+export function createLocalEphemeralBatchFixture({ claimant, expiryUnix, nftIds }) {
+  requireLocalEphemeralClaimRootGuard();
+  const signingKey = privateKey();
+  const ethAddress = ethAddressFor(signingKey);
+  const claims = nftIds.map((nftId) => {
+    const nonceHex = `0x${randomBytes(32).toString('hex')}`;
+    const leaf = claimLeaf({
+      programId: V1_CLAIM_FIXTURE.programId,
+      cluster: V1_CLAIM_FIXTURE.cluster,
+      claim: { nftId, ethAddress, nonceHex },
+    });
+    return { nftId, ethAddress, nonceHex, leaf };
+  });
+  const message = buildBatchClaimMessage({
+    cluster: V1_CLAIM_FIXTURE.cluster,
+    programId: V1_CLAIM_FIXTURE.programId,
+    recipient: claimant,
+    nftIds,
+    ethAddress,
+    expiryUnix,
+  });
+  const signature = signDigest(signingKey, eip191Hash(message));
+  return {
+    kind: 'LOCAL_EPHEMERAL_BATCH_ROOT_ONLY',
+    programId: V1_CLAIM_FIXTURE.programId,
+    cluster: V1_CLAIM_FIXTURE.cluster,
+    metadataRoot: V1_CLAIM_FIXTURE.metadataRoot,
+    metadata: V1_CLAIM_FIXTURE.metadata,
+    nftIds,
+    expiryUnix,
+    ethAddress,
+    claims,
+    message,
+    messageHash: eip191Hash(message),
+    signature,
   };
 }
 
