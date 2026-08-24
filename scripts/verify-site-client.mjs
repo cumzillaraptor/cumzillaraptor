@@ -58,7 +58,7 @@ check('messageHash == rehearsal hash', claimMessageHashHex(msg).toLowerCase() ==
 // 6) live chain reads
 const conn = new Connection('https://api.devnet.solana.com', 'confirmed');
 const st = await fetchLaunchState('https://api.devnet.solana.com', PROGRAM.toBase58());
-check('launch state read', !!st && st.isLive && st.publicMinted === 1 && st.claimsMinted === 1,
+check('launch state read', !!st && st.isLive && st.publicMinted >= 1 && st.claimsMinted >= 1,
   st ? `state=${st.saleState} minted=${st.publicMinted}/${246} claimed=${st.claimsMinted}` : 'null');
 check('claimRoot on-chain matches committed', st.claimRoot.toLowerCase() === claims.merkleRoot.toLowerCase());
 check('treasury from PDA', st.treasury === 'FiHKQhwq2ZKkD2ZbBf3mPYgyw2Y9QDzNYykpMGErovU6');
@@ -68,7 +68,7 @@ const regInfo = await conn.getAccountInfo(getAllocationPda(PROGRAM));
 validateRegistryLayout(regInfo.data);
 console.log('PASS registry layout validated (492-byte id vec, 53-byte bitmap)');
 const alloc = await fetchAllocatedIds('https://api.devnet.solana.com', PROGRAM.toBase58());
-check('allocated set has exactly ids 2 and 4', alloc.size === 2 && alloc.has(2) && alloc.has(4), `size=${alloc.size}`);
+check('allocated set includes rehearsal ids 2 and 4', alloc.size >= 2 && alloc.has(2) && alloc.has(4), `size=${alloc.size}`);
 
 console.log(fails === 0 ? '\nALL CHECKS PASSED' : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);

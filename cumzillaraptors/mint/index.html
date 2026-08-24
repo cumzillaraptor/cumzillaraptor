@@ -50,14 +50,12 @@
 
     /* ---- minted raptor portrait ---- */
     .raptor-stage {
-      width: 148px; height: 148px;
-      margin: 0 auto 8px;
-      display: grid; place-items: center;
+      width: 168px; margin: 0 auto 8px;
       border-radius: 16px;
       border: 1px solid var(--line);
-      transition: background-color 400ms ease;
+      overflow: hidden;
     }
-    .raptor-stage img { width: 78%; height: auto; display: block; }
+    .raptor-stage img { width: 100%; height: auto; display: block; image-rendering: pixelated; }
     .reveal.revealed .raptor-stage { border-color: var(--green); }
 
     /* ---- slot machine reveal ---- */
@@ -222,7 +220,7 @@
     import {
       Connection, PublicKey, Transaction,
       fetchLaunchState, fetchAllocatedIds, getConfigPda, getAllocationPda,
-      getAssetPda, buildMintInstruction,
+      getAssetPda, buildMintInstruction, fetchRaptorImageUrl,
     } from "/cumzillaraptors/mint/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/mint/wallet.js";
 
@@ -316,20 +314,11 @@
       return available[Math.floor(Math.random() * available.length)];
     }
 
-    // ---- raptor portrait ----
-    const BG_COLORS = {
-      green: '#88cc75', red: '#e05252', teal: '#39b8ae', indigo: '#5c66e0',
-      orange: '#e08b39', grey: '#9aa39a', gold: '#e0b239', pink: '#f08ac0',
-      'vanilla ice': '#f4f8ef',
-    };
-    function isPlaceholderImage(uri) { return /PLACEHOLDER/i.test(uri || ''); }
-    // Real images live on Arweave; placeholders get the mascot on a background-colored stage.
-    function raptorImageUrl(meta) {
-      return (meta.u && !isPlaceholderImage(meta.u)) ? meta.u.replace(/^ar:\/\//, 'https://arweave.net/') : null;
-    }
-    function bgTraitColor(meta) {
-      const t = (meta.t || []).find(([k]) => k === 'background');
-      return BG_COLORS[(t && t[1])] || null;
+    // ---- raptor portrait (raw arweave png, unfiltered) ----
+    const MASCOT = '/assets/cumzillaraptor116.svg';
+    function showPortrait(imgEl, url) {
+      imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = MASCOT; };
+      imgEl.src = url;
     }
 
     // ---- slot machine spin ----
@@ -343,6 +332,7 @@
       box.classList.add('spinning');
       traitsEl.innerHTML = '';
       $('raptor-stage').hidden = true;
+      const rollToken = (window.__cumzRollToken = (window.__cumzRollToken || 0) + 1);
 
       function showFinal() {
         box.classList.remove('spinning');
@@ -351,17 +341,12 @@
 
         const stage = $('raptor-stage'), img = $('raptor-img');
         stage.hidden = false;
-        stage.style.backgroundColor = bgTraitColor(meta) || '#1c1c28';
-        const realUrl = raptorImageUrl(meta);
-        const mascot = '/assets/cumzillaraptor116.svg';
-        if (realUrl) {
-          const probe = new Image();
-          probe.onload = () => { img.src = realUrl; };
-          probe.onerror = () => { img.src = mascot; };
-          probe.src = realUrl;
-        } else {
-          img.src = mascot;
-        }
+        // raw png from arweave, unfiltered; mascot only as fallback
+        const myRoll = window.__cumzRollToken;
+        showPortrait(img, MASCOT);
+        fetchRaptorImageUrl(meta.u).then((url) => {
+          if (url && window.__cumzRollToken === myRoll) showPortrait(img, url);
+        });
         img.alt = meta.name || ('cumzillaraptor #' + finalId);
 
         traitsEl.innerHTML = '';

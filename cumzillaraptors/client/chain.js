@@ -262,3 +262,26 @@ export function validateRegistryLayout(data) {
   if (data.length !== 586) throw new Error(`registry length ${data.length} != 586`);
   return true;
 }
+
+
+// ---- raptor image resolution (ar:// metadata -> image txid -> raw png) ----
+const _imgCache = new Map();
+export function arToGateway(uri) {
+  return uri.replace(/^ar:\/\//, "https://arweave.net/");
+}
+// Resolves a metadata uri (ar://<metadata-txid>) to the actual image URL.
+export async function fetchRaptorImageUrl(metaUri) {
+  if (_imgCache.has(metaUri)) return _imgCache.get(metaUri);
+  try {
+    const res = await fetch(arToGateway(metaUri));
+    if (!res.ok) throw new Error("metadata fetch " + res.status);
+    const meta = await res.json();
+    const img = (meta.image || "").replace(/^ar:\/\//, "");
+    const url = img ? arToGateway("ar://" + img) : null;
+    _imgCache.set(metaUri, url);
+    return url;
+  } catch {
+    _imgCache.set(metaUri, null);
+    return null;
+  }
+}
