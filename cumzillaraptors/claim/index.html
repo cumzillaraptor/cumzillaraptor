@@ -352,10 +352,16 @@
       }
       setMsg('claim-msg', 'one-time setup: creating transaction lookup table…');
       const slot = await conn.getSlot('confirmed');
-      const [altAddress] = web3.AddressLookupTableProgram.computeAddress({
-        payer: wc.publicKey, recentSlot: slot - 1,
-      });
-      const createIx = web3.AddressLookupTableProgram.createLookupTable({
+      // web3 1.x has no computeAddress helper — derive the ALT PDA manually
+      // from the recent slot (4-byte LE) and the ALT program id.
+      const slotBytes = new Uint8Array(4);
+      new DataView(slotBytes.buffer).setUint32(0, slot - 1, true);
+      const altAddress = web3.PublicKey.findProgramAddressSync(
+        [slotBytes], web3.AddressLookupTableProgram.programId,
+      )[0];
+      // createLookupTable returns [instruction, address]; extendLookupTable
+      // returns the instruction directly.
+      const [createIx] = web3.AddressLookupTableProgram.createLookupTable({
         payer: wc.publicKey, authority: wc.publicKey, recentSlot: slot - 1,
       });
       const extendIx = web3.AddressLookupTableProgram.extendLookupTable({
