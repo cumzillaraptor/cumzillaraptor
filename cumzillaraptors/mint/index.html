@@ -315,11 +315,6 @@
     }
 
     // ---- raptor portrait (raw arweave png, unfiltered) ----
-    const MASCOT = '/assets/cumzillaraptor116.svg';
-    function showPortrait(imgEl, url) {
-      imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = MASCOT; };
-      imgEl.src = url;
-    }
 
     // ---- slot machine spin ----
     function spinReveal(finalId, meta) {
@@ -343,9 +338,9 @@
         stage.hidden = false;
         // raw png from arweave, unfiltered; mascot only as fallback
         const myRoll = window.__cumzRollToken;
-        showPortrait(img, MASCOT);
+        img.removeAttribute('src');   // empty until the raw png arrives
         fetchRaptorImageUrl(meta.u).then((url) => {
-          if (url && window.__cumzRollToken === myRoll) showPortrait(img, url);
+          if (url && window.__cumzRollToken === myRoll) img.src = url;
         });
         img.alt = meta.name || ('cumzillaraptor #' + finalId);
 
