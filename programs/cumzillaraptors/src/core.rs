@@ -139,12 +139,23 @@ mod tests {
         let payer = Pubkey::new_unique();
         let ix = build_collection_cpi_instruction(collection, config_pda, payer);
 
-        assert_eq!(ix.program_id, mpl_core::ID, "must target canonical mpl-core");
-        assert_eq!(ix.accounts.len(), 4, "CreateCollectionV1 has exactly 4 accounts");
+        assert_eq!(
+            ix.program_id,
+            mpl_core::ID,
+            "must target canonical mpl-core"
+        );
+        assert_eq!(
+            ix.accounts.len(),
+            4,
+            "CreateCollectionV1 has exactly 4 accounts"
+        );
 
         // account 0: the new collection — writable + signer
         assert!(ix.accounts[0].is_writable && ix.accounts[0].is_signer);
-        assert_eq!(ix.accounts[0].pubkey, collection, "account 0 is the new collection");
+        assert_eq!(
+            ix.accounts[0].pubkey, collection,
+            "account 0 is the new collection"
+        );
 
         // account 1: update authority bound to config PDA — read-only, never a signer
         assert!(!ix.accounts[1].is_writable && !ix.accounts[1].is_signer);
@@ -158,7 +169,11 @@ mod tests {
         assert_eq!(ix.accounts[2].pubkey, payer, "account 2 is the fee payer");
 
         // account 3: system program
-        assert_eq!(ix.accounts[3].pubkey, system_program::ID, "account 3 is the system program");
+        assert_eq!(
+            ix.accounts[3].pubkey,
+            system_program::ID,
+            "account 3 is the system program"
+        );
 
         // royalty policy must be canonical (500bp -> PRIMARY_TREASURY)
         match collection_royalties().plugin {

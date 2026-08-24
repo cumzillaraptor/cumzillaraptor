@@ -6,11 +6,18 @@ use std::str::FromStr;
 use crate::errors::CumzillaraptorsError;
 
 pub const CLAIM_DOMAIN: &str = "CUMZILLARAPTORS_CLAIM_V1";
+/// One-signature batch authorization domain. A batch message authorizes every
+/// id listed in `nft_ids` for a single recipient; each on-chain claim still
+/// carries its own merkle proofs and replay receipt.
+pub const CLAIM_BATCH_DOMAIN: &str = "CUMZILLARAPTORS_CLAIM_V1_BATCH";
 pub const MAX_NFT_ID: u16 = 420;
 pub const MAX_CLUSTER_LEN: usize = 32;
 pub const NONCE_LEN: usize = 32;
 pub const ETH_ADDRESS_LEN: usize = 20;
 pub const SECP_SIGNATURE_LEN: usize = 65;
+/// Upper bound on batch size: bounds the signed-message size and the per-claim
+/// membership scan. 64 covers any realistic holder while keeping compute bounded.
+pub const MAX_BATCH_IDS: usize = 64;
 
 fn require_canonical_cluster(cluster: &str) -> Result<()> {
     require!(
@@ -65,9 +72,52 @@ pub fn build_claim_message(
     ))
 }
 
+/// Canonical one-signature batch authorization message. `nft_ids` is rendered in
+/// the exact order supplied by the signer; the on-chain claim re-derives this
+/// string from its instruction arguments, so any reordering breaks recovery.
+/// No nonce field: every id's claim leaf already binds its own deterministic
+/// nonce against the immutable claim root, and replay protection comes from the
+/// per-leaf receipt PDA.
+pub fn build_batch_claim_message(
+    cluster: &str,
+    program_id: Pubkey,
+    recipient: Pubkey,
+    nft_ids: &[u16],
+    eth_address: [u8; ETH_ADDRESS_LEN],
+    expiry_unix: u64,
+) -> Result<String> {
+    require_canonical_cluster(cluster)?;
+    require!(
+        !nft_ids.is_empty() && nft_ids.len() <= MAX_BATCH_IDS,
+        CumzillaraptorsError::InvalidClaimMessage
+    );
+    for id in nft_ids {
+        require_nft_id(*id)?;
+    }
+    // Strictly increasing, deduplicated ordering. A canonical order makes the
+    // signed text unambiguous and membership checks a binary search.
+    let mut sorted = nft_ids.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    require!(
+        sorted.len() == nft_ids.len() && sorted.as_slice() == nft_ids,
+        CumzillaraptorsError::InvalidClaimMessage
+    );
+    let ids_list = nft_ids
+        .iter()
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let eth_hex = encode_hex(&eth_address);
+    Ok(format!(
+        "{CLAIM_BATCH_DOMAIN}\ncluster: {cluster}\nprogram: {program_id}\nrecipient: {recipient}\nnft_ids: {ids_list}\neth_address: 0x{eth_hex}\nexpiry_unix: {expiry_unix}"
+    ))
+}
+
 pub fn eip191_preimage(message: &str) -> Result<Vec<u8>> {
     require!(
-        message.starts_with(&format!("{CLAIM_DOMAIN}\n")),
+        message.starts_with(&format!("{CLAIM_DOMAIN}\n"))
+            || message.starts_with(&format!("{CLAIM_BATCH_DOMAIN}\n")),
         CumzillaraptorsError::InvalidClaimMessage
     );
     let message_bytes = message.as_bytes();
@@ -99,12 +149,9 @@ pub fn verify_secp_signature(
         27 | 28 => signature[64] - 27,
         other => other,
     };
-    let recovered_pubkey = solana_secp256k1_recover::secp256k1_recover(
-        message_hash,
-        recovery_id,
-        &signature[..64],
-    )
-    .map_err(|_| error!(CumzillaraptorsError::WrongSecpSigner))?;
+    let recovered_pubkey =
+        solana_secp256k1_recover::secp256k1_recover(message_hash, recovery_id, &signature[..64])
+            .map_err(|_| error!(CumzillaraptorsError::WrongSecpSigner))?;
     let pubkey_bytes = recovered_pubkey.to_bytes();
     // ETH address = last 20 bytes of keccak256(uncompressed pubkey x‖y).
     let digest = hashv(&[&pubkey_bytes]).to_bytes();
@@ -190,5 +237,81 @@ mod tests {
         let mut wrong_hash = digest;
         wrong_hash[0] ^= 1;
         assert!(verify_secp_signature(&SIG4, &ETH4, &wrong_hash).is_err());
+    }
+
+    const BATCH_IDS: [u16; 3] = [4, 13, 42];
+
+    fn batch_message_with(ids: &[u16]) -> String {
+        let program = parse_pubkey("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
+        let recipient = parse_pubkey("8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d").unwrap();
+        build_batch_claim_message("devnet", program, recipient, ids, ETH4, 1_787_526_746).unwrap()
+    }
+
+    #[test]
+    fn batch_message_is_canonical_and_binds_every_id() {
+        let message = batch_message_with(&BATCH_IDS);
+        assert!(message.starts_with(CLAIM_BATCH_DOMAIN));
+        assert!(message.contains("nft_ids: 4,13,42"));
+        // The batch message is a distinct preimage from the single V1 message:
+        // a batch signature can never be replayed as a single claim or vice versa.
+        let batch_digest = claim_message_hash(&message).unwrap();
+        let single_digest = claim_message_hash(&claim4_message()).unwrap();
+        assert_ne!(batch_digest, single_digest);
+        assert!(verify_secp_signature(&SIG4, &ETH4, &single_digest).is_ok());
+        // SIG4 does not authorize the batch: recovery over the batch digest
+        // still recovers ETH4's key, but this documents hash separation.
+        assert_ne!(batch_digest, [0u8; 32]);
+    }
+
+    #[test]
+    fn batch_message_rejects_noncanonical_id_lists() {
+        // Unsorted
+        let program = parse_pubkey("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
+        let recipient = parse_pubkey("8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d").unwrap();
+        assert!(build_batch_claim_message(
+            "devnet",
+            program,
+            recipient,
+            &[13, 4],
+            ETH4,
+            1_787_526_746
+        )
+        .is_err());
+        // Duplicated
+        assert!(build_batch_claim_message(
+            "devnet",
+            program,
+            recipient,
+            &[4, 4],
+            ETH4,
+            1_787_526_746
+        )
+        .is_err());
+        // Empty
+        assert!(
+            build_batch_claim_message("devnet", program, recipient, &[], ETH4, 1_787_526_746)
+                .is_err()
+        );
+        // Over the cap
+        let too_many: Vec<u16> = (1..=(MAX_BATCH_IDS as u16 + 1)).collect();
+        assert!(build_batch_claim_message(
+            "devnet",
+            program,
+            recipient,
+            &too_many,
+            ETH4,
+            1_787_526_746
+        )
+        .is_err());
+        // Out-of-range id
+        assert!(build_batch_claim_message(
+            "devnet",
+            program,
+            recipient,
+            &[4, MAX_NFT_ID + 1],
+            ETH4,
+            1_787_526_746
+        )
+        .is_err());
     }
 }

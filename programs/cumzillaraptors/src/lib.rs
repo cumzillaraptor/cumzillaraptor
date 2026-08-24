@@ -463,6 +463,221 @@ pub mod cumzillaraptors {
             .ok_or(error!(CumzillaraptorsError::ArithmeticOverflow))?;
         Ok(())
     }
+
+    /// Single-Ethereum-signature batch claim. The holder signs ONE
+    /// CUMZILLARAPTORS_CLAIM_V1_BATCH message listing every authorized id; each
+    /// on-chain call claims one id from that list with its own merkle proof,
+    /// receipt, and replay guard. `nft_ids` must exactly match the signed list
+    /// (strictly increasing); `nft_id` must be a member.
+    #[allow(clippy::too_many_arguments)]
+    pub fn claim_nft_batch(
+        ctx: Context<ClaimNft>,
+        nft_ids: Vec<u16>,
+        nft_id: u16,
+        eth_address: [u8; 20],
+        nonce: [u8; 32],
+        expiry_unix: u64,
+        claim_proof: Vec<[u8; 32]>,
+        name: String,
+        uri: String,
+        metadata_proof: Vec<[u8; 32]>,
+        signature: [u8; 65],
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.config.sale_state == SaleState::Live,
+            CumzillaraptorsError::ClaimsNotLive
+        );
+        let now = Clock::get()?.unix_timestamp;
+        require!(
+            now >= 0 && (now as u64) <= expiry_unix,
+            CumzillaraptorsError::ClaimAuthorizationExpired
+        );
+        require!(
+            ctx.accounts.config.claims_minted < CLAIM_COUNT,
+            CumzillaraptorsError::ClaimCountExceeded
+        );
+        // Canonical-list enforcement before any state work: strictly increasing,
+        // deduplicated, within cap — exactly what build_batch_claim_message signs.
+        require!(
+            !nft_ids.is_empty() && nft_ids.len() <= secp256k1::MAX_BATCH_IDS,
+            CumzillaraptorsError::InvalidClaimMessage
+        );
+        let mut sorted = nft_ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        require!(
+            sorted.len() == nft_ids.len() && sorted.as_slice() == nft_ids.as_slice(),
+            CumzillaraptorsError::InvalidClaimMessage
+        );
+        require!(
+            nft_ids.contains(&nft_id),
+            CumzillaraptorsError::InvalidClaimMessage
+        );
+        require_keys_eq!(
+            ctx.accounts.collection.key(),
+            ctx.accounts.config.collection,
+            CumzillaraptorsError::InvalidCollection
+        );
+        require_keys_eq!(
+            ctx.accounts.config.core_program,
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require_keys_eq!(
+            ctx.accounts.mpl_core_program.key(),
+            mpl_core::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+
+        let claim_leaf = claims::verify_claim_eligibility(
+            &ctx.accounts.config,
+            &ctx.accounts.registry,
+            ctx.program_id,
+            &eth_address,
+            nft_id,
+            &nonce,
+            &claim_proof,
+        )?;
+        let (expected_receipt, receipt_bump) =
+            Pubkey::find_program_address(&[b"claim", &claim_leaf], ctx.program_id);
+        require_keys_eq!(
+            ctx.accounts.receipt.key(),
+            expected_receipt,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        require!(
+            !ctx.accounts.registry.is_allocated(nft_id)?,
+            CumzillaraptorsError::AllocationIdAlreadyUsed
+        );
+        metadata::verify_metadata_proof(
+            ctx.program_id,
+            &ctx.accounts.config.metadata_root,
+            nft_id,
+            &name,
+            &uri,
+            &metadata_proof,
+        )?;
+        // Signature verification LAST of the pure checks, matching claim_nft's
+        // order (eligibility → metadata → secp): a bad batch signature can never
+        // be probed against partially-validated state.
+        let message = secp256k1::build_batch_claim_message(
+            "devnet",
+            *ctx.program_id,
+            ctx.accounts.claimer.key(),
+            &nft_ids,
+            eth_address,
+            expiry_unix,
+        )?;
+        let message_hash = secp256k1::claim_message_hash(&message)?;
+        secp256k1::verify_secp_signature(&signature, &eth_address, &message_hash)?;
+        require_keys_eq!(
+            ctx.accounts.receipt.key(),
+            expected_receipt,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        // ---- shared claim tail (identical to claim_nft below the signature check) ----
+        require_keys_eq!(
+            *ctx.accounts.receipt.owner,
+            anchor_lang::solana_program::system_program::ID,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        require!(
+            ctx.accounts.receipt.data_is_empty() && ctx.accounts.receipt.lamports() == 0,
+            CumzillaraptorsError::InvalidClaimReceipt
+        );
+        require_keys_eq!(
+            *ctx.accounts.asset.owner,
+            anchor_lang::solana_program::system_program::ID,
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+        require!(
+            ctx.accounts.asset.data_is_empty(),
+            CumzillaraptorsError::InvalidCoreProgram
+        );
+
+        let nft_id_bytes = nft_id.to_be_bytes();
+        let config_bump = ctx.accounts.config.bump;
+        let asset_bump = ctx.bumps.asset;
+        let config_seeds: &[&[u8]] = &[b"config", &[config_bump]];
+        let asset_seeds: &[&[u8]] = &[b"asset", &nft_id_bytes, &[asset_bump]];
+        // A third party can fund a predictable PDA. Drain only an empty system-owned asset PDA
+        // using its signer seed, so dust cannot prevent the Core create instruction.
+        let asset_lamports = ctx.accounts.asset.lamports();
+        if asset_lamports > 0 {
+            let recover_dust = anchor_lang::solana_program::system_instruction::transfer(
+                &ctx.accounts.asset.key(),
+                &ctx.accounts.claimer.key(),
+                asset_lamports,
+            );
+            anchor_lang::solana_program::program::invoke_signed(
+                &recover_dust,
+                &[
+                    ctx.accounts.asset.to_account_info(),
+                    ctx.accounts.claimer.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                &[asset_seeds],
+            )?;
+        }
+        let signer_seeds: &[&[&[u8]]] = &[config_seeds, asset_seeds];
+        let core_program = ctx.accounts.mpl_core_program.to_account_info();
+        let asset = ctx.accounts.asset.to_account_info();
+        let collection = ctx.accounts.collection.to_account_info();
+        let config = ctx.accounts.config.to_account_info();
+        let claimer = ctx.accounts.claimer.to_account_info();
+        let system_program = ctx.accounts.system_program.to_account_info();
+        let mut builder = mpl_core::instructions::CreateV1CpiBuilder::new(&core_program);
+        builder
+            .asset(&asset)
+            .collection(Some(&collection))
+            .authority(Some(&config))
+            .payer(&claimer)
+            .owner(Some(&claimer))
+            // Core derives an asset's update authority from its collection. The
+            // collection itself is immutable-config-PDA controlled; passing a
+            // second direct update authority is rejected by Core CreateV1.
+            .system_program(&system_program)
+            .data_state(mpl_core::types::DataState::AccountState)
+            .name(name)
+            .uri(uri);
+        builder.invoke_signed(signer_seeds)?;
+
+        let receipt_seeds: &[&[u8]] = &[b"claim", &claim_leaf, &[receipt_bump]];
+        let create_receipt = anchor_lang::solana_program::system_instruction::create_account(
+            &ctx.accounts.claimer.key(),
+            &ctx.accounts.receipt.key(),
+            Rent::get()?.minimum_balance(8 + ClaimReceipt::LEN),
+            (8 + ClaimReceipt::LEN) as u64,
+            ctx.program_id,
+        );
+        anchor_lang::solana_program::program::invoke_signed(
+            &create_receipt,
+            &[
+                ctx.accounts.claimer.to_account_info(),
+                ctx.accounts.receipt.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[receipt_seeds],
+        )?;
+        ClaimReceipt {
+            claimer: ctx.accounts.claimer.key(),
+            eth_address,
+            nft_id,
+            bump: receipt_bump,
+        }
+        .try_serialize(&mut &mut ctx.accounts.receipt.try_borrow_mut_data()?[..])?;
+
+        ctx.accounts
+            .registry
+            .mark_allocated_after_core_success(nft_id)?;
+        ctx.accounts.config.claims_minted = ctx
+            .accounts
+            .config
+            .claims_minted
+            .checked_add(1)
+            .ok_or(error!(CumzillaraptorsError::ArithmeticOverflow))?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
