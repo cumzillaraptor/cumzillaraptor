@@ -6,3 +6,6 @@ nft-data/
 target/
 rustc-ice-*.txt
 # Commit the program lockfile: Anchor/Solana v1.18's Cargo needs v3 format.
+
+# site build artifact
+dist/
