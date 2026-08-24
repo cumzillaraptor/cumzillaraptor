@@ -14,6 +14,7 @@
 //   wc.publicKey               // PublicKey | null
 //   wc.signAndSend(tx)         // -> signature string (tries provider API then wallet-standard then self-send)
 import { Connection, PublicKey, Transaction } from "./web3-shim.js";
+import { getMetamaskSolanaWallet } from "./metamask.js";
 
 const DETECT_GRACE_MS = 2500;     // how long to wait for late-injecting wallets
 const DETECT_POLL_MS = 150;
@@ -108,6 +109,38 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
         "). Disable extras or use the wallet you want.");
     }
 
+    // ---- MetaMask Connect Solana fallback ----
+    // Current MetaMask does not inject window.solana; its Solana support is a
+    // Wallet-Standard wallet created via @metamask/connect-solana. Try it
+    // whenever no dedicated Solana wallet was found.
+    if (!found) {
+      try {
+        const mmWallet = await getMetamaskSolanaWallet(rpcUrl);
+        const feat = mmWallet?.features?.["standard:connect"];
+        if (feat) {
+          // Timeout: if MetaMask isn't actually installed/unlocked, the SDK
+          // waits forever for a popup that never appears.
+          const res = await Promise.race([
+            feat.connect({ silent: false }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error(
+              "no response from MetaMask — make sure the MetaMask extension is installed and unlocked"
+            )), 45000)),
+          ]);
+          const addr = res?.accounts?.[0]?.address;
+          if (!addr) throw new Error("MetaMask returned no account.");
+          kind = "standard"; provider = mmWallet;
+          emitConnect(new PublicKey(addr));
+          return { status: "ok", publicKey };
+        }
+      } catch (e) {
+        throw new Error(
+          "No Solana wallet detected, and connecting through MetaMask failed: " +
+          String(e?.message || e) +
+          " — install the Phantom or Solflare extension, or make sure the MetaMask extension is installed and unlocked."
+        );
+      }
+    }
+
     // ---- legacy path ----
     if (!found) {
       throw new Error(
@@ -198,6 +231,11 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
   return {
     connect, disconnect, signAndSend,
     get publicKey() { return publicKey; },
-    get walletName() { return kind === "standard" ? provider?.name : detectProvider()?.name || "wallet"; },
+    get walletName() {
+      if (kind === "standard") {
+        return provider?.name === "MetaMask (via MetaMask Connect)" ? "MetaMask" : provider?.name || "wallet";
+      }
+      return detectProvider()?.name || "wallet";
+    },
   };
 }
