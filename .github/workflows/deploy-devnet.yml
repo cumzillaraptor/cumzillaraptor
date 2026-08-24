@@ -107,6 +107,43 @@ jobs:
           BAL=$(solana balance /tmp/payer.json | cut -d' ' -f1)
           awk -v b="$BAL" 'BEGIN{exit !(b >= 4.1)}' || { echo "::error::payer balance below 4.1 SOL needed for deploy rent"; exit 1; }
 
+      - name: Extend program-data if the new binary outgrew it
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          solana config set --url "$CLUSTER" >/dev/null
+          PROGRAM_SO=$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)
+          NEW_SIZE=$(stat -c%s "$PROGRAM_SO")
+          # program-data space = binary + 37-byte header (bpf-upgradeable-loader)
+          DATA_ACCOUNT=$(solana program show --url "$CLUSTER" "$PROGRAM_ID" | awk '/Program Data Address/ {print $4}')
+          OLD_SPACE=$(solana account "$DATA_ACCOUNT" --output json | jq -r '.space')
+          OLD_BIN=$((OLD_SPACE - 37))
+          echo "on-chain binary bytes: $OLD_BIN; new binary bytes: $NEW_SIZE"
+          if [ "$NEW_SIZE" -gt "$OLD_BIN" ]; then
+            GROW=$(( NEW_SIZE - OLD_BIN + 131072 )) # +128 KiB slack for future growth
+            echo "extending program-data by $GROW bytes"
+            solana program extend "$PROGRAM_ID" "$GROW" \
+              --url "$CLUSTER" \
+              --keypair /tmp/payer.json \
+              --upgrade-authority /tmp/authority.json
+            solana program show --url "$CLUSTER" "$PROGRAM_ID"
+          fi
+
+      - name: Reclaim lamports from stranded deploy buffers
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          export PATH="/tmp/solana-release/bin:$PATH"
+          solana config set --url "$CLUSTER" >/dev/null
+          # Failed deploy attempts leave intermediate buffers holding rent;
+          # close them back into the payer. Never touches the live program.
+          solana program close --buffers \
+            --url "$CLUSTER" \
+            --fee-payer /tmp/payer.json || true
+          solana balance /tmp/payer.json
+
       - name: Deploy program (payer + upgrade authority from secrets)
         shell: bash
         run: |
