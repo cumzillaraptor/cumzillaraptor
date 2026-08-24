@@ -554,6 +554,13 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   await rejectWithoutStateChange('already allocated ID', new Transaction().add(claimIx(replayLocal)), [claimer], replayLocal);
 
   // ---- one-signature batch claims (same launch) ----
+  // Each batch item pays Core AssetV1 + ClaimReceipt rent; top the claimer up
+  // again (the deliberate CPI-failure scenario above drained it to a floor).
+  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(SystemProgram.transfer({
+    fromPubkey: authority.publicKey,
+    toPubkey: claimer.publicKey,
+    lamports: 20_000_000,
+  })), [authority]);
   // claimBatchData is defined near claimData above; both members share ONE
   // batch signature over nft_ids: 248,250.
   const batchClaimIx = (id) => {
