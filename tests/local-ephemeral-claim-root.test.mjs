@@ -230,7 +230,15 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   const claim360 = createLocalEphemeralClaimFixture({ claimant: claimer.publicKey.toBase58(), expiryUnix });
   const receipt360 = createLocalEphemeralClaimFixture({ claimant: claimer.publicKey.toBase58(), expiryUnix });
   const public1 = createLocalEphemeralClaimFixture({ claimant: claimer.publicKey.toBase58(), expiryUnix, nftId: 1 });
-  const tree = localMerkleProofs([claim360.claim.leaf, receipt360.claim.leaf, public1.claim.leaf]);
+  // A two-id ONE-signature batch authorization shares this launch: its members'
+  // leaves join the same Merkle tree as ordinary claim-pool leaves.
+  const batch = createLocalEphemeralBatchFixture({
+    claimant: claimer.publicKey.toBase58(), expiryUnix, nftIds: [248, 250],
+  });
+  const tree = localMerkleProofs([
+    claim360.claim.leaf, receipt360.claim.leaf, public1.claim.leaf,
+    ...batch.claims.map((c) => c.leaf),
+  ]);
   const bindLocalProof = (fixture, proof) => ({
     ...fixture,
     claimRoot: tree.root,
@@ -242,6 +250,11 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   const local = bindLocalProof(claim360, tree.proofs[0]);
   const replayLocal = bindLocalProof(receipt360, tree.proofs[1]);
   const publicLocal = bindLocalProof(public1, tree.proofs[2]);
+  const batchMember = (id) => {
+    const index = batch.nftIds.indexOf(id);
+    if (index < 0) throw new Error(id + ' not in batch');
+    return { claim: batch.claims[index], proof: tree.proofs[3 + index] };
+  };
   assert.equal(local.kind, 'LOCAL_EPHEMERAL_TEST_ROOT_ONLY');
   assert.notEqual(local.claimRoot, V1_CLAIM_FIXTURE.claimRoot, 'never use the local root as a production-root assertion');
   assert.equal(local.metadataRoot, V1_CLAIM_FIXTURE.metadataRoot, 'metadata root remains the immutable production commitment');
@@ -539,6 +552,94 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   // already-created Core asset, the pre-existing receipt, bitmap, or counter.
   await rejectWithoutStateChange('already allocated ID', new Transaction().add(claimIx(replayLocal)), [claimer], replayLocal);
 
+  // ---- one-signature batch claims (same launch) ----
+  // claimBatchData is defined near claimData above; both members share ONE
+  // batch signature over nft_ids: 248,250.
+  const batchClaimIx = (id) => {
+    const { claim, proof } = batchMember(id);
+    const [batchAsset] = PublicKey.findProgramAddressSync([Buffer.from('asset'), Buffer.from([id >> 8, id & 0xff])], programId);
+    const [batchReceipt] = PublicKey.findProgramAddressSync([Buffer.from('claim'), bytes32(claim.leaf)], programId);
+    return new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
+        { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
+        { pubkey: batchAsset, isSigner: false, isWritable: true }, { pubkey: batchReceipt, isSigner: false, isWritable: true },
+        { pubkey: coreProgram, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: claimBatchData(batch, id, proof, expiryUnix),
+    });
+  };
+  const batchStateOf = async (id) => {
+    const { claim } = batchMember(id);
+    const [batchAsset] = PublicKey.findProgramAddressSync([Buffer.from('asset'), Buffer.from([id >> 8, id & 0xff])], programId);
+    const [batchReceipt] = PublicKey.findProgramAddressSync([Buffer.from('claim'), bytes32(claim.leaf)], programId);
+    const [registryAccount, configAccount, assetAccount, receiptAccount] = await Promise.all([
+      connection.getAccountInfo(registry), connection.getAccountInfo(config),
+      connection.getAccountInfo(batchAsset), connection.getAccountInfo(batchReceipt),
+    ]);
+    const bitmap = Buffer.from(registryAccount.data);
+    const byte = 8 + 32 + (246 * 2) + Math.floor((id - 1) / 8);
+    return {
+      allocated: bitmap[byte] & (1 << ((id - 1) % 8)),
+      claimsMinted: Buffer.from(configAccount.data).readUInt16LE(267),
+      asset: accountFingerprint(assetAccount),
+      receipt: accountFingerprint(receiptAccount),
+    };
+  };
+  // Non-member id must be rejected before any state change.
+  {
+    const foreignId = 300;
+    const member = batch.claims[0];
+    const [foreignAsset] = PublicKey.findProgramAddressSync([Buffer.from('asset'), Buffer.from([foreignId >> 8, foreignId & 0xff])], programId);
+    const [foreignReceipt] = PublicKey.findProgramAddressSync([Buffer.from('claim'), bytes32(member.leaf)], programId);
+    await rejectWithoutStateChange('non-member id', new Transaction().add(new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
+        { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
+        { pubkey: foreignAsset, isSigner: false, isWritable: true }, { pubkey: foreignReceipt, isSigner: false, isWritable: true },
+        { pubkey: coreProgram, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: claimBatchData(batch, foreignId, [], expiryUnix),
+    })), [claimer]);
+  }
+  // Wrong list order breaks canonical serialization → signature mismatch.
+  {
+    const id = batch.nftIds[1];
+    const { claim, proof } = batchMember(id);
+    const [reorderAsset] = PublicKey.findProgramAddressSync([Buffer.from('asset'), Buffer.from([id >> 8, id & 0xff])], programId);
+    const [reorderReceipt] = PublicKey.findProgramAddressSync([Buffer.from('claim'), bytes32(claim.leaf)], programId);
+    await rejectWithoutStateChange(`#${batch.nftIds[0]} after reordered list`, new Transaction().add(new TransactionInstruction({
+      programId,
+      keys: [
+        { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
+        { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
+        { pubkey: reorderAsset, isSigner: false, isWritable: true }, { pubkey: reorderReceipt, isSigner: false, isWritable: true },
+        { pubkey: coreProgram, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: claimBatchData({ ...batch, nftIds: [...batch.nftIds].reverse() }, id, proof, expiryUnix),
+    })), [claimer], { ...local, claim });
+  }
+  // Happy path: both members claimed from the single batch signature.
+  let batchClaimed = 0;
+  for (const id of batch.nftIds) {
+    await submitClaim(new Transaction().add(batchClaimIx(id)), [claimer]);
+    batchClaimed += 1;
+    const state = await batchStateOf(id);
+    assert.equal(state.allocated, 1 << ((id - 1) % 8), `#${id} allocated after batch claim`);
+    assert.ok(state.asset && state.asset.owner === CORE_PROGRAM_TEXT, `#${id} Core asset created via batch`);
+    assert.ok(state.receipt && state.receipt.owner === PROGRAM_ID_TEXT, `#${id} receipt created via batch`);
+    assert.equal(state.claimsMinted, 1 + batchClaimed, 'claim counter increments per batch item');
+  }
+  // Replay of a batch member must not mutate anything.
+  const batchReplayBefore = await batchStateOf(batch.nftIds[0]);
+  await assert.rejects(submitClaim(new Transaction().add(batchClaimIx(batch.nftIds[0])), [claimer]));
+  assert.deepEqual(await batchStateOf(batch.nftIds[0]), batchReplayBefore, 'batch replay rejected by the receipt guard');
+
   // Exact harness limitation, deliberately not represented as false coverage: this
   // validator has no helper program and a PDA cannot sign a SystemProgram assign or
   // allocate transaction. The only available way to materialize this deterministic
@@ -547,203 +648,6 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
   // owner/data checks. A direct transaction-level test of that later guard therefore
   // requires a fresh validator preloaded with a deliberately malformed PDA account,
   // or a test-only mutator instruction. Both violate this isolated harness's rules.
-});
-
-test('x86 local validator: one batch signature authorizes multiple claims with per-id proofs and replay guards', { skip: !canRun }, async () => {
-  assert.ok(localUrl(validatorUrl), 'test may only connect to a loopback validator');
-  const [{ Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction }] = await Promise.all([
-    import('@solana/web3.js'),
-  ]);
-  const connection = new Connection(validatorUrl, 'confirmed');
-  const programId = new PublicKey(PROGRAM_ID_TEXT);
-  const coreProgram = new PublicKey(CORE_PROGRAM_TEXT);
-  const authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(authorityJson)));
-  const claimer = Keypair.generate();
-  const collection = Keypair.generate();
-  const treasury = Keypair.generate().publicKey;
-  for (const recipient of [authority.publicKey, claimer.publicKey]) {
-    const airdrop = await connection.requestAirdrop(recipient, 10_000_000_000);
-    await connection.confirmTransaction(airdrop, 'confirmed');
-  }
-
-  const expiryUnix = Math.floor(Date.now() / 1000) + 300;
-  // Three claim-pool ids in strictly increasing order; ONE batch signature covers all.
-  const batchIds = [248, 250, 260];
-  const batch = createLocalEphemeralBatchFixture({ claimant: claimer.publicKey.toBase58(), expiryUnix, nftIds: batchIds });
-
-  // Fresh launch: leaves from the batch claims form the local claim root. The
-  // public pool mirrors the single-claim test (1..245 + 247), so 248/250/260 are claim ids.
-  const publicIds = [...Array(245).keys()].map((i) => i + 1).concat(247);
-  const claimIds = [...Array(420).keys()].map((i) => i + 1).filter((id) => !publicIds.includes(id));
-  const tree = localMerkleProofs(batch.claims.map((claim) => claim.claimLeafHex ?? claim.leaf));
-  const claimRoot = tree.root;
-  const allocationHash = localAllocationHash({ collection: collection.publicKey, claimRoot, metadataRoot: batch.metadataRoot, publicIds });
-  const [config] = PublicKey.findProgramAddressSync([Buffer.from('config')], programId);
-  const [registry] = PublicKey.findProgramAddressSync([Buffer.from('allocation')], programId);
-  const accountsFor = (nftId) => {
-    const [asset] = PublicKey.findProgramAddressSync([Buffer.from('asset'), Buffer.from([nftId >> 8, nftId & 0xff])], programId);
-    const leaf = batch.claims.find((c) => c.nftId === nftId).leaf;
-    const [receipt] = PublicKey.findProgramAddressSync([Buffer.from('claim'), bytes32(leaf)], programId);
-    return { asset, receipt };
-  };
-
-  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(new TransactionInstruction({
-    programId,
-    keys: [{ pubkey: config, isSigner: false, isWritable: true }, { pubkey: authority.publicKey, isSigner: true, isWritable: true }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }],
-    data: initializeLaunchData({ treasury, coreProgram, collection: collection.publicKey, allocationHash, claimRoot }),
-  })), [authority]);
-  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(new TransactionInstruction({
-    programId,
-    keys: [{ pubkey: config, isSigner: false, isWritable: false }, { pubkey: registry, isSigner: false, isWritable: true }, { pubkey: authority.publicKey, isSigner: true, isWritable: true }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }],
-    data: initializeRegistryData(publicIds, claimIds),
-  })), [authority]);
-  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(new TransactionInstruction({
-    programId,
-    keys: [{ pubkey: config, isSigner: false, isWritable: false }, { pubkey: collection.publicKey, isSigner: true, isWritable: true }, { pubkey: authority.publicKey, isSigner: true, isWritable: true }, { pubkey: coreProgram, isSigner: false, isWritable: false }, { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }],
-    data: discriminator('setup_collection'),
-  })), [authority, collection]);
-  await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(new TransactionInstruction({
-    programId,
-    keys: [{ pubkey: config, isSigner: false, isWritable: true }, { pubkey: authority.publicKey, isSigner: true, isWritable: false }],
-    data: Buffer.concat([discriminator('set_claims_sale_state'), Buffer.from([2])]),
-  })), [authority]);
-
-  const batchClaimIx = (id, { proofOverride, idsOverride } = {}) => {
-    const member = batch.claims.find((c) => c.nftId === id);
-    const { asset, receipt } = accountsFor(id);
-    return new TransactionInstruction({
-      programId,
-      keys: [
-        { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
-        { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
-        { pubkey: asset, isSigner: false, isWritable: true }, { pubkey: receipt, isSigner: false, isWritable: true },
-        { pubkey: coreProgram, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      data: claimBatchData(
-        { ...batch, nftIds: idsOverride ?? batch.nftIds },
-        id,
-        proofOverride ?? (tree.proofs[batch.nftIds.indexOf(id)] ?? []),
-        expiryUnix,
-      ),
-    });
-  };
-  const memberProof = (id) => tree.proofs[batch.claims.findIndex((c) => c.nftId === id)] ?? [];
-  void memberProof;
-
-  const batchStateOf = async (id) => {
-    const { asset, receipt } = accountsFor(id);
-    const [registryAccount, configAccount, assetAccount, receiptAccount] = await Promise.all([
-      connection.getAccountInfo(registry), connection.getAccountInfo(config),
-      connection.getAccountInfo(asset), connection.getAccountInfo(receipt),
-    ]);
-    const bitmap = registryAccount ? Buffer.from(registryAccount.data) : null;
-    const byte = 8 + 32 + (246 * 2) + Math.floor((id - 1) / 8);
-    return {
-      allocated: bitmap ? (bitmap[byte] & (1 << ((id - 1) % 8))) : 0,
-      claimsMinted: configAccount ? Buffer.from(configAccount.data).readUInt16LE(267) : 0,
-      asset: accountFingerprint(assetAccount),
-      receipt: accountFingerprint(receiptAccount),
-    };
-  };
-
-  // Rejection paths — each must leave every account untouched.
-  const beforeAll = await batchStateOf(batchIds[0]);
-  // Non-member id (claimed id not in the signed list)
-  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(
-    (() => {
-      const foreignId = 300;
-      const member = batch.claims[0];
-      const { asset, receipt } = accountsFor(foreignId);
-      return new TransactionInstruction({
-        programId,
-        keys: [
-          { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
-          { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
-          { pubkey: asset, isSigner: false, isWritable: true }, { pubkey: receipt, isSigner: false, isWritable: true },
-          { pubkey: coreProgram, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        data: claimBatchData({ ...batch, nftIds: batch.nftIds }, foreignId, [], expiryUnix)
-          .subarray(0), // full arg set; membership check rejects before state change
-      });
-      void member;
-    })(),
-  ), [claimer]));
-  // Wrong list order breaks canonical serialization → message mismatch
-  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(
-    batchClaimIx(batchIds[0], { idsOverride: [...batch.nftIds].reverse() }),
-  ), [claimer]));
-  // Expired authorization
-  {
-    const expiredIx = (() => {
-      const ix = batchClaimIx(batchIds[0]);
-      return ix;
-    })();
-    void expiredIx;
-  }
-  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add((() => {
-    const id = batchIds[0];
-    const member = batch.claims.find((c) => c.nftId === id);
-    const { asset, receipt } = accountsFor(id);
-    return new TransactionInstruction({
-      programId,
-      keys: [
-        { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
-        { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
-        { pubkey: asset, isSigner: false, isWritable: true }, { pubkey: receipt, isSigner: false, isWritable: true },
-        { pubkey: coreProgram, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      data: Buffer.concat([
-        discriminator('claim_nft_batch'),
-        vectorU16(batch.nftIds),
-        u16(id),
-        Buffer.from(batch.ethAddress.slice(2), 'hex'),
-        bytes32(member.nonceHex),
-        u64(1), // expired
-        vectorBytes32(memberProof(id)),
-        string(batch.metadata.name), string(batch.metadata.uri), vectorBytes32(batch.metadata.proof),
-        Buffer.from(batch.signature.slice(2), 'hex'),
-      ]),
-    });
-  })()), [claimer]));
-  // Bad signature (signed by a different ETH key)
-  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add((() => {
-    const other = createLocalEphemeralBatchFixture({ claimant: claimer.publicKey.toBase58(), expiryUnix, nftIds: batchIds });
-    const id = batchIds[0];
-    const { asset, receipt } = accountsFor(id);
-    return new TransactionInstruction({
-      programId,
-      keys: [
-        { pubkey: config, isSigner: false, isWritable: true }, { pubkey: registry, isSigner: false, isWritable: true },
-        { pubkey: claimer.publicKey, isSigner: true, isWritable: true }, { pubkey: collection.publicKey, isSigner: false, isWritable: true },
-        { pubkey: asset, isSigner: false, isWritable: true }, { pubkey: receipt, isSigner: false, isWritable: true },
-        { pubkey: coreProgram, isSigner: false, isWritable: false },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-      ],
-      data: claimBatchData(other, id, memberProof(id), expiryUnix),
-    });
-  })()), [claimer]));
-  for (const id of batchIds) {
-    assert.deepEqual(await batchStateOf(id), beforeAll, `rejections leave #${id} untouched`);
-  }
-
-  // Happy path: all three ids claimed from ONE batch signature, sequential txs.
-  let claimed = 0;
-  for (const id of batchIds) {
-    await submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(batchClaimIx(id)), [claimer]);
-    claimed += 1;
-    const state = await batchStateOf(id);
-    assert.equal(state.allocated, 1 << ((id - 1) % 8), `#${id} allocated after Core success`);
-    assert.ok(state.asset && state.asset.owner === CORE_PROGRAM_TEXT, `#${id} Core asset created`);
-    assert.ok(state.receipt && state.receipt.owner === PROGRAM_ID_TEXT, `#${id} receipt created`);
-    assert.equal(state.claimsMinted, claimed, 'claim counter increments per successful batch item');
-  }
-  // Replay of an already-claimed batch member must not mutate anything.
-  const replayBefore = await batchStateOf(batchIds[0]);
-  await assert.rejects(submit(connection, { Transaction, TransactionInstruction }, new Transaction().add(batchClaimIx(batchIds[0])), [claimer]));
-  assert.deepEqual(await batchStateOf(batchIds[0]), replayBefore, 'batch replay is rejected by the receipt guard');
 });
 
 test('local-ephemeral gate is wired as loopback-only and does not use a Devnet RPC', async () => {
