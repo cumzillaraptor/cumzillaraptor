@@ -24,32 +24,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Assemble a clean publish directory containing only public site files.
-      # Nothing from programs/, scripts/, nft-data/, tests/, docs/ ships to the CDN.
       - name: Assemble site bundle
-        run: |
-          set -euo pipefail
-          mkdir -p dist/assets dist/config dist/cumzillaraptors/mint/data dist/cumzillaraptors/claim/data
-          cp index.html dist/
-          cp assets/cumz.css assets/cumzillaraptor116.svg assets/cumzillaraptor-transparent.png assets/Chewy-Regular.ttf dist/assets/
-          mkdir -p dist/assets/vendor
-          cp assets/vendor/*.js dist/assets/vendor/
-          cp config/site.js dist/config/
-
-          # mint page + shared client + data
-          cp cumzillaraptors/mint/index.html dist/cumzillaraptors/mint/
-          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js dist/cumzillaraptors/mint/
-          cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/pool-order.json dist/cumzillaraptors/mint/data/
-
-          # claim page + shared client + data
-          cp cumzillaraptors/claim/index.html dist/cumzillaraptors/claim/
-          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js dist/cumzillaraptors/claim/
-          cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/claims-by-eth.json dist/cumzillaraptors/claim/data/
-
-          # /mint/ and /claim/ convenience paths (Workers static assets: no _redirects support)
-          mkdir -p dist/mint dist/claim
-          cp dist/cumzillaraptors/mint/index.html dist/mint/index.html
-          cp dist/cumzillaraptors/claim/index.html dist/claim/index.html
+        run: node scripts/build-site-dist.js
 
       - name: Deploy to Cloudflare Worker (static assets)
         uses: cloudflare/wrangler-action@v3

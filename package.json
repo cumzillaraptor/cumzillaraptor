@@ -9,7 +9,8 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "test:deployment": "node --test tests/devnet-deploy-preflight.test.mjs tests/devnet-deploy-review.test.mjs tests/devnet-deploy-executor.test.mjs tests/release-safety.test.mjs",
-    "test:deployment:live": "CUMZ_DEVNET_LIVE_REVIEW=1 node --test tests/devnet-deploy-review.test.mjs"
+    "test:deployment:live": "CUMZ_DEVNET_LIVE_REVIEW=1 node --test tests/devnet-deploy-review.test.mjs",
+    "build:site": "node scripts/build-site-dist.js"
   },
   "repository": {
     "type": "git",
