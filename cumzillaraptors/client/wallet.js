@@ -114,6 +114,17 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
     // Wallet-Standard wallet created via @metamask/connect-solana. Try it
     // whenever no dedicated Solana wallet was found.
     if (!found) {
+      // Hard platform limit (MetaMask docs): MetaMask mobile supports Solana
+      // MAINNET only — devnet/testnet exist solely in the desktop extension.
+      // On devnet the connect would never succeed, so fail fast with guidance.
+      const isMmMobile = /MetaMaskMobile|MetaMask\s*\/.*Mobile/i.test(navigator.userAgent) ||
+        (!!window.ethereum?.isMetaMask && /Android|iPhone|iPad/i.test(navigator.userAgent));
+      if (isMmMobile && rpcUrl && /devnet/i.test(rpcUrl)) {
+        throw new Error(
+          "MetaMask mobile cannot reach Solana devnet (mainnet-only on mobile). " +
+          "For this beta: open this page in the Phantom app, or use a desktop browser with the MetaMask extension."
+        );
+      }
       try {
         const mmWallet = await getMetamaskSolanaWallet(rpcUrl);
         const feat = mmWallet?.features?.["standard:connect"];
