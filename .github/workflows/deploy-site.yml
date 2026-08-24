@@ -36,12 +36,12 @@ jobs:
 
           # mint page + shared client + data
           cp cumzillaraptors/mint/index.html dist/cumzillaraptors/mint/
-          cp cumzillaraptors/client/chain.js dist/cumzillaraptors/mint/
+          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js dist/cumzillaraptors/mint/
           cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/pool-order.json dist/cumzillaraptors/mint/data/
 
           # claim page + shared client + data
           cp cumzillaraptors/claim/index.html dist/cumzillaraptors/claim/
-          cp cumzillaraptors/client/chain.js dist/cumzillaraptors/claim/
+          cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js dist/cumzillaraptors/claim/
           cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/claims-by-eth.json dist/cumzillaraptors/claim/data/
 
           # /mint/ and /claim/ convenience paths (Workers static assets: no _redirects support)

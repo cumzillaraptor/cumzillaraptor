@@ -178,6 +178,7 @@
       fetchLaunchState, fetchAllocatedIds, getConfigPda, getAllocationPda,
       getAssetPda, buildMintInstruction,
     } from "/cumzillaraptors/mint/chain.js";
+    import { createWalletConnector } from "/cumzillaraptors/mint/wallet.js";
 
     const cfg = window.CUMZ_CONFIG;
     if (cfg.network !== "devnet") throw new Error("this build targets devnet only");
@@ -232,35 +233,32 @@
       $('btn-mint').setAttribute('aria-disabled', String(!ready));
     }
 
-    // ---- wallet ----
-    // Detection order: Phantom legacy → Solflare legacy → generic window.solana
-    // (Solflare's mobile dapp browser often injects only window.solana).
-    function getProvider() {
-      const w = window;
-      if (w.phantom?.solana?.isPhantom) return w.phantom.solana;
-      if (w.solflare) return w.solflare;
-      if (w.solana && (w.solana.isPhantom || w.solana.isSolflare || w.solana.publicKey || w.solana.connect)) return w.solana;
-      return null;
-    }
-    $('btn-connect').addEventListener('click', async () => {
-      const found = [];
-      if (window.phantom?.solana?.isPhantom) found.push('phantom');
-      if (window.solflare) found.push('solflare');
-      if (window.solana) found.push('window.solana' + (window.solana.isSolflare ? ' (solflare)' : window.solana.isPhantom ? ' (phantom)' : ''));
-      provider = getProvider();
-      if (!provider) {
-        setMsg('no wallet provider detected. seen: ' + (found.length ? found.join(', ') : 'none') +
-          '. install/open in phantom or solflare and reload.', 'err');
-        return;
-      }
-      try {
-        const res = await provider.connect();
-        const pk = res?.publicKey ?? provider.publicKey;
-        walletPubkey = new PublicKey(pk.toBase58 ? pk.toBase58() : pk);
-        $('btn-connect').textContent = 'connected · ' + short(walletPubkey.toBase58());
+    // ---- wallet (shared connector: phantom/solflare/backpack/glow/exodus + wallet-standard) ----
+    const wc = createWalletConnector({
+      rpcUrl: cfg.rpcUrl,
+      onConnect: (pk) => {
+        walletPubkey = pk;
+        $('btn-connect').textContent = 'connected · ' + short(pk.toBase58());
         updateButtons();
+      },
+      onDisconnect: () => {
+        walletPubkey = null;
+        $('btn-connect').textContent = 'connect wallet';
+        updateButtons();
+      },
+      onAccountChange: (pk) => {
+        walletPubkey = pk;
+        $('btn-connect').textContent = 'connected · ' + short(pk.toBase58());
+        updateButtons();
+      },
+    });
+    $('btn-connect').addEventListener('click', async () => {
+      setMsg('');
+      try {
+        const res = await wc.connect();
+        if (res.reused) setMsg('reconnected to previous session.', 'ok');
       } catch (e) {
-        setMsg('connect failed: ' + (e?.message || 'rejected or blocked.'), 'err');
+        setMsg(e.message, 'err');
       }
     });
 
@@ -399,13 +397,7 @@
         tx.recentBlockhash = blockhash;
 
         setMsg('approve in your wallet…');
-        let sig;
-        if (provider.signAndSendTransaction) {
-          sig = (await provider.signAndSendTransaction(tx)).signature;
-        } else {
-          const signed = await provider.signTransaction(tx);
-          sig = await conn.sendRawTransaction(signed.serialize());
-        }
+        const sig = await wc.signAndSend(tx);
         setMsg('confirming on-chain…');
         const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
         if (conf.value.err) throw new Error('on-chain error: ' + JSON.stringify(conf.value.err));

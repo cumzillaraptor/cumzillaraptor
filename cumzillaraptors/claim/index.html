@@ -120,6 +120,7 @@
       deterministicNonceHex, claimLeafHex, getReceiptPda,
       buildClaimMessage, claimMessageHashHex, buildClaimInstruction,
     } from "/cumzillaraptors/claim/chain.js";
+    import { createWalletConnector } from "/cumzillaraptors/claim/wallet.js";
 
     const cfg = window.CUMZ_CONFIG;
     if (cfg.network !== "devnet") throw new Error("this build targets devnet only");
@@ -250,20 +251,14 @@
     });
 
     // ---- step 3: solana claim ----
-    function getSolProvider() {
-      const w = window;
-      if (w.phantom?.solana?.isPhantom) return w.phantom.solana;
-      if (w.solflare) return w.solflare;
-      // Solflare mobile dapp browser often injects only window.solana
-      if (w.solana && (w.solana.isPhantom || w.solana.isSolflare || w.solana.publicKey || w.solana.connect)) return w.solana;
-      return null;
-    }
+    const wc = createWalletConnector({
+      rpcUrl: cfg.rpcUrl,
+      onConnect: (pk) => { walletPubkey = pk; $('v-recipient').textContent = short(pk.toBase58()); updateButtons(); },
+      onDisconnect: () => { walletPubkey = null; $('v-recipient').textContent = 'not connected'; updateButtons(); },
+    });
     async function connectSolana() {
-      solProvider = getSolProvider();
-      if (!solProvider) throw new Error('no phantom or solflare wallet found.');
-      const res = await solProvider.connect();
-      walletPubkey = new PublicKey(res.publicKey ?? solProvider.publicKey);
-      $('v-recipient').textContent = short(walletPubkey.toBase58());
+      await wc.connect();   // throws user-actionable errors
+      solProvider = true;   // legacy flag kept for claim flow guards
     }
     $('btn-connect-sol').addEventListener('click', async () => {
       try {
@@ -331,13 +326,7 @@
       const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
       tx.recentBlockhash = blockhash;
 
-      let sig;
-      if (solProvider.signAndSendTransaction) {
-        sig = (await solProvider.signAndSendTransaction(tx)).signature;
-      } else {
-        const signed = await solProvider.signTransaction(tx);
-        sig = await conn.sendRawTransaction(signed.serialize());
-      }
+      const sig = await wc.signAndSend(tx);
       const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
       if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
       const link = document.createElement('a');
