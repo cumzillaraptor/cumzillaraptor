@@ -116,8 +116,8 @@ jobs:
           PROGRAM_SO=$(find . -path '*/target/deploy/cumzillaraptors.so' -type f -print -quit)
           NEW_SIZE=$(stat -c%s "$PROGRAM_SO")
           # program-data space = binary + 37-byte header (bpf-upgradeable-loader)
-          DATA_ACCOUNT=$(solana program show --url "$CLUSTER" "$PROGRAM_ID" | awk '/Program Data Address/ {print $4}')
-          OLD_SPACE=$(solana account "$DATA_ACCOUNT" --output json | jq -r '.space')
+          DATA_ACCOUNT=$(solana program show --url "$CLUSTER" "$PROGRAM_ID" --keypair /tmp/payer.json | awk '/Program Data Address/ {print $4}')
+          OLD_SPACE=$(solana account "$DATA_ACCOUNT" --output json --url "$CLUSTER" | jq -r '.space')
           OLD_BIN=$((OLD_SPACE - 37))
           echo "on-chain binary bytes: $OLD_BIN; new binary bytes: $NEW_SIZE"
           if [ "$NEW_SIZE" -gt "$OLD_BIN" ]; then
