@@ -147,7 +147,7 @@
       fetchLaunchState, getConfigPda, getAllocationPda, getAssetPda,
       deterministicNonceHex, claimLeafHex, getReceiptPda,
       buildClaimMessage, claimMessageHashHex, buildClaimInstruction,
-      buildBatchClaimMessage, buildClaimBatchInstruction,
+      buildBatchClaimMessage, buildClaimBatchInstruction, MAX_BATCH_IDS,
     } from "/cumzillaraptors/claim/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/claim/wallet.js";
     // ethers is lazy-loaded at first ethereum signature — CDN failure can no longer kill the page
@@ -162,7 +162,7 @@
 
     let launch = null, claimsByEth = null;
     let eligible = null;        // [{ id, p, nonce, leaf }]
-    let batchEthSignature = null; // ONE 0x-hex signature covering all eligible ids
+    let batchEthSignatures = null; // array of { ids, sig } chunks (each ≤ MAX_BATCH_IDS)
     let batchNftIds = null;       // canonical id list that was signed
     let ethAddress = null;      // connected ethereum address (lowercase)
     const wc = createWalletConnector({
@@ -258,7 +258,7 @@
           list.append(row);
         }
         $('step-eligible').classList.remove('hidden');
-        batchEthSignature = null;
+        batchEthSignatures = null;
         batchNftIds = null;
       } catch (e) {
         setMsg('connect-msg', e.message || 'lookup failed.', 'err');
@@ -273,7 +273,7 @@
       $('btn-sign-all-eth').setAttribute('aria-disabled',
         String(!(bothConnected && eligible && eligible.length)));
       $('btn-claim-all').setAttribute('aria-disabled',
-        String(!(bothConnected && eligible?.length && batchEthSignature && launch.isLive)));
+        String(!(bothConnected && eligible?.length && batchEthSignatures && launch.isLive)));
     }
 
     // ---- ONE ethereum signature for ALL eligible raptors (batch authorization) ----
@@ -288,17 +288,31 @@
         catch { throw new Error('could not load the signing library — check connection and retry.'); }
         const browserProvider = new BrowserProvider(window.ethereum, 'any');
         // Canonical id order; per-id leaves keep their own deterministic nonces.
-        const ids = eligible.map((e) => e.id).sort((a, b) => a - b);
-        const message = buildBatchClaimMessage({
-          programId: PROGRAM_ID, recipient: wc.publicKey, nftIds: ids,
-          ethAddress, expiryUnix: cfg.expiryUnix,
-        });
-        setMsg('sign-msg', 'signing 1 message for all ' + ids.length + ' raptor' + (ids.length > 1 ? 's' : '') + '…');
-        batchEthSignature = await browserProvider.send('personal_sign', [message, signer]);
-        batchNftIds = ids;
-        setMsg('sign-msg', '✅ signed 1 message covering all ' + ids.length + ' raptor' + (ids.length > 1 ? 's' : '') + '.', 'ok');
+        // The contract caps one signature at MAX_BATCH_IDS ids, so large
+        // wallets sign ceil(n/64) messages — each covering a distinct id chunk.
+        const allIds = eligible.map((e) => e.id).sort((a, b) => a - b);
+        const chunks = [];
+        for (let i = 0; i < allIds.length; i += MAX_BATCH_IDS) {
+          chunks.push(allIds.slice(i, i + MAX_BATCH_IDS));
+        }
+        setMsg('sign-msg', 'signing ' + chunks.length + ' message' + (chunks.length > 1 ? 's' : '') +
+          ' for all ' + allIds.length + ' raptors… approve each MetaMask popup.');
+        const signed = [];
+        for (let c = 0; c < chunks.length; c++) {
+          if (c > 0) setMsg('sign-msg', 'message ' + (c + 1) + ' of ' + chunks.length + ' — approve in MetaMask…');
+          const message = buildBatchClaimMessage({
+            programId: PROGRAM_ID, recipient: wc.publicKey, nftIds: chunks[c],
+            ethAddress, expiryUnix: cfg.expiryUnix,
+          });
+          const sigHex = await browserProvider.send('personal_sign', [message, signer]);
+          signed.push({ ids: chunks[c], sig: sigHex });
+        }
+        batchEthSignatures = signed;
+        batchNftIds = allIds;
+        setMsg('sign-msg', '✅ signed ' + signed.length + ' message' + (signed.length > 1 ? 's' : '') +
+          ' covering all ' + allIds.length + ' raptors.', 'ok');
       } catch (e) {
-        batchEthSignature = null;
+        batchEthSignatures = null;
         batchNftIds = null;
         setMsg('sign-msg', e?.shortMessage || e?.message || 'signing rejected.', 'err');
       }
@@ -311,7 +325,8 @@
       try {
         for (let i = 0; i < eligible.length; i++) {
           setMsg('claim-msg', 'claiming #' + eligible[i].id + ' (' + (i + 1) + '/' + eligible.length + ')…');
-          await claimOne(eligible[i], batchEthSignature, batchNftIds);
+          const chunk = batchEthSignatures.find((ch) => ch.ids.includes(eligible[i].id));
+          await claimOne(eligible[i], chunk.sig, chunk.ids);
         }
         setMsg('claim-msg', '', 'ok');
         refreshStatus();
