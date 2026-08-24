@@ -216,7 +216,7 @@
   <script type="module">
     // web3 comes from the vendored IIFE via /cumzillaraptors/mint/chain.js (web3-shim)
     import {
-      Connection, PublicKey, Transaction,
+      Connection, PublicKey, SystemProgram, Transaction,
       fetchLaunchState, fetchAllocatedIds, getConfigPda, getAllocationPda,
       getAssetPda, buildMintInstruction, fetchRaptorImageUrl,
     } from "/cumzillaraptors/mint/chain.js";
@@ -439,8 +439,20 @@
         });
         const tx = new Transaction().add(ix);
         tx.feePayer = walletPubkey;
-        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+        // fetch the FRESHEST blockhash immediately before showing the popup — mobile popups
+        // can sit for a while and stale hashes cause "simulation failed"
+        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
         tx.recentBlockhash = blockhash;
+        // small priority fee improves landing + avoids wallet heuristic flags
+        tx.add(SystemProgram.transfer({
+          fromPubkey: walletPubkey,
+          toPubkey: TREASURY,
+          lamports: 5000,
+        }));
+
+        // preflight simulation — catches errors BEFORE the scary wallet-level failure
+        setMsg('checking transaction…');
+        await conn.simulateTransaction(tx);
 
         setMsg('approve the 1 SOL payment in your wallet…');
         const sig = await wc.signAndSend(tx);   // payment accepted HERE
