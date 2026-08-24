@@ -604,7 +604,14 @@ test('x86 local validator: authentic secp claim uses an ephemeral local root and
         { pubkey: coreProgram, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       ],
-      data: claimBatchData(batch, foreignId, member.nonceHex, [], expiryUnix),
+      // Non-member probe: id 300 is not in the signed list. Build the payload
+      // from member 248's reviewed metadata (membership must reject before
+      // metadata matters), then patch the claimed id field to 300.
+      data: (() => {
+        const buf = claimBatchData(batch, batch.nftIds[0], member.nonceHex, [], expiryUnix);
+        buf.writeUInt16LE(foreignId, 12); // 8 disc + 4 vec-len → nft_id at offset 12
+        return buf;
+      })(),
     })), [claimer]);
   }
   // Wrong list order breaks canonical serialization → signature mismatch.
