@@ -103,6 +103,7 @@
 
   <nav class="menu-panel" id="site-menu" aria-label="Main navigation" data-open="false">
     <ul class="menu-list">
+      <li><a class="menu-link" href="/">Home 🦖</a></li>
       <li><a class="menu-link" href="/mint/">Mint 🎲</a></li>
       <li><a class="menu-link" href="/claim/">Claim 🆓</a></li>
       <li><a class="menu-link" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">$CUM 💦</a></li>
@@ -171,13 +172,13 @@
 
     // status bar — reads CollectionConfig PDA on-chain
     const cfg = window.CUMZ_CONFIG;
-    const SALE_STATES = { 0: "setup", 1: "live", 2: "paused" }; // SaleState enum order per program state.rs
+    const SALE_STATES = { 0: "setup", 1: "paused", 2: "live" }; // SaleState enum per state.rs: Setup, Paused, Live
 
     async function fetchConfigPda() {
       const { Connection, PublicKey } = await import("https://esm.sh/@solana/web3.js@1.95.8");
-      const conn = new Connection(cfg.clusterApiUrl, "confirmed");
+      const conn = new Connection(cfg.rpcUrl || cfg.clusterApiUrl, "confirmed");
       const programId = new PublicKey(cfg.programId);
-      const [configPda] = PublicKey.findProgramAddressSync([Buffer.from("config")], programId);
+      const [configPda] = PublicKey.findProgramAddressSync([new TextEncoder().encode("config")], programId);
       const info = await conn.getAccountInfo(configPda);
       if (!info) return null;
       // Anchor account layout after 8-byte discriminator:
@@ -186,7 +187,7 @@
       // sale_state(u8) public_minted(u16le) claims_minted(u16le) bump(u8)
       const d = info.data;
       return {
-        collection: new PublicKey(d.subarray(8+128, 8+160)).toBase58(),
+        collection: new PublicKey(d.subarray(8+96, 8+128)).toBase58(), // bytes 104..136 after disc
         saleState: d[8+256],
         publicMinted: d.readUInt16LE(8+257),
         claimsMinted: d.readUInt16LE(8+259),
