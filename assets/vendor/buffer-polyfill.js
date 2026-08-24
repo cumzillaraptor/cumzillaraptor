@@ -1,4 +1,5 @@
 // vendored: base64-js@1.5.1 + ieee754@1.2.1 + buffer@6.0.3 (browser polyfill for window.Buffer)
+(function () {
 var module = { exports: {} };
 var require = (function () {
   const mods = {};
@@ -2354,8 +2355,10 @@ function BufferBigIntNotDefined () {
 }
 
 })(module, module.exports);
+window.Buffer = module.exports.Buffer || module.exports;
+})();
 if (typeof window !== "undefined") {
-  window.Buffer = module.exports.Buffer || module.exports;
+  window.Buffer = window.Buffer; // set inside the IIFE above
 } else if (typeof globalThis !== "undefined" && typeof globalThis.Buffer === "undefined") {
   globalThis.Buffer = module.exports.Buffer || module.exports;
 }
