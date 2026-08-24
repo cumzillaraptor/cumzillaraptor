@@ -12,8 +12,12 @@ const md = JSON.parse(fs.readFileSync(path.join(ROOT, 'nft-data/metadata-merkle-
 const claims = JSON.parse(fs.readFileSync(path.join(ROOT, 'nft-data/claims-v1.devnet.json'), 'utf8'));
 const mintCsv = fs.readFileSync(path.join(ROOT, 'nft-data/allocation-source/mint_list.csv'), 'utf8').trim().split(/\r?\n/).slice(1);
 
+const metaDir = path.join(ROOT, 'nft-data/metadata');
 const metadataSlim = {};
-for (const [id, m] of Object.entries(md.metadata)) metadataSlim[id] = { u: m.uri, p: m.proof };
+for (const [id, m] of Object.entries(md.metadata)) {
+  const full = JSON.parse(fs.readFileSync(path.join(metaDir, `${id}.json`), 'utf8'));
+  metadataSlim[id] = { u: m.uri, p: m.proof, t: full.attributes.map((a) => [a.trait_type, a.value]) };
+}
 
 const poolOrder = mintCsv.map((line) => Number(line.split(',')[0]));
 if (poolOrder.length !== 246 || new Set(poolOrder).size !== 246) throw new Error('mint_list parse error');
