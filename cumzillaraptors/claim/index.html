@@ -189,8 +189,7 @@
         launch = await fetchLaunchState(cfg.rpcUrl, cfg.programId);
         if (!launch) throw new Error('not initialized');
         $('stat-bar').innerHTML =
-          'sale: <strong>' + launch.saleState + '</strong>' +
-          ' · minted: <strong>' + launch.publicMinted + '/' + cfg.publicCount + '</strong>' +
+          'minted: <strong>' + launch.publicMinted + '/' + cfg.publicCount + '</strong>' +
           ' · claimed: <strong>' + launch.claimsMinted + '/' + cfg.claimCount + '</strong>';
         $('v-collection').textContent = launch.collection;
       } catch (e) {

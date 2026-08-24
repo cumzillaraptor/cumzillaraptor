@@ -243,8 +243,7 @@
       try {
         launch = await fetchLaunchState(cfg.rpcUrl, cfg.programId);
         if (!launch) throw new Error('not initialized');
-        $('stat-line').innerHTML = 'sale: <strong>' + launch.saleState + '</strong>' +
-          ' · claimed: <strong>' + launch.claimsMinted + '/' + cfg.claimCount + '</strong>';
+        $('stat-line').innerHTML = 'claimed: <strong>' + launch.claimsMinted + '/' + cfg.claimCount + '</strong>';
         updateProgress(launch.publicMinted, cfg.publicCount);
       } catch (e) {
         $('stat-line').textContent = 'devnet status unavailable — launch setup may be incomplete.';
