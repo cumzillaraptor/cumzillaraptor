@@ -124,8 +124,7 @@ jobs:
             echo "extending program-data by $GROW bytes"
             solana program extend "$PROGRAM_ID" "$GROW" \
               --url "$CLUSTER" \
-              --keypair /tmp/payer.json \
-              --upgrade-authority /tmp/authority.json
+              --keypair /tmp/payer.json
             solana program show --url "$CLUSTER" "$PROGRAM_ID" --keypair /tmp/payer.json
           fi
 
