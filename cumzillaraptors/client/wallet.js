@@ -13,7 +13,7 @@
 //   await wc.connect();        // throws with a user-actionable message on failure
 //   wc.publicKey               // PublicKey | null
 //   wc.signAndSend(tx)         // -> signature string (tries provider API then wallet-standard then self-send)
-import { Connection, PublicKey, Transaction } from "./web3-shim.js";
+import { Connection, PublicKey, Transaction, TransactionMessage, VersionedTransaction, SystemProgram } from "./web3-shim.js";
 import { getMetamaskSolanaWallet } from "./metamask.js";
 
 const DETECT_GRACE_MS = 2500;     // how long to wait for late-injecting wallets
@@ -204,12 +204,20 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
     try { onDisconnect?.(); } catch {}
   }
 
-  // Send a Transaction: tries, in order:
+  // Send a Transaction (legacy) or { tx, lookupTablePubkey? } envelope: tries, in order:
   //   1. provider.signAndSendTransaction (Phantom/Solflare extension & most mobile browsers)
   //   2. provider.signTransaction then self-send via RPC (some extension configs)
   //   3. wallet-standard solana:signAndSendTransaction feature
-  async function signAndSend(transaction) {
+  // When a lookupTablePubkey is given with a legacy tx, the message is compiled
+  // to v0 so large instructions fit the 1232-byte packet limit.
+  async function signAndSend(transactionOrEnvelope) {
     if (!publicKey) throw new Error("Not connected.");
+    let transaction = transactionOrEnvelope;
+    if (transactionOrEnvelope && !transactionOrEnvelope.recentBlockhash &&
+        transactionOrEnvelope.tx && transactionOrEnvelope.message) {
+      // already a prepared v0 envelope: { tx (VersionedTransaction), message }
+      transaction = transactionOrEnvelope.tx;
+    }
 
     // 1) convenience API
     if (typeof provider.signAndSendTransaction === "function") {

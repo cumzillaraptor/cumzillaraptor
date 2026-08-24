@@ -14,5 +14,6 @@ if (typeof window !== "undefined" && window.solanaWeb3) {
 if (!w) throw new Error("solana-web3 not available (vendor IIFE not loaded and not in node)");
 export const {
   Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction,
+  TransactionMessage, VersionedTransaction,
 } = w;
 export default w;
