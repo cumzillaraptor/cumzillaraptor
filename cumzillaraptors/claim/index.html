@@ -98,8 +98,8 @@
             <h3>2 · your claimable raptors</h3>
             <p class="result" id="eligibility-result"></p>
             <div id="claim-list"></div>
-            <p class="result" style="margin-top:8px;">each raptor needs one ethereum signature (proof of ownership), then one solana approval to receive it.</p>
-            <div class="row-btns"><button class="action-btn" id="btn-sign-all-eth" aria-disabled="true">1 · sign all ethereum messages</button></div>
+            <p class="result" style="margin-top:8px;">one ethereum signature authorizes all your raptors; then one solana approval per raptor to receive it.</p>
+            <div class="row-btns"><button class="action-btn" id="btn-sign-all-eth" aria-disabled="true">1 · sign ethereum message (all raptors)</button></div>
             <p class="msg" id="sign-msg" aria-live="polite"></p>
             <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">2 · claim all raptors</button></div>
             <p class="msg" id="claim-msg" aria-live="polite"></p>
@@ -147,6 +147,7 @@
       fetchLaunchState, getConfigPda, getAllocationPda, getAssetPda,
       deterministicNonceHex, claimLeafHex, getReceiptPda,
       buildClaimMessage, claimMessageHashHex, buildClaimInstruction,
+      buildBatchClaimMessage, buildClaimBatchInstruction,
     } from "/cumzillaraptors/claim/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/claim/wallet.js";
     // ethers is lazy-loaded at first ethereum signature — CDN failure can no longer kill the page
@@ -161,7 +162,8 @@
 
     let launch = null, claimsByEth = null;
     let eligible = null;        // [{ id, p, nonce, leaf }]
-    let ethSignatures = null;   // parallel array of 0x-hex signatures
+    let batchEthSignature = null; // ONE 0x-hex signature covering all eligible ids
+    let batchNftIds = null;       // canonical id list that was signed
     let ethAddress = null;      // connected ethereum address (lowercase)
     const wc = createWalletConnector({
       rpcUrl: cfg.rpcUrl,
@@ -256,7 +258,8 @@
           list.append(row);
         }
         $('step-eligible').classList.remove('hidden');
-        ethSignatures = null;
+        batchEthSignature = null;
+        batchNftIds = null;
       } catch (e) {
         setMsg('connect-msg', e.message || 'lookup failed.', 'err');
       } finally {
@@ -270,10 +273,10 @@
       $('btn-sign-all-eth').setAttribute('aria-disabled',
         String(!(bothConnected && eligible && eligible.length)));
       $('btn-claim-all').setAttribute('aria-disabled',
-        String(!(bothConnected && eligible?.length && ethSignatures && launch.isLive)));
+        String(!(bothConnected && eligible?.length && batchEthSignature && launch.isLive)));
     }
 
-    // ---- sign all ethereum messages ----
+    // ---- ONE ethereum signature for ALL eligible raptors (batch authorization) ----
     $('btn-sign-all-eth').addEventListener('click', async () => {
       if ($('btn-sign-all-eth').getAttribute('aria-disabled') === 'true') return;
       try {
@@ -284,31 +287,31 @@
         try { ({ BrowserProvider } = await import("https://esm.sh/ethers@6.13.4")); }
         catch { throw new Error('could not load the signing library — check connection and retry.'); }
         const browserProvider = new BrowserProvider(window.ethereum, 'any');
-        ethSignatures = [];
-        for (let i = 0; i < eligible.length; i++) {
-          setMsg('sign-msg', 'signing message ' + (i + 1) + '/' + eligible.length + ' (raptor #' + eligible[i].id + ')…');
-          const message = buildClaimMessage({
-            programId: PROGRAM_ID, recipient: wc.publicKey, nftId: eligible[i].id,
-            ethAddress, nonceHex: eligible[i].nonce, expiryUnix: cfg.expiryUnix,
-          });
-          eligible[i].messageHash = claimMessageHashHex(message);
-          ethSignatures.push(await browserProvider.send('personal_sign', [message, signer]));
-        }
-        setMsg('sign-msg', '✅ signed ' + ethSignatures.length + ' message' + (ethSignatures.length > 1 ? 's' : '') + '.', 'ok');
+        // Canonical id order; per-id leaves keep their own deterministic nonces.
+        const ids = eligible.map((e) => e.id).sort((a, b) => a - b);
+        const message = buildBatchClaimMessage({
+          programId: PROGRAM_ID, recipient: wc.publicKey, nftIds: ids,
+          ethAddress, expiryUnix: cfg.expiryUnix,
+        });
+        setMsg('sign-msg', 'signing 1 message for all ' + ids.length + ' raptor' + (ids.length > 1 ? 's' : '') + '…');
+        batchEthSignature = await browserProvider.send('personal_sign', [message, signer]);
+        batchNftIds = ids;
+        setMsg('sign-msg', '✅ signed 1 message covering all ' + ids.length + ' raptor' + (ids.length > 1 ? 's' : '') + '.', 'ok');
       } catch (e) {
-        ethSignatures = null;
+        batchEthSignature = null;
+        batchNftIds = null;
         setMsg('sign-msg', e?.shortMessage || e?.message || 'signing rejected.', 'err');
       }
       updateButtons();
     });
 
-    // ---- claim all raptors sequentially ----
+    // ---- claim all raptors sequentially (one signature already given) ----
     $('btn-claim-all').addEventListener('click', async () => {
       if ($('btn-claim-all').getAttribute('aria-disabled') === 'true') return;
       try {
         for (let i = 0; i < eligible.length; i++) {
           setMsg('claim-msg', 'claiming #' + eligible[i].id + ' (' + (i + 1) + '/' + eligible.length + ')…');
-          await claimOne(eligible[i], ethSignatures[i]);
+          await claimOne(eligible[i], batchEthSignature, batchNftIds);
         }
         setMsg('claim-msg', '', 'ok');
         refreshStatus();
@@ -317,7 +320,7 @@
       }
     });
 
-    async function claimOne(entry, sigHex) {
+    async function claimOne(entry, batchSigHex, batchIds) {
       const metaAll = await (await fetch('/cumzillaraptors/claim/data/metadata-slim.json')).json();
       const meta = metaAll[String(entry.id)];
       if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + entry.id);
@@ -332,7 +335,7 @@
       );
       if (!ok) throw new Error('cancelled by user.');
 
-      const ix = await buildClaimInstruction({
+      const ix = await buildClaimBatchInstruction({
         programId: PROGRAM_ID,
         configPda: getConfigPda(PROGRAM_ID),
         registryPda: getAllocationPda(PROGRAM_ID),
@@ -341,6 +344,7 @@
         assetPda: getAssetPda(PROGRAM_ID, entry.id),
         receiptPda: getReceiptPda(PROGRAM_ID, entry.leaf),
         mplCore: MPL_CORE,
+        nftIds: batchIds,
         nftId: entry.id,
         ethAddress,
         nonceHex: entry.nonce,
@@ -349,7 +353,7 @@
         name: 'cumzillaraptor #' + entry.id,
         uri: meta.u,
         metadataProof: meta.p,
-        signatureHex: sigHex,
+        signatureHex: batchSigHex,
       });
       const tx = new Transaction().add(ix);
       tx.feePayer = wc.publicKey;

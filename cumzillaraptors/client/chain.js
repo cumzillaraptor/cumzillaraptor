@@ -134,6 +134,31 @@ export function buildClaimMessage({ programId, recipient, nftId, ethAddress, non
   ].join("\n");
 }
 
+// One-signature batch authorization message. Byte-identical to the on-chain
+// build_batch_claim_message: ids strictly increasing, "devnet", no nonce field
+// (each id's claim leaf binds its own deterministic nonce; replay protection
+// comes from the per-leaf receipt PDA).
+export const CLAIM_BATCH_DOMAIN = "CUMZILLARAPTORS_CLAIM_V1_BATCH";
+export const MAX_BATCH_IDS = 64;
+
+export function buildBatchClaimMessage({ programId, recipient, nftIds, ethAddress, expiryUnix }) {
+  const eth = normalizeEth(ethAddress);
+  const ids = [...nftIds].sort((a, b) => a - b);
+  if (!ids.length || ids.length > MAX_BATCH_IDS) throw new Error(`batch must contain 1..${MAX_BATCH_IDS} ids`);
+  for (let i = 1; i < ids.length; i++) {
+    if (ids[i] === ids[i - 1]) throw new Error("duplicate id in batch");
+  }
+  return [
+    CLAIM_BATCH_DOMAIN,
+    `cluster: ${CLUSTER}`,
+    `program: ${programId.toBase58 ? programId.toBase58() : programId}`,
+    `recipient: ${recipient.toBase58 ? recipient.toBase58() : recipient}`,
+    `nft_ids: ${ids.join(",")}`,
+    `eth_address: 0x${eth.slice(2)}`,
+    `expiry_unix: ${expiryUnix}`,
+  ].join("\n");
+}
+
 // EIP-191 personal_sign hash of the claim message (what the ETH wallet signs)
 export function claimMessageHashHex(message) {
   const msgBytes = utf8(message);
@@ -184,6 +209,45 @@ export async function buildClaimInstruction({ programId, configPda, registryPda,
   const eth = normalizeEth(ethAddress);
   const data = concatBytes(
     await anchorDisc("claim_nft"),
+    u16le(nftId),
+    hexBytes(eth),                 // [u8;20]
+    hexBytes(nonceHex),            // [u8;32]
+    u64le(expiryUnix),
+    borshVec32(claimProof),
+    borshStr(name),
+    borshStr(uri),
+    borshVec32(metadataProof),
+    sig,                           // [u8;65] r||s||v
+  );
+  return new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: configPda, isSigner: false, isWritable: true },
+      { pubkey: registryPda, isSigner: false, isWritable: true },
+      { pubkey: claimer, isSigner: true, isWritable: true },
+      { pubkey: collection, isSigner: false, isWritable: true },
+      { pubkey: assetPda, isSigner: false, isWritable: true },
+      { pubkey: receiptPda, isSigner: false, isWritable: true },
+      { pubkey: mplCore, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+// Batch variant of buildClaimInstruction. Same accounts; extra leading
+// nft_ids Vec<u16> arg and a signature over the batch message.
+export async function buildClaimBatchInstruction({ programId, configPda, registryPda, claimer,
+                                               collection, assetPda, receiptPda, mplCore,
+                                               nftIds, nftId, ethAddress, nonceHex, expiryUnix,
+                                               claimProof, name, uri, metadataProof,
+                                               signatureHex }) {
+  const sig = hexBytes(signatureHex);
+  if (sig.length !== 65) throw new Error("ETH signature must be 65 bytes");
+  const eth = normalizeEth(ethAddress);
+  const data = concatBytes(
+    await anchorDisc("claim_nft_batch"),
+    u32le(nftIds.length), ...nftIds.flatMap((id) => u16le(id)), // Vec<u16>
     u16le(nftId),
     hexBytes(eth),                 // [u8;20]
     hexBytes(nonceHex),            // [u8;32]
