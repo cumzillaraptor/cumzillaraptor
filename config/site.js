@@ -15,7 +15,7 @@ window.CUMZ_CONFIG = {
   expiryUnix: 2000000000,
   pages: {
     home: "/",
-    mint: "/mint/",
-    claim: "/claim/",
+    mint: "https://mint.cumzillaraptor.com/",
+    claim: "https://claim.cumzillaraptor.com/",
   },
 };
