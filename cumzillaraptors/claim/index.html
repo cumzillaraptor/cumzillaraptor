@@ -333,6 +333,7 @@
         refreshStatus();
       } catch (e) {
         setMsg('claim-msg', prettyError(e), 'err');
+        console.error('[claim] full error:', e);
       }
     });
 
@@ -424,16 +425,6 @@
       const metaAll = await (await fetch('/cumzillaraptors/claim/data/metadata-slim.json')).json();
       const meta = metaAll[String(entry.id)];
       if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + entry.id);
-
-      const ok = confirm(
-        'Confirm claim:\n' +
-        'raptor: cumzillaraptor #' + entry.id + '\n' +
-        'collection: ' + launch.collection + '\n' +
-        'recipient: ' + wc.publicKey.toBase58() + '\n' +
-        'ethereum signer: ' + ethAddress + '\n' +
-        'cost: 0 SOL + network fees'
-      );
-      if (!ok) throw new Error('cancelled by user.');
 
       const ix = await buildClaimBatchInstruction({
         programId: PROGRAM_ID,
