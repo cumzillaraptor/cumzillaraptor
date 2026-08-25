@@ -395,7 +395,8 @@
           await sendTx([extendIx]);
           break;
         } catch (e) {
-          if (attempt === 2) throw new Error('lookup table setup failed at the fill step — try again.');
+          console.error('[claim] extend attempt ' + (attempt + 1) + ' failed:', e);
+          if (attempt === 2) throw new Error('lookup table setup failed at the fill step: ' + prettyError(e));
           await new Promise((r) => setTimeout(r, 1500));
         }
       }
