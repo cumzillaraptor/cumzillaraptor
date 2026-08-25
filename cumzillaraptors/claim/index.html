@@ -337,88 +337,18 @@
       }
     });
 
-    // ---- address lookup table: shrink v0 claim transactions below 1232 bytes ----
-    // Holds the four static keys (config, registry, collection, mpl-core).
-    // Created once per wallet; the address is cached in localStorage.
-    const ALT_CACHE_KEY = 'cumz-claim-alt-' + cfg.programId;
+    // ---- shared claim lookup table (pre-created by the deployer) ----
+    // Holds config, allocation, collection, and mpl-core so v0 claim
+    // transactions fit the 1232-byte packet limit for every user.
     let cachedAlt = null;
     async function ensureClaimLookupTable() {
       if (cachedAlt) return cachedAlt;
-      const stored = localStorage.getItem(ALT_CACHE_KEY);
-      if (stored) {
-        try {
-          const table = await conn.getAddressLookupTable(new web3.PublicKey(stored));
-          if (table?.value && table.value.state.addresses.length >= 4) {
-            cachedAlt = table.value; return cachedAlt;
-          }
-        } catch { /* stale cache entry — recreate below */ }
-      }
-      setMsg('claim-msg', 'one-time setup: creating transaction lookup table…');
-      const slot = await conn.getSlot('confirmed');
-      // web3 1.x has no computeAddress helper — derive the ALT PDA manually
-      // from the recent slot (4-byte LE) and the ALT program id.
-      const slotBytes = new Uint8Array(4);
-      new DataView(slotBytes.buffer).setUint32(0, slot - 1, true);
-      const altAddress = web3.PublicKey.findProgramAddressSync(
-        [slotBytes], web3.AddressLookupTableProgram.programId,
-      )[0];
-      // createLookupTable returns [instruction, address]; extendLookupTable
-      // returns the instruction directly.
-      const [createIx] = web3.AddressLookupTableProgram.createLookupTable({
-        payer: wc.publicKey, authority: wc.publicKey, recentSlot: slot - 1,
-      });
-      const extendIx = web3.AddressLookupTableProgram.extendLookupTable({
-        payer: wc.publicKey, authority: wc.publicKey,
-        lookupTable: altAddress, addresses: [
-          getConfigPda(PROGRAM_ID), getAllocationPda(PROGRAM_ID),
-          new PublicKey(launch.collection), MPL_CORE,
-        ],
-      });
-      // Split into TWO transactions: some wallets simulate each instruction
-      // independently and fail the extend because its table (created in ix 1)
-      // doesn't exist yet at simulation time.
-      const sendTx = async (ixs) => {
-        const tx = new Transaction().add(...ixs);
-        tx.feePayer = wc.publicKey;
-        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
-        tx.recentBlockhash = blockhash;
-        const sig = await wc.signAndSend(tx);
-        await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed')
-          .catch(() => {});
-      };
-      await sendTx([createIx]);
-      setMsg('claim-msg', 'one-time setup: filling lookup table…');
-      // The extend tx must land AFTER the table exists; retry a couple of times
-      // in case the create tx hadn't confirmed when the extend was submitted.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          await sendTx([extendIx]);
-          break;
-        } catch (e) {
-          console.error('[claim] extend attempt ' + (attempt + 1) + ' failed:', e);
-          if (attempt === 2) throw new Error('lookup table setup failed at the fill step: ' + prettyError(e));
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      }
-      // Wait for the table to activate and hold all 4 addresses. Devnet can be
-      // slow; poll generously and only fail if truly absent.
-      let table = null;
-      for (let i = 0; i < 40; i++) {
-        await new Promise((r) => setTimeout(r, 800));
-        table = await conn.getAddressLookupTable(altAddress).catch(() => null);
-        if (table?.value && table.value.state.addresses.length >= 4) break;
-        table = null;
-      }
-      localStorage.setItem(ALT_CACHE_KEY, altAddress.toBase58());
+      if (!cfg.claimLookupTable) throw new Error('no claim lookup table configured.');
+      const table = await conn.getAddressLookupTable(new web3.PublicKey(cfg.claimLookupTable));
       if (!table?.value || table.value.state.addresses.length < 4) {
-        // Table exists but isn't populated yet — cache it anyway; the next
-        // claim attempt will re-fetch and use it once activated.
-        cachedAlt = table?.value || null;
-        setMsg('claim-msg', 'lookup table is activating — press claim again in a few seconds.', 'err');
-        throw new Error('lookup table still activating — press claim again.');
+        throw new Error('shared lookup table missing or incomplete — contact support.');
       }
       cachedAlt = table.value;
-      setMsg('claim-msg', '');
       return cachedAlt;
     }
 

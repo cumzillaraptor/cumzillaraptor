@@ -9,6 +9,9 @@ window.CUMZ_CONFIG = {
   launchAuthority: "71WBrLfntE4yjTxEuQ3EgGJKE8zzZUgeEm5tkLi5Jx2r",
   // Filled live from the config PDA at runtime (launch setup pending):
   collection: null,
+  // Shared claim lookup table (config, allocation, collection, mpl-core) —
+  // lets v0 claim transactions fit the 1232-byte packet limit for every user.
+  claimLookupTable: "CiWDQyeDcBif3Vw7KcY4FgiHfU4UAWZd1gh7HwCS3RVv",
   priceLamports: 1000000000, // 1 SOL
   publicCount: 246,
   claimCount: 174,
