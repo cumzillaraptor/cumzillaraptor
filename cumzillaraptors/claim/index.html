@@ -387,16 +387,34 @@
       };
       await sendTx([createIx]);
       setMsg('claim-msg', 'one-time setup: filling lookup table…');
-      await sendTx([extendIx]);
-      // wait for activation (ALTs activate one slot after creation)
-      for (let i = 0; i < 20; i++) {
+      // The extend tx must land AFTER the table exists; retry a couple of times
+      // in case the create tx hadn't confirmed when the extend was submitted.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await sendTx([extendIx]);
+          break;
+        } catch (e) {
+          if (attempt === 2) throw new Error('lookup table setup failed at the fill step — try again.');
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+      // Wait for the table to activate and hold all 4 addresses. Devnet can be
+      // slow; poll generously and only fail if truly absent.
+      let table = null;
+      for (let i = 0; i < 40; i++) {
         await new Promise((r) => setTimeout(r, 800));
-        const table = await conn.getAddressLookupTable(altAddress).catch(() => null);
+        table = await conn.getAddressLookupTable(altAddress).catch(() => null);
         if (table?.value && table.value.state.addresses.length >= 4) break;
+        table = null;
       }
       localStorage.setItem(ALT_CACHE_KEY, altAddress.toBase58());
-      const table = await conn.getAddressLookupTable(altAddress);
-      if (!table?.value) throw new Error('lookup table did not activate — try again.');
+      if (!table?.value || table.value.state.addresses.length < 4) {
+        // Table exists but isn't populated yet — cache it anyway; the next
+        // claim attempt will re-fetch and use it once activated.
+        cachedAlt = table?.value || null;
+        setMsg('claim-msg', 'lookup table is activating — press claim again in a few seconds.', 'err');
+        throw new Error('lookup table still activating — press claim again.');
+      }
       cachedAlt = table.value;
       setMsg('claim-msg', '');
       return cachedAlt;
