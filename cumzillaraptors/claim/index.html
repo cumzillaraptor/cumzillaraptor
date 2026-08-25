@@ -468,7 +468,13 @@
       if (/cancelled by user/i.test(msg)) return 'cancelled.';
       if (/UserRejected|rejected/i.test(msg)) return 'you rejected the transaction.';
       if (/insufficient|Insufficient/i.test(msg)) return 'not enough SOL in your wallet for fees (~0.01).';
-      return msg;
+      // Surface everything — Phantom wraps real causes as generic strings.
+      const extra = [
+        e?.shortMessage,
+        typeof e?.error === 'object' ? JSON.stringify(e.error) : e?.error,
+        e?.stack ? String(e.stack).split('\n')[0] : null,
+      ].filter(Boolean);
+      return extra.length ? msg + ' | ' + extra.join(' | ') : msg;
     }
 
     refreshStatus();
