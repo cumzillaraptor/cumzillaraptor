@@ -373,13 +373,21 @@
           new PublicKey(launch.collection), MPL_CORE,
         ],
       });
-      const tx = new Transaction().add(createIx, extendIx);
-      tx.feePayer = wc.publicKey;
-      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
-      tx.recentBlockhash = blockhash;
-      const setupSig = await wc.signAndSend(tx);
-      await conn.confirmTransaction({ signature: setupSig, blockhash, lastValidBlockHeight }, 'confirmed')
-        .catch(() => {});
+      // Split into TWO transactions: some wallets simulate each instruction
+      // independently and fail the extend because its table (created in ix 1)
+      // doesn't exist yet at simulation time.
+      const sendTx = async (ixs) => {
+        const tx = new Transaction().add(...ixs);
+        tx.feePayer = wc.publicKey;
+        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = blockhash;
+        const sig = await wc.signAndSend(tx);
+        await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed')
+          .catch(() => {});
+      };
+      await sendTx([createIx]);
+      setMsg('claim-msg', 'one-time setup: filling lookup table…');
+      await sendTx([extendIx]);
       // wait for activation (ALTs activate one slot after creation)
       for (let i = 0; i < 20; i++) {
         await new Promise((r) => setTimeout(r, 800));
