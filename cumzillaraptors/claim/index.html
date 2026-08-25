@@ -322,18 +322,32 @@
 
     // ---- claim all raptors sequentially (one signature already given) ----
     $('btn-claim-all').addEventListener('click', async () => {
-      if ($('btn-claim-all').getAttribute('aria-disabled') === 'true') return;
+      if ($('btn-claim-all').getAttribute('aria-disabled') === 'true' || claiming) return;
+      claiming = true;
       try {
         for (let i = 0; i < eligible.length; i++) {
           setMsg('claim-msg', 'claiming #' + eligible[i].id + ' (' + (i + 1) + '/' + eligible.length + ')…');
           const chunk = batchEthSignatures.find((ch) => ch.ids.includes(eligible[i].id));
-          await claimOne(eligible[i], chunk.sig, chunk.ids);
+          // public devnet RPC rate-limits aggressively; back off and retry
+          for (let attempt = 0; ; attempt++) {
+            try {
+              await claimOne(eligible[i], chunk.sig, chunk.ids);
+              break;
+            } catch (e) {
+              if (!/429|rate limit/i.test(prettyError(e)) || attempt >= 4) throw e;
+              const wait = 5 + attempt * 5;
+              setMsg('claim-msg', 'RPC rate-limited — waiting ' + wait + 's before retry…');
+              await new Promise((r) => setTimeout(r, wait * 1000));
+            }
+          }
         }
         setMsg('claim-msg', '', 'ok');
         refreshStatus();
       } catch (e) {
         setMsg('claim-msg', prettyError(e), 'err');
         console.error('[claim] full error:', e);
+      } finally {
+        claiming = false;
       }
     });
 
@@ -352,9 +366,12 @@
       return cachedAlt;
     }
 
+    let metaAllCache = null;
     async function claimOne(entry, batchSigHex, batchIds) {
-      const metaAll = await (await fetch('/cumzillaraptors/claim/data/metadata-slim.json')).json();
-      const meta = metaAll[String(entry.id)];
+      if (!metaAllCache) {
+        metaAllCache = await (await fetch('/cumzillaraptors/claim/data/metadata-slim.json')).json();
+      }
+      const meta = metaAllCache[String(entry.id)];
       if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + entry.id);
 
       const ix = await buildClaimBatchInstruction({
@@ -420,7 +437,9 @@
     }
 
     refreshStatus();
-    setInterval(refreshStatus, 30000);
+    // pause background status refresh while claiming (RPC budget goes to claims)
+    let claiming = false;
+    setInterval(() => { if (!claiming) refreshStatus(); }, 60000);
   </script>
 </body>
 </html>
