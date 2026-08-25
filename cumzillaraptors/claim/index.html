@@ -347,7 +347,9 @@
       if (stored) {
         try {
           const table = await conn.getAddressLookupTable(new web3.PublicKey(stored));
-          if (table?.value) { cachedAlt = new web3.PublicKey(stored); return cachedAlt; }
+          if (table?.value && table.value.state.addresses.length >= 4) {
+            cachedAlt = new web3.PublicKey(stored); return cachedAlt;
+          }
         } catch { /* stale cache entry — recreate below */ }
       }
       setMsg('claim-msg', 'one-time setup: creating transaction lookup table…');
@@ -375,8 +377,8 @@
       tx.feePayer = wc.publicKey;
       const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
       tx.recentBlockhash = blockhash;
-      await wc.signAndSend(tx);
-      await conn.confirmTransaction({ signature: null, blockhash, lastValidBlockHeight }, 'confirmed')
+      const setupSig = await wc.signAndSend(tx);
+      await conn.confirmTransaction({ signature: setupSig, blockhash, lastValidBlockHeight }, 'confirmed')
         .catch(() => {});
       // wait for activation (ALTs activate one slot after creation)
       for (let i = 0; i < 20; i++) {
