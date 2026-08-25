@@ -348,7 +348,7 @@
         try {
           const table = await conn.getAddressLookupTable(new web3.PublicKey(stored));
           if (table?.value && table.value.state.addresses.length >= 4) {
-            cachedAlt = new web3.PublicKey(stored); return cachedAlt;
+            cachedAlt = table.value; return cachedAlt;
           }
         } catch { /* stale cache entry — recreate below */ }
       }
@@ -395,7 +395,9 @@
         if (table?.value && table.value.state.addresses.length >= 4) break;
       }
       localStorage.setItem(ALT_CACHE_KEY, altAddress.toBase58());
-      cachedAlt = altAddress;
+      const table = await conn.getAddressLookupTable(altAddress);
+      if (!table?.value) throw new Error('lookup table did not activate — try again.');
+      cachedAlt = table.value;
       setMsg('claim-msg', '');
       return cachedAlt;
     }
@@ -439,14 +441,14 @@
       // packet limit, so compile to v0 with an address lookup table holding the
       // static keys (config, registry, collection, mpl-core). The ALT is created
       // once per wallet and cached in localStorage.
-      const lookupTablePubkey = await ensureClaimLookupTable();
+      const lookupTable = await ensureClaimLookupTable();
 
       const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
       const messageV0 = new web3.TransactionMessage({
         payerKey: wc.publicKey,
         recentBlockhash: blockhash,
         instructions: [ix],
-      }).compileToV0Message(lookupTablePubkey ? [lookupTablePubkey] : []);
+      }).compileToV0Message([lookupTable]);
       const vtx = new web3.VersionedTransaction(messageV0);
       const serialized = vtx.serialize();
       if (serialized.length > 1232) throw new Error(
