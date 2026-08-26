@@ -27,12 +27,22 @@ fn rust_batch_message_matches_browser_bytes() {
 
     // Unsorted input must be rejected by the canonical builder.
     assert!(secp256k1::build_batch_claim_message(
-        "devnet", program, recipient, &[42, 4, 13], eth, 1_900_000_000
+        "devnet",
+        program,
+        recipient,
+        &[42, 4, 13],
+        eth,
+        1_900_000_000
     )
     .is_err());
     // Duplicate input must be rejected.
     assert!(secp256k1::build_batch_claim_message(
-        "devnet", program, recipient, &[4, 4, 13], eth, 1_900_000_000
+        "devnet",
+        program,
+        recipient,
+        &[4, 4, 13],
+        eth,
+        1_900_000_000
     )
     .is_err());
 
@@ -52,7 +62,10 @@ recipient: 8gUvnRYEcUMHwkt4WwWckMFCC9KUN1m47TgzttXR7TVg\n\
 nft_ids: 4,13,42\n\
 eth_address: 0xb0e683427202d14366977b7183d228a508b5a19c\n\
 expiry_unix: 1900000000";
-    assert_eq!(msg, expected, "batch message must stay byte-identical to the browser builder");
+    assert_eq!(
+        msg, expected,
+        "batch message must stay byte-identical to the browser builder"
+    );
 }
 
 // The program crate re-exports anchor_lang's Pubkey; use it via the crate's own
