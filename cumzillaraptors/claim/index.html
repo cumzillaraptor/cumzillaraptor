@@ -379,7 +379,8 @@
       try {
         const claimable = eligible.filter((e) => !e.claimed);
         for (let i = 0; i < claimable.length; i++) {
-          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length + ')…');
+          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length +
+            ')… approve in your wallet within ~60 seconds!');
           const chunk = batchEthSignatures.find((ch) => ch.ids.includes(claimable[i].id));
           // public devnet RPC rate-limits aggressively; back off and retry.
           // Expired-blockhash failures get a fresh hash and retry too — the
@@ -464,9 +465,11 @@
       const lookupTable = await ensureClaimLookupTable();
 
       // Fetch the freshest possible blockhash LAST — immediately before the
-      // wallet popup opens — so slow mobile approvals still land within the
-      // validity window ('finalized' ≈ 4-5 min vs ~30-60s for 'confirmed').
-      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
+      // wallet popup opens. NOTE: a blockhash is only valid for ~150 blocks,
+      // i.e. roughly 60-90 SECONDS wall-clock — there is no way to extend it
+      // (short of durable nonces). 'confirmed' is fresher than 'finalized'
+      // (~13s newer), maximizing the approval window we can offer.
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
       const messageV0 = new web3.TransactionMessage({
         payerKey: wc.publicKey,
         recentBlockhash: blockhash,
