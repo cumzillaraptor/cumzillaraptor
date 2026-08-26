@@ -103,6 +103,7 @@
             <p class="msg" id="sign-msg" aria-live="polite"></p>
             <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">2 · claim all raptors</button></div>
             <p class="msg" id="claim-msg" aria-live="polite"></p>
+            <div class="result hidden" id="claim-done"></div>
           </div>
         </div>
       </section>
@@ -162,10 +163,11 @@
     const conn = new Connection(cfg.rpcUrl, "confirmed");
 
     let launch = null, claimsByEth = null;
-    let eligible = null;        // [{ id, p, nonce, leaf }]
+    let eligible = null;        // [{ id, p, nonce, leaf, claimed }]
     let batchEthSignatures = null; // array of { ids, sig } chunks (each ≤ MAX_BATCH_IDS)
     let batchNftIds = null;       // canonical id list that was signed
     let ethAddress = null;      // connected ethereum address (lowercase)
+    let claiming = false;       // pause status refresh + block re-entry while claiming
     const wc = createWalletConnector({
       rpcUrl: cfg.rpcUrl,
       onConnect: (pk) => {
@@ -221,6 +223,30 @@
       }
     });
 
+    // Re-run eligibility if the user switches MetaMask accounts mid-session
+    if (window.ethereum?.on && !window.ethereum.__cumzEthWired) {
+      window.ethereum.__cumzEthWired = true;
+      try {
+        window.ethereum.on('accountsChanged', (accs) => {
+          const next = accs?.[0]?.toLowerCase() ?? null;
+          if (next === ethAddress) return;
+          ethAddress = next;
+          eligible = null;
+          batchEthSignatures = null;
+          batchNftIds = null;
+          if (next) {
+            $('v-eth').textContent = short(next);
+            setMsg('sign-msg', '');
+            maybeCheckEligibility();
+          } else {
+            $('v-eth').textContent = 'not connected';
+            $('step-eligible').classList.add('hidden');
+          }
+          updateButtons();
+        });
+      } catch {}
+    }
+
     // ---- solana connect (shared connector) ----
     $('btn-connect-sol').addEventListener('click', async () => {
       setMsg('connect-msg', '');
@@ -243,9 +269,19 @@
           box.textContent = 'this address holds no claim-list raptors. if you expected some, connect the ethereum wallet that held them.';
           return;
         }
+        // Check the receipt PDA for each id on-chain: already-claimed raptors
+        // are labeled and excluded from sign/claim instead of failing later.
         eligible = entries.map((e) => ({ ...e, nonce: deterministicNonceHex(PROGRAM_ID, ethAddress, e.id),
                                          leaf: claimLeafHex(PROGRAM_ID, ethAddress, e.id,
-                                           deterministicNonceHex(PROGRAM_ID, ethAddress, e.id)) }));
+                                           deterministicNonceHex(PROGRAM_ID, ethAddress, e.id)),
+                                         claimed: false }));
+        const receiptKeys = eligible.map((e) => getReceiptPda(PROGRAM_ID, e.leaf));
+        try {
+          for (let i = 0; i < receiptKeys.length; i += 100) {
+            const infos = await conn.getMultipleAccountsInfo(receiptKeys.slice(i, i + 100));
+            infos.forEach((info, j) => { if (info) eligible[i + j].claimed = true; });
+          }
+        } catch (e) { console.warn('[claim] receipt lookup failed — treating all as unclaimed', e); }
         box.innerHTML = '✅ eligible — <strong>' + entries.length + '</strong> raptor' +
           (entries.length > 1 ? 's' : '') + ':';
         for (const entry of eligible) {
@@ -254,7 +290,8 @@
           const label = document.createElement('span');
           label.textContent = 'cumzillaraptor #' + entry.id;
           const val = document.createElement('strong');
-          val.textContent = 'ready';
+          val.textContent = entry.claimed ? 'already claimed ✓' : 'ready';
+          if (entry.claimed) val.style.color = 'var(--muted)';
           row.append(label, val);
           list.append(row);
         }
@@ -271,10 +308,20 @@
 
     function updateButtons() {
       const bothConnected = !!(ethAddress && wc.publicKey && launch);
+      const claimable = eligible?.filter((e) => !e.claimed) ?? [];
       $('btn-sign-all-eth').setAttribute('aria-disabled',
-        String(!(bothConnected && eligible && eligible.length)));
+        String(!(bothConnected && claimable.length)));
+      const saleLive = !!launch?.isLive;
       $('btn-claim-all').setAttribute('aria-disabled',
-        String(!(bothConnected && eligible?.length && batchEthSignatures && launch.isLive)));
+        String(!(bothConnected && claimable.length && batchEthSignatures && saleLive)));
+      // Explain a disabled claim button instead of leaving it mysteriously dead
+      setMsg('sign-msg', '');
+      if (bothConnected && eligible?.length && !claimable.length && !claiming) {
+        setMsg('sign-msg', 'all your eligible raptors are already claimed. nothing left to sign.', 'ok');
+      } else if (bothConnected && claimable.length && !saleLive && !claiming) {
+        setMsg('sign-msg', 'sale is not live yet (' + (launch?.saleState ?? 'unknown') +
+          ') — you can sign now, but claiming is disabled until it goes live.');
+      }
     }
 
     // ---- ONE ethereum signature for ALL eligible raptors (batch authorization) ----
@@ -289,9 +336,10 @@
         catch { throw new Error('could not load the signing library — check connection and retry.'); }
         const browserProvider = new BrowserProvider(window.ethereum, 'any');
         // Canonical id order; per-id leaves keep their own deterministic nonces.
+        // Only UNCLAIMED raptors are signed — already-claimed ones are skipped.
         // The contract caps one signature at MAX_BATCH_IDS ids, so large
         // wallets sign ceil(n/64) messages — each covering a distinct id chunk.
-        const allIds = eligible.map((e) => e.id).sort((a, b) => a - b);
+        const allIds = eligible.filter((e) => !e.claimed).map((e) => e.id).sort((a, b) => a - b);
         const chunks = [];
         for (let i = 0; i < allIds.length; i += MAX_BATCH_IDS) {
           chunks.push(allIds.slice(i, i + MAX_BATCH_IDS));
@@ -324,14 +372,20 @@
     $('btn-claim-all').addEventListener('click', async () => {
       if ($('btn-claim-all').getAttribute('aria-disabled') === 'true' || claiming) return;
       claiming = true;
+      // Per-claim results live in their own list so later setMsg calls and
+      // the final summary can never wipe explorer links (bug fixed 2026-08-26).
+      const done = document.getElementById('claim-done');
+      if (done) { done.innerHTML = ''; done.classList.remove('hidden'); }
       try {
-        for (let i = 0; i < eligible.length; i++) {
-          setMsg('claim-msg', 'claiming #' + eligible[i].id + ' (' + (i + 1) + '/' + eligible.length + ')…');
-          const chunk = batchEthSignatures.find((ch) => ch.ids.includes(eligible[i].id));
+        const claimable = eligible.filter((e) => !e.claimed);
+        for (let i = 0; i < claimable.length; i++) {
+          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length + ')…');
+          const chunk = batchEthSignatures.find((ch) => ch.ids.includes(claimable[i].id));
           // public devnet RPC rate-limits aggressively; back off and retry
           for (let attempt = 0; ; attempt++) {
             try {
-              await claimOne(eligible[i], chunk.sig, chunk.ids);
+              await claimOne(claimable[i], chunk.sig, chunk.ids);
+              claimable[i].claimed = true;   // keep state consistent on partial failure
               break;
             } catch (e) {
               if (!/429|rate limit/i.test(prettyError(e)) || attempt >= 4) throw e;
@@ -341,13 +395,15 @@
             }
           }
         }
-        setMsg('claim-msg', '', 'ok');
+        setMsg('claim-msg', '🎉 all ' + claimable.length + ' raptor' +
+          (claimable.length > 1 ? 's' : '') + ' claimed!', 'ok');
         refreshStatus();
       } catch (e) {
         setMsg('claim-msg', prettyError(e), 'err');
         console.error('[claim] full error:', e);
       } finally {
         claiming = false;
+        updateButtons();
       }
     });
 
@@ -395,9 +451,9 @@
         signatureHex: batchSigHex,
       });
       // Legacy transactions with the 64-id signed list exceed the 1232-byte
-      // packet limit, so compile to v0 with an address lookup table holding the
-      // static keys (config, registry, collection, mpl-core). The ALT is created
-      // once per wallet and cached in localStorage.
+      // packet limit, so compile to v0 with a shared address lookup table that
+      // holds the static keys (config, registry, collection, mpl-core). The ALT
+      // is created once by the deployer and cached in memory per session.
       const lookupTable = await ensureClaimLookupTable();
 
       const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
@@ -418,8 +474,13 @@
       link.href = 'https://explorer.solana.com/tx/' + sig + '?cluster=devnet';
       link.target = '_blank'; link.rel = 'noopener';
       link.textContent = '#' + entry.id + ' explorer ↗';
-      setMsg('claim-msg', '✅ claimed ');
-      $('claim-msg').append(link, document.createElement('br'));
+      const done = document.getElementById('claim-done');
+      if (done) {
+        done.append('✅ claimed ', link, document.createElement('br'));
+      } else {
+        setMsg('claim-msg', '✅ claimed ');
+        $('claim-msg').append(link, document.createElement('br'));
+      }
     }
 
     function prettyError(e) {
@@ -438,7 +499,6 @@
 
     refreshStatus();
     // pause background status refresh while claiming (RPC budget goes to claims)
-    let claiming = false;
     setInterval(() => { if (!claiming) refreshStatus(); }, 60000);
   </script>
 </body>
