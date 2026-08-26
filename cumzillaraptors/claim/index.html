@@ -103,6 +103,9 @@
             <p class="msg" id="sign-msg" aria-live="polite"></p>
             <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">2 · claim all raptors</button></div>
             <p class="msg" id="claim-msg" aria-live="polite"></p>
+            <p class="result" id="nonce-status"></p>
+            <div class="row-btns hidden" id="nonce-setup-row"><button class="action-btn" id="btn-setup-nonce">enable relaxed claiming (one-time ~0.0015 SOL)</button></div>
+            <p class="msg" id="nonce-msg" aria-live="polite"></p>
             <div class="result hidden" id="claim-done"></div>
           </div>
         </div>
@@ -152,6 +155,9 @@
     } from "/cumzillaraptors/claim/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/claim/wallet.js";
     import web3 from "/cumzillaraptors/claim/web3-shim.js";
+    import {
+      claimNonceAddress, fetchClaimNonce, buildSetupNonceTx, buildDurableClaimTx,
+    } from "/cumzillaraptors/client/claim-nonce.js";
     // ethers is lazy-loaded at first ethereum signature — CDN failure can no longer kill the page
 
     const cfg = window.CUMZ_CONFIG;
@@ -173,6 +179,7 @@
       onConnect: (pk) => {
         $('v-recipient').textContent = short(pk.toBase58());
         maybeCheckEligibility();
+        refreshNonceStatus();
         updateButtons();
       },
       onDisconnect: () => { $('v-recipient').textContent = 'not connected'; updateButtons(); },
@@ -379,8 +386,8 @@
       try {
         const claimable = eligible.filter((e) => !e.claimed);
         for (let i = 0; i < claimable.length; i++) {
-          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length +
-            ')… approve in your wallet within ~60 seconds!');
+          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length + ')…' +
+            (claimNonce ? '' : ' approve in your wallet within ~60 seconds!'));
           const chunk = batchEthSignatures.find((ch) => ch.ids.includes(claimable[i].id));
           // public devnet RPC rate-limits aggressively; back off and retry.
           // Expired-blockhash failures get a fresh hash and retry too — the
@@ -430,6 +437,52 @@
       return cachedAlt;
     }
 
+    // ---- durable nonce: relaxed wallet approval (no expiry) ----
+    let claimNonce = null; // { address, blockhash, authority, lamports } | null
+    async function refreshNonceStatus() {
+      const row = $('nonce-setup-row'), status = $('nonce-status');
+      try {
+        if (!wc.publicKey) { status.textContent = ''; row.classList.add('hidden'); return; }
+        const address = await claimNonceAddress(wc.publicKey);
+        claimNonce = await fetchClaimNonce(conn, address);
+        if (claimNonce) {
+          status.innerHTML = '⏳ relaxed claiming: <strong>enabled</strong> — take your time approving.';
+          row.classList.add('hidden');
+        } else {
+          status.textContent = 'relaxed claiming not set up yet — without it you have ~60s to approve each claim.';
+          row.classList.remove('hidden');
+        }
+      } catch (e) {
+        console.warn('[nonce] status check failed', e);
+      }
+    }
+
+    $('btn-setup-nonce').addEventListener('click', async () => {
+      if (!wc.publicKey || $('btn-setup-nonce').getAttribute('aria-disabled') === 'true') return;
+      try {
+        setMsg('nonce-msg', 'preparing… approve the one-time setup in your wallet.');
+        const res = await buildSetupNonceTx({ conn, claimer: wc.publicKey });
+        if (res.exists) { await refreshNonceStatus(); return; }
+        // sign-only path so WE control bytes and can send raw ourselves
+        if (typeof wc.signTransactionOnly !== 'function' && !wc.providerRef?.signTransaction &&
+            !window.solanaWeb3) throw new Error('wallet cannot sign');
+        const provider = detectProviderForSigning();
+        const signed = await provider.signTransaction(res.tx);
+        const sig = await conn.sendRawTransaction(signed.serialize());
+        await conn.confirmTransaction({ signature: sig }, 'confirmed');
+        setMsg('nonce-msg', '✅ relaxed claiming enabled — approvals no longer expire.', 'ok');
+        claimNonce = await fetchClaimNonce(conn, res.address);
+      } catch (e) {
+        setMsg('nonce-msg', prettyError(e), 'err');
+      }
+    });
+
+    function detectProviderForSigning() {
+      // same precedence as wallet.js legacy detection; returns raw provider
+      const w = window;
+      return w.phantom?.solana || w.solflare || w.solana;
+    }
+
     let metaAllCache = null;
     async function claimOne(entry, batchSigHex, batchIds) {
       if (!metaAllCache) {
@@ -464,36 +517,65 @@
       // is created once by the deployer and cached in memory per session.
       const lookupTable = await ensureClaimLookupTable();
 
-      // Fetch the freshest possible blockhash LAST — immediately before the
-      // wallet popup opens. NOTE: a blockhash is only valid for ~150 blocks,
-      // i.e. roughly 60-90 SECONDS wall-clock — there is no way to extend it
-      // (short of durable nonces). 'confirmed' is fresher than 'finalized'
-      // (~13s newer), maximizing the approval window we can offer.
-      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
-      const messageV0 = new web3.TransactionMessage({
-        payerKey: wc.publicKey,
-        recentBlockhash: blockhash,
-        instructions: [ix],
-      }).compileToV0Message([lookupTable]);
-      const vtx = new web3.VersionedTransaction(messageV0);
-      const serialized = vtx.serialize();
+      // Durable-nonce path: no expiry at all. Legacy path: freshest possible
+      // blockhash right before the popup (~60-90s window).
+      let tx, durable = false;
+      if (claimNonce) {
+        // re-read stored hash — it changes every time a claim advances it
+        claimNonce = await fetchClaimNonce(conn, claimNonce.address);
+        if (!claimNonce) throw new Error('nonce account vanished — reload and retry.');
+        const messageV0d = new web3.TransactionMessage({
+          payerKey: wc.publicKey,
+          recentBlockhash: claimNonce.blockhash,
+          instructions: [web3.SystemProgram.nonceAdvance({ noncePubkey: claimNonce.address }), ix],
+        }).compileToV0Message([lookupTable]);
+        tx = new web3.VersionedTransaction(messageV0d);
+        durable = true;
+      } else {
+        // Fetch the freshest possible blockhash LAST — immediately before the
+        // wallet popup opens. NOTE: a blockhash is only valid for ~150 blocks,
+        // i.e. roughly 60-90 SECONDS wall-clock.
+        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+        const messageV0 = new web3.TransactionMessage({
+          payerKey: wc.publicKey,
+          recentBlockhash: blockhash,
+          instructions: [ix],
+        }).compileToV0Message([lookupTable]);
+        tx = new web3.VersionedTransaction(messageV0);
+        var blockhashInfo = { blockhash, lastValidBlockHeight };
+      }
+      const serialized = tx.serialize();
       if (serialized.length > 1232) throw new Error(
         'transaction still too large after compression: ' + serialized.length + ' > 1232');
-      const sig = await wc.signAndSend({ tx: vtx, message: messageV0 });
-      try {
-        const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+
+      let sig;
+      if (durable) {
+        // sign-only via the raw provider so the wallet cannot swap our
+        // blockhash; then we send raw ourselves and confirm without any
+        // blockheight deadline (the nonce makes the tx permanently valid).
+        const provider = detectProviderForSigning();
+        if (!provider?.signTransaction) throw new Error('wallet cannot sign transactions directly');
+        const signedTx = await provider.signTransaction(tx);
+        sig = await conn.sendRawTransaction(signedTx.serialize());
+        const conf = await conn.confirmTransaction({ signature: sig }, 'confirmed');
         if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
-      } catch (e) {
-        // When the WALLET submits the tx (Phantom mobile), RPC lag can trip
-        // web3's blockheight-exceedance check while the tx is actually fine.
-        // Before treating expiry as failure, ask the chain for the real status.
-        if (/block height exceeded|expired/i.test(String(e?.message || e))) {
-          const st = await conn.getSignatureStatuses([sig], { searchTransactionHistory: true });
-          const s = st?.value?.[0];
-          if (s && !s.err) { /* landed — fall through to success */ }
-          else if (s && s.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(s.err));
-          else throw e;
-        } else throw e;
+      } else {
+        // pass the VersionedTransaction directly — wallet.js handles it
+        sig = await wc.signAndSend(tx);
+        try {
+          const conf = await conn.confirmTransaction({ signature: sig, ...blockhashInfo }, 'confirmed');
+          if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
+        } catch (e) {
+          // When the WALLET submits the tx (Phantom mobile), RPC lag can trip
+          // web3's blockheight-exceedance check while the tx is actually fine.
+          if (/block height exceeded|expired/i.test(String(e?.message || e))) {
+            const st = await conn.getSignatureStatuses([sig], { searchTransactionHistory: true });
+            const s = st?.value?.[0];
+            if (s && !s.err) { /* landed */ }
+            else if (s && s.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(s.err));
+            else throw e;
+          } else throw e;
+        }
       }
       const link = document.createElement('a');
       link.className = 'explorer';
