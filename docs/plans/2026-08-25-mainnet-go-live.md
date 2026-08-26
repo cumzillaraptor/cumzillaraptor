@@ -66,6 +66,7 @@ Gate G3: decoded config matches manifest byte-for-byte; collection visible in ex
 2. Staging check: serve mainnet config locally, connect Phantom (set to **Mainnet** this time), simulate a roll — simulation only, do not sign-send.
 3. DNS/pages: point `mint.cumzillaraptor.com` at mainnet config (Cloudflare Pages env/config switch). Keep devnet reachable at a `/devnet` path or subdomain for regression testing.
 4. Smoke checklist on staging URL: connect ✅ roll sim ✅ error messages ✅ status bar shows mainnet counts ✅.
+5. **Mobile rehearsal (required):** 2–3 real test mints from separate devices — iPhone Safari, Android Chrome, and the in-app Phantom browser — each verifying connect → approve within the blockhash window → confirm on explorer. Desktop success alone is not launch-ready; most mint traffic will be mobile.
 
 Gate G4: owner approves cutover; old config retained for instant rollback.
 
