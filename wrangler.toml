@@ -10,7 +10,8 @@ command = "node scripts/build-site-dist.js"
 # Subdomain custom domains. Worker maps their root to /mint/ + /claim/ (see worker.js).
 routes = [
   { pattern = "mint.cumzillaraptor.com", custom_domain = true },
-  { pattern = "claim.cumzillaraptor.com", custom_domain = true }
+  { pattern = "claim.cumzillaraptor.com", custom_domain = true },
+  { pattern = "rpc.cumzillaraptor.com", custom_domain = true }
 ]
 
 [assets]

@@ -9,6 +9,8 @@ on:
       - 'index.html'
       - 'assets/**'
       - 'config/site.js'
+      - 'worker.js'
+      - 'wrangler.toml'
       - 'cumzillaraptors/mint/**'
       - 'cumzillaraptors/claim/**'
       - '.github/workflows/deploy-site.yml'
@@ -33,3 +35,8 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
+          # Worker secret — set once in the GitHub dashboard; never in the repo.
+          secrets: |
+            HELIUS_API_KEY
+        env:
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
