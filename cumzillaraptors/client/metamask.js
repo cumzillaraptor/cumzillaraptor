@@ -41,7 +41,7 @@ export async function getMetamaskSolanaWallet(rpcUrl) {
       },
       api: {
         supportedNetworks: {
-          devnet: 'https://api.devnet.solana.com',
+          devnet: 'https://rpc.cumzillaraptor.com',
           mainnet: 'https://api.mainnet-beta.solana.com',
         },
       },

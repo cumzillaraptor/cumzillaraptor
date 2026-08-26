@@ -2,7 +2,7 @@
 // NETWORK flips every page between devnet and mainnet later — nothing else should change.
 window.CUMZ_CONFIG = {
   network: "devnet",
-  rpcUrl: "https://api.devnet.solana.com", // public RPC for the browser; Helius key never ships in static JS
+  rpcUrl: "https://rpc.cumzillaraptor.com", // Helius devnet via our Worker proxy — key stays server-side
   programId: "AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY",
   mplCoreProgramId: "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
   treasury: "FiHKQhwq2ZKkD2ZbBf3mPYgyw2Y9QDzNYykpMGErovU6",
