@@ -346,7 +346,7 @@ pub mod cumzillaraptors {
             &metadata_proof,
         )?;
         let message = secp256k1::build_claim_message(
-            "devnet",
+            crate::claims::DEVNET_CLUSTER_STR,
             *ctx.program_id,
             ctx.accounts.claimer.key(),
             nft_id,
@@ -561,7 +561,7 @@ pub mod cumzillaraptors {
         // order (eligibility → metadata → secp): a bad batch signature can never
         // be probed against partially-validated state.
         let message = secp256k1::build_batch_claim_message(
-            "devnet",
+            crate::claims::DEVNET_CLUSTER_STR,
             *ctx.program_id,
             ctx.accounts.claimer.key(),
             &nft_ids,

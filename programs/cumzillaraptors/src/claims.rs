@@ -9,7 +9,18 @@ use crate::{
 };
 
 pub const CLAIM_DOMAIN: &[u8] = b"CUMZILLARAPTORS_CLAIM_V1";
+// Cluster tag is compile-time selected: default build targets devnet (bit-identical to the
+// deployed rehearsal program); `--features mainnet` retargets every hash domain to mainnet.
+#[cfg(feature = "mainnet")]
+pub const DEVNET_CLUSTER: &[u8] = b"mainnet";
+#[cfg(not(feature = "mainnet"))]
 pub const DEVNET_CLUSTER: &[u8] = b"devnet";
+
+/// `&str` twin of [`DEVNET_CLUSTER`] for the EIP-191 message builders in `secp256k1.rs`.
+#[cfg(feature = "mainnet")]
+pub const DEVNET_CLUSTER_STR: &str = "mainnet";
+#[cfg(not(feature = "mainnet"))]
+pub const DEVNET_CLUSTER_STR: &str = "devnet";
 // The immutable V1 root covers 174 leaves. `merkletreejs` sorted-pair proofs for this exact
 // odd-leaf tree contain at most 8 siblings; reject longer inputs before hashing.
 pub const MAX_CLAIM_PROOF_LEN: usize = 8;
@@ -168,7 +179,8 @@ mod tests {
         }
     }
 
-    #[test]
+    #[cfg(not(feature = "mainnet"))]
+#[test]
     fn approved_360_claim_proof_and_leaf_match_v1_artifact() {
         let program = Pubkey::from_str("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
         let leaf = claim_leaf_v1(&program, DEVNET_CLUSTER, &ETH_360, 360, &NONCE_360).unwrap();

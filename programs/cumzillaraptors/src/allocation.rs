@@ -89,6 +89,10 @@ pub fn allocation_hash_v1(
         id_bytes.extend_from_slice(&id.to_be_bytes());
     }
     let prefix = b"CUMZILLARAPTORS_ALLOCATION_V1";
+    // Compile-time cluster tag (see claims.rs); default devnet, `--features mainnet` for mainnet.
+    #[cfg(feature = "mainnet")]
+    let cluster = b"mainnet";
+    #[cfg(not(feature = "mainnet"))]
     let cluster = b"devnet";
     let mut payload = Vec::with_capacity(
         prefix.len() + 32 + 1 + cluster.len() + 32 + 2 + id_bytes.len() + 32 + 32,
@@ -198,7 +202,8 @@ mod tests {
         assert!(validate_partition(&public, &claims[..173]).is_err());
     }
 
-    #[test]
+    #[cfg(not(feature = "mainnet"))]
+#[test]
     fn allocation_hash_matches_independent_js_v1_known_answer() {
         let (public, _) = partition();
         let mut config = config();
@@ -212,6 +217,46 @@ mod tests {
                 203, 170, 178, 119, 173, 62, 248, 58, 235, 80, 219, 40, 175, 201,
             ]
         );
+    }
+
+    /// Cross-cluster guard: a devnet-tagged manifest must NEVER validate on a mainnet build
+    /// (and vice versa). The cluster tag is the only differing byte in the preimage.
+    #[test]
+    fn allocation_hash_is_cluster_bound() {
+        // The known answer above was produced with the devnet tag. On a mainnet-feature
+        // build the same inputs MUST hash differently; on the default (devnet) build they
+        // must match it exactly.
+        let (public, _) = partition();
+        let mut config = config();
+        config.collection =
+            Pubkey::from_str("8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d").unwrap();
+        let program_id = Pubkey::from_str("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
+        let devnet_known_answer: [u8; 32] = [
+            162, 167, 91, 97, 214, 203, 39, 231, 189, 107, 184, 55, 0, 250, 150, 6, 25, 194, 203,
+            170, 178, 119, 173, 62, 248, 58, 235, 80, 219, 40, 175, 201,
+        ];
+        let computed = allocation_hash_v1(&program_id, &config, &public).unwrap();
+        if cfg!(feature = "mainnet") {
+            assert_ne!(
+                computed, devnet_known_answer,
+                "mainnet build must not reproduce the devnet-tagged manifest hash"
+            );
+            assert_eq!(
+                crate::claims::DEVNET_CLUSTER,
+                b"mainnet",
+                "mainnet feature must retarget the cluster tag"
+            );
+        } else {
+            assert_eq!(
+                computed, devnet_known_answer,
+                "default build must stay bit-identical to the deployed devnet program"
+            );
+            assert_eq!(
+                crate::claims::DEVNET_CLUSTER,
+                b"devnet",
+                "default build must keep the devnet cluster tag"
+            );
+        }
     }
 
     #[test]

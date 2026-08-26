@@ -18,6 +18,9 @@ custom-panic = []
 # Deliberately non-default: only the private x86 localhost validation SBPF artifact enables this.
 # It must never be used for the ordinary production/devnet artifact.
 test-validation = []
+# Retargets every hash domain (allocation, claims, metadata, EIP-191 messages) to the
+# "mainnet" cluster tag. MUST only be enabled for the mainnet-beta deployment artifact.
+mainnet = []
 default = ["custom-panic"]
 
 [dependencies]

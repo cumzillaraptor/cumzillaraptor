@@ -4,6 +4,10 @@ use solana_keccak_hasher::hashv;
 use crate::errors::CumzillaraptorsError;
 
 pub const METADATA_DOMAIN: &[u8] = b"CUMZILLARAPTORS_METADATA_V1";
+// Compile-time cluster tag (see claims.rs); default devnet, `--features mainnet` for mainnet.
+#[cfg(feature = "mainnet")]
+pub const DEVNET_CLUSTER: &[u8] = b"mainnet";
+#[cfg(not(feature = "mainnet"))]
 pub const DEVNET_CLUSTER: &[u8] = b"devnet";
 pub const MAX_METADATA_PROOF_LEN: usize = 9;
 pub const MAX_NAME_BYTES: usize = 64;
@@ -146,7 +150,8 @@ mod tests {
     ];
     const URI_360: &str = "ar://z-1hTTF1-FK80VkPw6yiO_d1y2_qdZ4Cjm37y-eW-cI";
 
-    #[test]
+    #[cfg(not(feature = "mainnet"))]
+#[test]
     fn approved_360_metadata_leaf_and_proof_match_v1_artifact() {
         let leaf = metadata_leaf_v1(&crate::ID, 360, "cumzillaraptor #360", URI_360).unwrap();
         assert_eq!(
