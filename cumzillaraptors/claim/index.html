@@ -381,14 +381,21 @@
         for (let i = 0; i < claimable.length; i++) {
           setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length + ')…');
           const chunk = batchEthSignatures.find((ch) => ch.ids.includes(claimable[i].id));
-          // public devnet RPC rate-limits aggressively; back off and retry
+          // public devnet RPC rate-limits aggressively; back off and retry.
+          // Expired-blockhash failures get a fresh hash and retry too — the
+          // claim itself was fine, only the tx validity window ran out.
           for (let attempt = 0; ; attempt++) {
             try {
               await claimOne(claimable[i], chunk.sig, chunk.ids);
               claimable[i].claimed = true;   // keep state consistent on partial failure
               break;
             } catch (e) {
-              if (!/429|rate limit/i.test(prettyError(e)) || attempt >= 4) throw e;
+              const perr = prettyError(e);
+              if (/block height exceeded|expired/i.test(perr) && attempt < 2) {
+                setMsg('claim-msg', 'transaction expired before confirmation — retrying with a fresh blockhash…');
+                continue;
+              }
+              if (!/429|rate limit/i.test(perr) || attempt >= 4) throw e;
               const wait = 5 + attempt * 5;
               setMsg('claim-msg', 'RPC rate-limited — waiting ' + wait + 's before retry…');
               await new Promise((r) => setTimeout(r, wait * 1000));
@@ -456,7 +463,10 @@
       // is created once by the deployer and cached in memory per session.
       const lookupTable = await ensureClaimLookupTable();
 
-      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+      // Fetch the freshest possible blockhash LAST — immediately before the
+      // wallet popup opens — so slow mobile approvals still land within the
+      // validity window ('finalized' ≈ 4-5 min vs ~30-60s for 'confirmed').
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
       const messageV0 = new web3.TransactionMessage({
         payerKey: wc.publicKey,
         recentBlockhash: blockhash,
