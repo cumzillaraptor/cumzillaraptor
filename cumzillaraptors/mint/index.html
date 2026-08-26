@@ -449,7 +449,7 @@
 
         // freshest possible blockhash, fetched AFTER simulation and immediately before the
         // popup — maximizes approval window on slow mobile wallets
-        setMsg('approve the 1 SOL payment in your wallet…');
+        setMsg('approve the 1 SOL payment in your wallet… (Phantom users: make sure the wallet is set to Devnet)');
         const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
         tx.recentBlockhash = blockhash;
         let result = await sendWithRetry(tx);   // payment accepted HERE
@@ -521,7 +521,8 @@
       if (/UserRejected|rejected/i.test(msg)) return 'you rejected the transaction.';
       if (/insufficient|Insufficient/i.test(msg)) return 'not enough SOL in your wallet (need 1 SOL + fees).';
       if (/pool is empty/i.test(msg)) return msg;
-      if (/blockhash|block height|blockheight/i.test(msg)) return 'transaction timed out — roll again.';
+      if (/blockhash|block height|blockheight/i.test(msg))
+        return 'transaction timed out — check your wallet is on DEVNET (not testnet/mainnet), then roll again.';
       return msg;
     }
 
