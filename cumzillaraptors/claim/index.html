@@ -477,8 +477,21 @@
       if (serialized.length > 1232) throw new Error(
         'transaction still too large after compression: ' + serialized.length + ' > 1232');
       const sig = await wc.signAndSend({ tx: vtx, message: messageV0 });
-      const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-      if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
+      try {
+        const conf = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+        if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
+      } catch (e) {
+        // When the WALLET submits the tx (Phantom mobile), RPC lag can trip
+        // web3's blockheight-exceedance check while the tx is actually fine.
+        // Before treating expiry as failure, ask the chain for the real status.
+        if (/block height exceeded|expired/i.test(String(e?.message || e))) {
+          const st = await conn.getSignatureStatuses([sig], { searchTransactionHistory: true });
+          const s = st?.value?.[0];
+          if (s && !s.err) { /* landed — fall through to success */ }
+          else if (s && s.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(s.err));
+          else throw e;
+        } else throw e;
+      }
       const link = document.createElement('a');
       link.className = 'explorer';
       link.href = 'https://explorer.solana.com/tx/' + sig + '?cluster=devnet';
