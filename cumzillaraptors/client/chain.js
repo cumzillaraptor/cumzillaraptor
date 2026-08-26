@@ -17,7 +17,10 @@ export { Connection, PublicKey, SystemProgram, Transaction, TransactionInstructi
 
 export const CLAIM_DOMAIN = "CUMZILLARAPTORS_CLAIM_V1";
 export const METADATA_DOMAIN = "CUMZILLARAPTORS_METADATA_V1";
-export const CLUSTER = "devnet";
+// Cluster tag MUST match the deployed program's compile-time tag (Cargo feature "mainnet").
+// Read from window.CUMZ_CONFIG when present; falls back to devnet for local tooling.
+export const CLUSTER =
+  (typeof window !== "undefined" && window.CUMZ_CONFIG?.cluster) || "devnet";
 
 // ---- byte helpers (no Buffer) ----
 export function utf8(s) { return new TextEncoder().encode(s); }
