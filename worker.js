@@ -47,7 +47,9 @@ async function handleRpc(request, env) {
   const cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    // @solana/web3.js sends this client-identification header on every RPC call.
+    // It must be accepted by the browser preflight or Connection requests fail.
+    "Access-Control-Allow-Headers": "Content-Type, Solana-Client",
   };
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (request.method !== "POST") {
