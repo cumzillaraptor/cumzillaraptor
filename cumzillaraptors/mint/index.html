@@ -450,16 +450,11 @@
         // freshest possible blockhash, fetched AFTER simulation and immediately before the
         // popup — maximizes approval window on slow mobile wallets
         setMsg('approve the 1 SOL payment in your wallet… (Phantom users: make sure the wallet is set to Devnet)');
-        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
-        tx.recentBlockhash = blockhash;
         let result = await sendWithRetry(tx);   // payment accepted HERE
-        const sig = typeof result === 'string' ? result : result.sig;
-        const bh = typeof result === 'string'
-          ? await conn.getLatestBlockhash('finalized')   // fallback if wallet sent it itself
-          : { blockhash: result.blockhash, lastValidBlockHeight: result.lastValidBlockHeight };
+        const sig = result.sig;
+        const bh = { blockhash: result.blockhash, lastValidBlockHeight: result.lastValidBlockHeight };
         setMsg('payment accepted — confirming on-chain…');
-        const conf = await conn.confirmTransaction({ signature: sig, ...bh }, 'confirmed');
-        if (conf.value.err) throw new Error('on-chain error: ' + JSON.stringify(conf.value.err));
+        await confirmMint(sig, bh);
 
         spin.settle();                     // only now does the drum land on your raptor
         await spin.settled;
@@ -494,12 +489,10 @@
       let lastErr;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('finalized');
+          const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
           tx.recentBlockhash = blockhash;
           tx.signatures = [];                 // stale partial signatures invalidate the tx
-          const sig = await wc.signAndSend(tx);
-          // If the wallet signed+sent with its own blockhash we can't know it;
-          // returning ours is still correct for attempts where we set it last.
+          const sig = await wc.signAndSend(tx, { preferSignOnly: true });
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {
           lastErr = e;
@@ -508,6 +501,23 @@
         }
       }
       throw lastErr;
+    }
+
+    async function confirmMint(sig, blockhashInfo) {
+      try {
+        const conf = await conn.confirmTransaction({ signature: sig, ...blockhashInfo }, 'confirmed');
+        if (conf.value.err) throw new Error('on-chain error: ' + JSON.stringify(conf.value.err));
+      } catch (e) {
+        // A wallet/RPC timeout is not proof of failure. The transaction can already be
+        // confirmed, so check its signature before telling the user to retry and risk
+        // buying a second raptor.
+        const status = (await conn.getSignatureStatuses([sig], {
+          searchTransactionHistory: true,
+        })).value[0];
+        if (status?.err) throw new Error('on-chain error: ' + JSON.stringify(status.err));
+        if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') return;
+        throw e;
+      }
     }
 
     function isBlockhashExpired(e) {

@@ -210,13 +210,21 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
   //   3. wallet-standard solana:signAndSendTransaction feature
   // When a lookupTablePubkey is given with a legacy tx, the message is compiled
   // to v0 so large instructions fit the 1232-byte packet limit.
-  async function signAndSend(transactionOrEnvelope) {
+  async function signAndSend(transactionOrEnvelope, options = {}) {
     if (!publicKey) throw new Error("Not connected.");
     let transaction = transactionOrEnvelope;
     if (transactionOrEnvelope && !transactionOrEnvelope.recentBlockhash &&
         transactionOrEnvelope.tx && transactionOrEnvelope.message) {
       // already a prepared v0 envelope: { tx (VersionedTransaction), message }
       transaction = transactionOrEnvelope.tx;
+    }
+
+    // For expiry-sensitive flows, sign first and submit through the dapp's configured
+    // RPC. This prevents a mobile wallet from replacing the transaction blockhash or
+    // broadcasting to a different cluster than the page is confirming against.
+    if (options.preferSignOnly && typeof provider.signTransaction === "function") {
+      const signed = await provider.signTransaction(transaction);
+      return conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
     }
 
     // 1) convenience API
