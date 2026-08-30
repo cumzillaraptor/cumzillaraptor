@@ -19,7 +19,16 @@ test('Ethereum label counts actual batch signatures', () => {
   assert.match(source, /' transaction' \+ \(ethereumTxCount === 1 \? '' : 's'\) \+ ' on ethereum'/);
 });
 
-test('Solana label counts one claim transaction per unclaimed raptor', () => {
-  assert.match(source, /'sign ' \+ claimable\.length/);
-  assert.match(source, /' transaction' \+ \(claimable\.length === 1 \? '' : 's'\) \+ ' on solana'/);
+test('Solana label includes mandatory nonce setup when it does not exist', () => {
+  assert.match(source, /const solanaTxCount = nonceChecked/);
+  assert.match(source, /claimable\.length \+ \(claimable\.length && !claimNonce \? 1 : 0\)/);
+  assert.match(source, /'sign ' \+ solanaTxCount/);
+  assert.match(source, /' transaction' \+ \(solanaTxCount === 1 \? '' : 's'\) \+ ' on solana'/);
+});
+
+test('nonce setup is mandatory inside the Solana claim flow with no separate button', () => {
+  assert.doesNotMatch(source, /id="btn-setup-nonce"/);
+  assert.doesNotMatch(source, /enable relaxed claiming/);
+  assert.match(source, /await ensureClaimNonce\(solanaTxCount\)/);
+  assert.match(source, /setting up secure claiming \(1\//);
 });

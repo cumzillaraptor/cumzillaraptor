@@ -102,9 +102,6 @@
             <p class="msg" id="sign-msg" aria-live="polite"></p>
             <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">sign 0 transactions on solana</button></div>
             <p class="msg" id="claim-msg" aria-live="polite"></p>
-            <p class="result" id="nonce-status"></p>
-            <div class="row-btns hidden" id="nonce-setup-row"><button class="action-btn" id="btn-setup-nonce">enable relaxed claiming (one-time ~0.0015 SOL)</button></div>
-            <p class="msg" id="nonce-msg" aria-live="polite"></p>
             <div class="result hidden" id="claim-done"></div>
           </div>
         </div>
@@ -181,7 +178,12 @@
         refreshNonceStatus();
         updateButtons();
       },
-      onDisconnect: () => { $('v-recipient').textContent = 'not connected'; updateButtons(); },
+      onDisconnect: () => {
+        $('v-recipient').textContent = 'not connected';
+        claimNonce = null;
+        nonceChecked = false;
+        updateButtons();
+      },
     });
 
     const short = (s) => s.length > 20 ? s.slice(0, 8) + '…' + s.slice(-6) : s;
@@ -316,15 +318,18 @@
       const bothConnected = !!(ethAddress && wc.publicKey && launch);
       const claimable = eligible?.filter((e) => !e.claimed) ?? [];
       const ethereumTxCount = Math.ceil(claimable.length / MAX_BATCH_IDS);
+      const solanaTxCount = nonceChecked
+        ? claimable.length + (claimable.length && !claimNonce ? 1 : 0)
+        : 0;
       $('btn-sign-all-eth').textContent = 'sign ' + ethereumTxCount +
         ' transaction' + (ethereumTxCount === 1 ? '' : 's') + ' on ethereum';
-      $('btn-claim-all').textContent = 'sign ' + claimable.length +
-        ' transaction' + (claimable.length === 1 ? '' : 's') + ' on solana';
+      $('btn-claim-all').textContent = 'sign ' + solanaTxCount +
+        ' transaction' + (solanaTxCount === 1 ? '' : 's') + ' on solana';
       $('btn-sign-all-eth').setAttribute('aria-disabled',
         String(!(bothConnected && claimable.length)));
       const saleLive = !!launch?.isLive;
       $('btn-claim-all').setAttribute('aria-disabled',
-        String(!(bothConnected && claimable.length && batchEthSignatures && saleLive)));
+        String(!(bothConnected && nonceChecked && claimable.length && batchEthSignatures && saleLive)));
       // Explain a disabled claim button instead of leaving it mysteriously dead
       setMsg('sign-msg', '');
       if (bothConnected && eligible?.length && !claimable.length && !claiming) {
@@ -389,9 +394,13 @@
       if (done) { done.innerHTML = ''; done.classList.remove('hidden'); }
       try {
         const claimable = eligible.filter((e) => !e.claimed);
+        const needsNonceSetup = !claimNonce;
+        const solanaTxCount = claimable.length + (needsNonceSetup ? 1 : 0);
+        await ensureClaimNonce(solanaTxCount);
         for (let i = 0; i < claimable.length; i++) {
-          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + (i + 1) + '/' + claimable.length + ')…' +
-            (claimNonce ? '' : ' approve in your wallet within ~60 seconds!'));
+          const transactionNumber = i + 1 + (needsNonceSetup ? 1 : 0);
+          setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + transactionNumber +
+            '/' + solanaTxCount + ')… approve in your Solana wallet.');
           const chunk = batchEthSignatures.find((ch) => ch.ids.includes(claimable[i].id));
           // public devnet RPC rate-limits aggressively; back off and retry.
           // Expired-blockhash failures get a fresh hash and retry too — the
@@ -443,43 +452,39 @@
 
     // ---- durable nonce: relaxed wallet approval (no expiry) ----
     let claimNonce = null; // { address, blockhash, authority, lamports } | null
+    let nonceChecked = false;
     async function refreshNonceStatus() {
-      const row = $('nonce-setup-row'), status = $('nonce-status');
       try {
-        if (!wc.publicKey) { status.textContent = ''; row.classList.add('hidden'); return; }
+        if (!wc.publicKey) { claimNonce = null; nonceChecked = false; return; }
         const address = await claimNonceAddress(wc.publicKey);
         claimNonce = await fetchClaimNonce(conn, address);
-        if (claimNonce) {
-          status.innerHTML = '⏳ relaxed claiming: <strong>enabled</strong> — take your time approving.';
-          row.classList.add('hidden');
-        } else {
-          status.textContent = 'relaxed claiming not set up yet — without it you have ~60s to approve each claim.';
-          row.classList.remove('hidden');
-        }
+        nonceChecked = true;
       } catch (e) {
+        nonceChecked = false;
         console.warn('[nonce] status check failed', e);
+      } finally {
+        updateButtons();
       }
     }
 
-    $('btn-setup-nonce').addEventListener('click', async () => {
-      if (!wc.publicKey || $('btn-setup-nonce').getAttribute('aria-disabled') === 'true') return;
-      try {
-        setMsg('nonce-msg', 'preparing… approve the one-time setup in your wallet.');
-        const res = await buildSetupNonceTx({ conn, claimer: wc.publicKey });
-        if (res.exists) { await refreshNonceStatus(); return; }
-        // sign-only path so WE control bytes and can send raw ourselves
-        if (typeof wc.signTransactionOnly !== 'function' && !wc.providerRef?.signTransaction &&
-            !window.solanaWeb3) throw new Error('wallet cannot sign');
+    async function ensureClaimNonce(solanaTxCount) {
+      if (claimNonce) return;
+      setMsg('claim-msg', 'setting up secure claiming (1/' + solanaTxCount +
+        ')… approve in your Solana wallet.');
+      const res = await buildSetupNonceTx({ conn, claimer: wc.publicKey });
+      if (!res.exists) {
         const provider = detectProviderForSigning();
+        if (!provider?.signTransaction) throw new Error('wallet cannot sign transactions directly');
         const signed = await provider.signTransaction(res.tx);
         const sig = await conn.sendRawTransaction(signed.serialize());
-        await conn.confirmTransaction({ signature: sig }, 'confirmed');
-        setMsg('nonce-msg', '✅ relaxed claiming enabled — approvals no longer expire.', 'ok');
-        claimNonce = await fetchClaimNonce(conn, res.address);
-      } catch (e) {
-        setMsg('nonce-msg', prettyError(e), 'err');
+        const conf = await conn.confirmTransaction({ signature: sig }, 'confirmed');
+        if (conf.value.err) throw new Error('secure claiming setup failed: ' + JSON.stringify(conf.value.err));
       }
-    });
+      claimNonce = await fetchClaimNonce(conn, res.address);
+      nonceChecked = true;
+      if (!claimNonce) throw new Error('secure claiming setup could not be verified.');
+      updateButtons();
+    }
 
     function detectProviderForSigning() {
       // same precedence as wallet.js legacy detection; returns raw provider
