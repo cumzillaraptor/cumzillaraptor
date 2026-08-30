@@ -142,7 +142,33 @@ export function buildClaimMessage({ programId, recipient, nftId, ethAddress, non
 // (each id's claim leaf binds its own deterministic nonce; replay protection
 // comes from the per-leaf receipt PDA).
 export const CLAIM_BATCH_DOMAIN = "CUMZILLARAPTORS_CLAIM_V1_BATCH";
+
+// Protocol ceiling, mirrors secp256k1::MAX_BATCH_IDS on-chain. A batch signature
+// may authorize at most this many ids. Do NOT raise without a program change.
 export const MAX_BATCH_IDS = 64;
+
+// Client-side chunk size used to split a wallet's ids into signature batches.
+//
+// This is deliberately SMALLER than the protocol ceiling. The claim transaction
+// carries the full id list in its instruction data, so serialized size grows with
+// the batch. Measured on devnet with the shared 4-address ALT (review 2026-08-29):
+//
+//   ids | durable (nonce) | legacy (blockhash)
+//    32 |      1216       |      1142
+//    40 |      1232       |      1158   <- exactly at the limit
+//    64 |      1280  ✗    |      1206
+//
+// The hard packet limit is 1232 bytes. MAX_BATCH_IDS = 64 was sized for the legacy
+// path (1206, fits). The durable-nonce path adds the nonceAdvance instruction plus
+// the nonce, authority and recent-blockhashes keys — about +74 bytes — so 64 ids
+// serialize to 1280 and are rejected outright. Relaxed claiming is now mandatory,
+// so every wallet takes the durable path.
+//
+// 32 leaves 16 bytes of headroom; 40 fits exactly and is too fragile to rely on.
+export const MAX_SIGN_BATCH_IDS = 32;
+
+// Hard Solana packet limit for a serialized transaction.
+export const MAX_TX_BYTES = 1232;
 
 export function buildBatchClaimMessage({ programId, recipient, nftIds, ethAddress, expiryUnix }) {
   const eth = normalizeEth(ethAddress);

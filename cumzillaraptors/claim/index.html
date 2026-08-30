@@ -147,7 +147,7 @@
       fetchLaunchState, getConfigPda, getAllocationPda, getAssetPda,
       deterministicNonceHex, claimLeafHex, getReceiptPda,
       buildClaimMessage, claimMessageHashHex, buildClaimInstruction,
-      buildBatchClaimMessage, buildClaimBatchInstruction, MAX_BATCH_IDS,
+      buildBatchClaimMessage, buildClaimBatchInstruction, MAX_SIGN_BATCH_IDS, MAX_TX_BYTES,
     } from "/cumzillaraptors/claim/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/claim/wallet.js";
     import web3 from "/cumzillaraptors/claim/web3-shim.js";
@@ -167,7 +167,7 @@
 
     let launch = null, claimsByEth = null;
     let eligible = null;        // [{ id, p, nonce, leaf, claimed }]
-    let batchEthSignatures = null; // array of { ids, sig } chunks (each ≤ MAX_BATCH_IDS)
+    let batchEthSignatures = null; // array of { ids, sig } chunks (each ≤ MAX_SIGN_BATCH_IDS)
     let batchNftIds = null;       // canonical id list that was signed
     let ethAddress = null;      // connected ethereum address (lowercase)
     let claiming = false;       // pause status refresh + block re-entry while claiming
@@ -318,7 +318,7 @@
     function updateButtons() {
       const bothConnected = !!(ethAddress && wc.publicKey && launch);
       const claimable = eligible?.filter((e) => !e.claimed) ?? [];
-      const ethereumTxCount = Math.ceil(claimable.length / MAX_BATCH_IDS);
+      const ethereumTxCount = Math.ceil(claimable.length / MAX_SIGN_BATCH_IDS);
       const solanaTxCount = nonceChecked
         ? claimable.length + (claimable.length && !claimNonce ? 1 : 0)
         : 0;
@@ -354,12 +354,23 @@
         const browserProvider = new BrowserProvider(window.ethereum, 'any');
         // Canonical id order; per-id leaves keep their own deterministic nonces.
         // Only UNCLAIMED raptors are signed — already-claimed ones are skipped.
-        // The contract caps one signature at MAX_BATCH_IDS ids, so large
-        // wallets sign ceil(n/64) messages — each covering a distinct id chunk.
+        // Chunked at MAX_SIGN_BATCH_IDS (32), below the protocol cap of 64, so the
+        // resulting durable-nonce claim tx stays under the 1232-byte packet limit.
+        // Wallets sign ceil(n/MAX_SIGN_BATCH_IDS) messages — one per id chunk.
         const allIds = eligible.filter((e) => !e.claimed).map((e) => e.id).sort((a, b) => a - b);
         const chunks = [];
-        for (let i = 0; i < allIds.length; i += MAX_BATCH_IDS) {
-          chunks.push(allIds.slice(i, i + MAX_BATCH_IDS));
+        for (let i = 0; i < allIds.length; i += MAX_SIGN_BATCH_IDS) {
+          chunks.push(allIds.slice(i, i + MAX_SIGN_BATCH_IDS));
+        }
+        // Prove the largest chunk actually produces a submittable transaction
+        // BEFORE asking for any signature. Previously the size guard lived inside
+        // claimOne, so an oversize batch failed only after the user had signed
+        // every Ethereum message and paid for nonce setup (review 2026-08-29, C1).
+        const oversize = await findOversizeChunk(chunks);
+        if (oversize) {
+          throw new Error('cannot build a submittable claim for ' + oversize.size +
+            ' raptors (' + oversize.bytes + ' bytes, limit ' + MAX_TX_BYTES +
+            '). nothing was signed — please report this.');
         }
         setMsg('sign-msg', 'signing ' + chunks.length + ' message' + (chunks.length > 1 ? 's' : '') +
           ' for all ' + allIds.length + ' raptors… approve each MetaMask popup.');
@@ -403,9 +414,16 @@
           setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + transactionNumber +
             '/' + solanaTxCount + ')… approve in your Solana wallet.');
           const chunk = batchEthSignatures.find((ch) => ch.ids.includes(claimable[i].id));
+          if (!chunk) throw new Error('no signature covers #' + claimable[i].id + ' — re-sign and retry.');
+          attemptSignatures.delete(claimable[i].id); // fresh attempt log per raptor
           // public devnet RPC rate-limits aggressively; back off and retry.
-          // Expired-blockhash failures get a fresh hash and retry too — the
-          // claim itself was fine, only the tx validity window ran out.
+          //
+          // MONEY SAFETY (review 2026-08-29, C2/H1): before ANY retry, check
+          // whether a signature we already submitted for this raptor landed. A
+          // durable-nonce tx never expires, so a "failed" attempt can still be
+          // confirmed later; re-signing without checking submits a duplicate that
+          // costs fees and fails on the receipt PDA. If the status lookup itself
+          // fails we must not retry, because a duplicate cannot be ruled out.
           for (let attempt = 0; ; attempt++) {
             try {
               await claimOne(claimable[i], chunk.sig, chunk.ids);
@@ -413,7 +431,25 @@
               break;
             } catch (e) {
               const perr = prettyError(e);
-              if (/block height exceeded|expired/i.test(perr) && attempt < 2) {
+
+              let landed = null;
+              try {
+                landed = await findLandedClaim(claimable[i].id);
+              } catch (statusErr) {
+                throw new Error('could not verify whether #' + claimable[i].id +
+                  ' was claimed, so it was not retried. check your wallet history ' +
+                  'before trying again. (' + perr + ')');
+              }
+              if (landed && !landed.err) {
+                // It actually succeeded — do not ask the user to sign again.
+                claimable[i].claimed = true;
+                break;
+              }
+              if (landed?.err) throw e; // genuinely failed on-chain
+
+              // A durable-nonce transaction cannot expire, so an expiry-looking
+              // error there is a misclassification: never retry it as expiry.
+              if (!claimNonce && /block height exceeded|expired/i.test(perr) && attempt < 2) {
                 setMsg('claim-msg', 'transaction expired before confirmation — retrying with a fresh blockhash…');
                 continue;
               }
@@ -494,6 +530,103 @@
     }
 
     let metaAllCache = null;
+
+    // Every signature submitted for a given raptor id during the current claim
+    // run. A durable-nonce transaction never expires, so a signature we handed to
+    // the wallet can still land after our confirmation attempt failed. Before any
+    // retry we must check these instead of blindly re-signing (review C2).
+    let attemptSignatures = new Map(); // id -> [signature]
+
+    function recordAttemptSignature(id, sig) {
+      const list = attemptSignatures.get(id) || [];
+      list.push(sig);
+      attemptSignatures.set(id, list);
+    }
+
+    // Did any signature for this raptor actually land? Returns
+    // { signature, err } for a landed tx, or null if none did.
+    // Throws only if the status lookup itself fails — the caller must NOT retry
+    // in that case, because a duplicate submission cannot be ruled out.
+    async function findLandedClaim(id) {
+      const sigs = attemptSignatures.get(id) || [];
+      if (!sigs.length) return null;
+      const st = await conn.getSignatureStatuses(sigs, { searchTransactionHistory: true });
+      const values = st?.value || [];
+      for (let i = 0; i < values.length; i++) {
+        const s = values[i];
+        if (!s) continue;
+        if (s.err) return { signature: sigs[i], err: s.err };
+        if (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized' ||
+            (s.confirmations === null)) {
+          return { signature: sigs[i], err: null };
+        }
+      }
+      return null;
+    }
+
+    // Serialized size of the claim tx for the FIRST id of `ids`, built exactly the
+    // way claimOne builds it (same ALT, same durable/legacy shape). Used to prove a
+    // chunk is submittable before any signature is requested.
+    async function claimTxBytesFor(ids) {
+      if (!metaAllCache) {
+        metaAllCache = await (await fetch('/cumzillaraptors/claim/data/metadata-slim.json')).json();
+      }
+      const probeId = ids[0];
+      const entry = eligible.find((e) => e.id === probeId);
+      const meta = metaAllCache[String(probeId)];
+      if (!entry || !meta?.u || !Array.isArray(meta.p)) return null; // can't measure
+      const ix = await buildClaimBatchInstruction({
+        programId: PROGRAM_ID,
+        configPda: getConfigPda(PROGRAM_ID),
+        registryPda: getAllocationPda(PROGRAM_ID),
+        claimer: wc.publicKey,
+        collection: new PublicKey(launch.collection),
+        assetPda: getAssetPda(PROGRAM_ID, probeId),
+        receiptPda: getReceiptPda(PROGRAM_ID, entry.leaf),
+        mplCore: MPL_CORE,
+        nftIds: ids,
+        nftId: probeId,
+        ethAddress,
+        nonceHex: entry.nonce,
+        expiryUnix: cfg.expiryUnix,
+        claimProof: entry.p,
+        name: 'cumzillaraptor #' + probeId,
+        uri: meta.u,
+        metadataProof: meta.p,
+        // 65-byte placeholder: real signatures are fixed-length, so size matches.
+        signatureHex: '0x' + '11'.repeat(65),
+      });
+      const lookupTable = await ensureClaimLookupTable();
+      // Measure the DURABLE shape when a nonce exists (or will exist — relaxed
+      // claiming is mandatory), because it is the larger of the two.
+      const nonceInfo = claimNonce;
+      const instructions = nonceInfo
+        ? [advanceNonceInstruction(nonceInfo.address, nonceInfo.authority), ix]
+        : [ix];
+      const blockhash = nonceInfo
+        ? nonceInfo.blockhash
+        : (await conn.getLatestBlockhash('confirmed')).blockhash;
+      const msg = new web3.TransactionMessage({
+        payerKey: wc.publicKey, recentBlockhash: blockhash, instructions,
+      }).compileToV0Message([lookupTable]);
+      return new web3.VersionedTransaction(msg).serialize().length;
+    }
+
+    // Returns { size, bytes } for the first chunk that cannot be submitted, else null.
+    async function findOversizeChunk(chunks) {
+      // Largest chunk first: if it fits, every smaller one does.
+      const ordered = [...chunks].sort((a, b) => b.length - a.length);
+      for (const ids of ordered) {
+        let bytes;
+        try { bytes = await claimTxBytesFor(ids); }
+        catch { return null; } // measurement failed — don't block the user
+        if (bytes == null) return null;
+        if (bytes > MAX_TX_BYTES) return { size: ids.length, bytes };
+        break; // only the largest needs checking
+      }
+      return null;
+    }
+
     async function claimOne(entry, batchSigHex, batchIds) {
       if (!metaAllCache) {
         metaAllCache = await (await fetch('/cumzillaraptors/claim/data/metadata-slim.json')).json();
@@ -529,7 +662,7 @@
 
       // Durable-nonce path: no expiry at all. Legacy path: freshest possible
       // blockhash right before the popup (~60-90s window).
-      let tx, durable = false;
+      let tx, durable = false, blockhashInfo = null;
       if (claimNonce) {
         // re-read stored hash — it changes every time a claim advances it
         claimNonce = await fetchClaimNonce(conn, claimNonce.address);
@@ -552,11 +685,11 @@
           instructions: [ix],
         }).compileToV0Message([lookupTable]);
         tx = new web3.VersionedTransaction(messageV0);
-        var blockhashInfo = { blockhash, lastValidBlockHeight };
+        blockhashInfo = { blockhash, lastValidBlockHeight };
       }
       const serialized = tx.serialize();
-      if (serialized.length > 1232) throw new Error(
-        'transaction still too large after compression: ' + serialized.length + ' > 1232');
+      if (serialized.length > MAX_TX_BYTES) throw new Error(
+        'transaction still too large after compression: ' + serialized.length + ' > ' + MAX_TX_BYTES);
 
       let sig;
       if (durable) {
@@ -567,11 +700,26 @@
         if (!provider?.signTransaction) throw new Error('wallet cannot sign transactions directly');
         const signedTx = await provider.signTransaction(tx);
         sig = await conn.sendRawTransaction(signedTx.serialize());
-        const conf = await conn.confirmTransaction({ signature: sig }, 'confirmed');
-        if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
+        // MONEY SAFETY (review 2026-08-29, C2): record the signature before
+        // confirming. A durable-nonce tx NEVER expires, so if confirmation throws
+        // transiently the submitted tx may still land. The outer retry must be
+        // able to see it instead of re-signing and submitting a duplicate.
+        recordAttemptSignature(entry.id, sig);
+        try {
+          const conf = await conn.confirmTransaction({ signature: sig }, 'confirmed');
+          if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
+        } catch (e) {
+          const landed = await findLandedClaim(entry.id);
+          if (landed?.err) {
+            throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(landed.err));
+          }
+          if (landed) { sig = landed.signature; /* already claimed — treat as success */ }
+          else throw e;
+        }
       } else {
         // pass the VersionedTransaction directly — wallet.js handles it
         sig = await wc.signAndSend(tx);
+        recordAttemptSignature(entry.id, sig);
         try {
           const conf = await conn.confirmTransaction({ signature: sig, ...blockhashInfo }, 'confirmed');
           if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
@@ -579,10 +727,9 @@
           // When the WALLET submits the tx (Phantom mobile), RPC lag can trip
           // web3's blockheight-exceedance check while the tx is actually fine.
           if (/block height exceeded|expired/i.test(String(e?.message || e))) {
-            const st = await conn.getSignatureStatuses([sig], { searchTransactionHistory: true });
-            const s = st?.value?.[0];
-            if (s && !s.err) { /* landed */ }
-            else if (s && s.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(s.err));
+            const landed = await findLandedClaim(entry.id);
+            if (landed?.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(landed.err));
+            if (landed) sig = landed.signature;
             else throw e;
           } else throw e;
         }

@@ -15,7 +15,9 @@ test('claim page uses simple transaction-count action labels', () => {
 });
 
 test('Ethereum label counts actual batch signatures', () => {
-  assert.match(source, /const ethereumTxCount = Math\.ceil\(claimable\.length \/ MAX_BATCH_IDS\)/);
+  // Chunk size is MAX_SIGN_BATCH_IDS (32), deliberately below the protocol cap of
+  // 64, so the mandatory durable-nonce claim tx stays under 1232 bytes (C1 fix).
+  assert.match(source, /const ethereumTxCount = Math\.ceil\(claimable\.length \/ MAX_SIGN_BATCH_IDS\)/);
   assert.match(source, /' transaction' \+ \(ethereumTxCount === 1 \? '' : 's'\) \+ ' on ethereum'/);
 });
 
