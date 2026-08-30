@@ -108,10 +108,13 @@ test('page chunks with MAX_SIGN_BATCH_IDS, not the protocol cap', () => {
 
 test('size is verified before any signature is requested', () => {
   const sizeCheck = claimSource.indexOf('findOversizeChunk(chunks)');
-  const firstSign = claimSource.indexOf("'personal_sign'");
+  // M3: ethers/esm.sh was replaced by a local personalSign() helper, so anchor on
+  // the actual call site inside the signing loop, not the first 'personal_sign'
+  // literal (which now appears earlier, in the helper definition).
+  const firstSign = claimSource.indexOf('await personalSign(message, signer)');
   assert.ok(sizeCheck > -1, 'pre-signing size check must exist');
-  assert.ok(firstSign > -1);
-  assert.ok(sizeCheck < firstSign, 'size must be checked BEFORE personal_sign');
+  assert.ok(firstSign > -1, 'signing call site must exist');
+  assert.ok(sizeCheck < firstSign, 'size must be checked BEFORE requesting a signature');
   assert.match(claimSource, /nothing was signed/);
 });
 

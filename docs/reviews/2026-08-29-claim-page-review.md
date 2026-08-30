@@ -142,6 +142,36 @@ the initial call and the post-claim `refreshStatus()` are not.
 
 ---
 
+## Status — all findings resolved
+
+| finding | status | commit |
+|---|---|---|
+| C1 batch size / pre-signing size check | fixed | `3b0de58` |
+| C2 duplicate durable submit | fixed | `3b0de58` |
+| H1 expiry retry on durable tx | fixed | `3b0de58` |
+| M1 `var blockhashInfo` | fixed | `3b0de58` |
+| H2 eligibility never re-checked | fixed | this commit |
+| M2 `innerHTML` assignments | fixed | this commit |
+| M3 ethers from CDN at signing time | fixed | this commit |
+| M4 uncancellable ~50s backoff | fixed | this commit |
+| L1 stack frames in the UI | fixed | this commit |
+| L2 eligibility failure downgraded | fixed | this commit |
+| L3 status bar overwritten on failure | fixed | this commit |
+
+One extra bug was found while building the runtime harness and fixed here too:
+`updateButtons()` unconditionally cleared `sign-msg`, so a failed or malformed
+Ethereum signature was wiped from the UI and the signing button appeared to do
+nothing. Error state now survives a button refresh.
+
+Verification: `tests/claim-page-runtime.test.mjs` boots the real page module in
+jsdom with mocked wallets/RPC and asserts behaviour (what is submitted, what the
+user sees); `tests/claim-page-hardening.test.mjs` pins the source-shape
+invariants. 76 claim tests pass. The 11 failures in the full suite are
+pre-existing on clean `HEAD` and unrelated (installer bootstrap, secret-handoff
+adapters, landing-page palette/nav).
+
+---
+
 ## Recommended fix order
 
 1. **C1** — lower `MAX_BATCH_IDS` to a durable-safe 32 and pre-check size before

@@ -102,6 +102,7 @@
             <p class="msg" id="sign-msg" aria-live="polite"></p>
             <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">sign 0 transactions on solana</button></div>
             <p class="msg" id="claim-msg" aria-live="polite"></p>
+            <div class="row-btns hidden" id="row-cancel"><button class="action-btn" id="btn-cancel-claim" type="button">stop after this raptor</button></div>
             <div class="result hidden" id="claim-done"></div>
           </div>
         </div>
@@ -155,7 +156,9 @@
       claimNonceAddress, fetchClaimNonce, buildSetupNonceTx, buildDurableClaimTx,
       advanceNonceInstruction,
     } from "/cumzillaraptors/claim/claim-nonce.js";
-    // ethers is lazy-loaded at first ethereum signature — CDN failure can no longer kill the page
+    // ethereum signing goes straight through EIP-1193 — no CDN dependency at
+    // signing time (review 2026-08-29, M3). ethers was previously imported from
+    // esm.sh inside the click handler, so a CDN outage blocked claiming.
 
     const cfg = window.CUMZ_CONFIG;
     if (cfg.network !== "devnet") throw new Error("this build targets devnet only");
@@ -189,6 +192,29 @@
 
     const short = (s) => s.length > 20 ? s.slice(0, 8) + '…' + s.slice(-6) : s;
 
+    // EIP-191 personal_sign straight over EIP-1193 (review M3: no CDN at signing
+    // time). The message is hex-encoded so the wallet signs exactly these bytes
+    // instead of guessing an encoding — MetaMask decodes 0x-data back to bytes,
+    // producing the same signature the ethers path produced.
+    function toHexUtf8(str) {
+      const bytes = new TextEncoder().encode(str);
+      let out = '0x';
+      for (const b of bytes) out += b.toString(16).padStart(2, '0');
+      return out;
+    }
+
+    async function personalSign(message, signer) {
+      if (!window.ethereum?.request) throw new Error('no ethereum wallet found.');
+      const sig = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [toHexUtf8(message), signer],
+      });
+      if (typeof sig !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(sig)) {
+        throw new Error('wallet returned an unexpected signature format.');
+      }
+      return sig;
+    }
+
     // ---- menu (fallback if inline chrome failed — harmless double-bind) ----
     try {
       const mb = document.querySelector('.menu-button'), mn = document.querySelector('.menu-panel'), sc = document.querySelector('.scrim');
@@ -200,16 +226,38 @@
     } catch {}
 
     // ---- status ----
+    // M2: build the bar from elements + textContent instead of innerHTML.
+    function renderStatBar(publicMinted, claimsMinted) {
+      const bar = $('stat-bar');
+      const frag = document.createDocumentFragment();
+      const add = (text, strong) => {
+        const node = strong ? document.createElement('strong') : document.createTextNode(text);
+        if (strong) node.textContent = text;
+        frag.append(node);
+      };
+      add('minted: ');
+      add(publicMinted + '/' + cfg.publicCount, true);
+      add(' · claimed: ');
+      add(claimsMinted + '/' + cfg.claimCount, true);
+      bar.replaceChildren(frag);
+    }
+
+    let statBarEverRendered = false;
     async function refreshStatus() {
       try {
         launch = await fetchLaunchState(cfg.rpcUrl, cfg.programId);
         if (!launch) throw new Error('not initialized');
-        $('stat-bar').innerHTML =
-          'minted: <strong>' + launch.publicMinted + '/' + cfg.publicCount + '</strong>' +
-          ' · claimed: <strong>' + launch.claimsMinted + '/' + cfg.claimCount + '</strong>';
+        renderStatBar(launch.publicMinted, launch.claimsMinted);
+        statBarEverRendered = true;
         $('v-collection').textContent = launch.collection;
       } catch (e) {
-        $('stat-bar').textContent = 'devnet status unavailable — launch setup may be incomplete.';
+        // L3: a transient RPC error must not wipe good on-chain numbers that are
+        // already on screen, and never while a claim run is in progress.
+        if (!statBarEverRendered && !claiming) {
+          $('stat-bar').textContent = 'devnet status unavailable — launch setup may be incomplete.';
+        } else {
+          console.warn('[claim] status refresh failed; keeping last known values', e);
+        }
       }
       updateButtons();
     }
@@ -265,6 +313,44 @@
 
     // ---- eligibility check: runs when both wallets are known ----
     let checking = false;
+    let receiptsVerified = false;  // L2: did the last receipt lookup actually succeed?
+    let cancelRequested = false;   // M4: user asked to stop the claim run
+
+    // Read receipt PDAs for `entries` and set `.claimed`. Returns true when every
+    // lookup succeeded; false means the on-chain state is unknown (L2) — callers
+    // must surface that rather than assuming "unclaimed".
+    async function readReceiptsInto(entries) {
+      const keys = entries.map((e) => getReceiptPda(PROGRAM_ID, e.leaf));
+      try {
+        for (let i = 0; i < keys.length; i += 100) {
+          const infos = await conn.getMultipleAccountsInfo(keys.slice(i, i + 100));
+          infos.forEach((info, j) => { entries[i + j].claimed = !!info; });
+        }
+        return true;
+      } catch (e) {
+        console.warn('[claim] receipt lookup failed', e);
+        return false;
+      }
+    }
+
+    // M2: rows are built with createElement + textContent only. Also re-used by
+    // the pre-claim receipt re-check (H2) so labels stay truthful.
+    function renderEligibleRows() {
+      const list = $('claim-list');
+      list.replaceChildren();
+      for (const entry of eligible ?? []) {
+        const row = document.createElement('div');
+        row.className = 'kv';
+        const label = document.createElement('span');
+        label.textContent = 'cumzillaraptor #' + entry.id;
+        const val = document.createElement('strong');
+        val.textContent = entry.claimed ? 'already claimed ✓' : 'ready';
+        if (entry.claimed) val.style.color = 'var(--muted)';
+        row.append(label, val);
+        list.append(row);
+      }
+    }
+
     async function maybeCheckEligibility() {
       if (!ethAddress || !wc.publicKey || checking) return;
       checking = true;
@@ -272,7 +358,7 @@
         if (!claimsByEth) claimsByEth = await (await fetch('/cumzillaraptors/claim/data/claims-by-eth.json')).json();
         const entries = claimsByEth[ethAddress];
         const box = $('eligibility-result'), list = $('claim-list');
-        list.innerHTML = '';
+        list.replaceChildren();
         $('step-eligible').classList.add('hidden');
         if (!entries || !entries.length) {
           box.textContent = 'this address holds no claim-list raptors. if you expected some, connect the ethereum wallet that held them.';
@@ -284,26 +370,25 @@
                                          leaf: claimLeafHex(PROGRAM_ID, ethAddress, e.id,
                                            deterministicNonceHex(PROGRAM_ID, ethAddress, e.id)),
                                          claimed: false }));
-        const receiptKeys = eligible.map((e) => getReceiptPda(PROGRAM_ID, e.leaf));
-        try {
-          for (let i = 0; i < receiptKeys.length; i += 100) {
-            const infos = await conn.getMultipleAccountsInfo(receiptKeys.slice(i, i + 100));
-            infos.forEach((info, j) => { if (info) eligible[i + j].claimed = true; });
-          }
-        } catch (e) { console.warn('[claim] receipt lookup failed — treating all as unclaimed', e); }
-        box.innerHTML = '✅ eligible — <strong>' + entries.length + '</strong> raptor' +
-          (entries.length > 1 ? 's' : '') + ':';
-        for (const entry of eligible) {
-          const row = document.createElement('div');
-          row.className = 'kv';
-          const label = document.createElement('span');
-          label.textContent = 'cumzillaraptor #' + entry.id;
-          const val = document.createElement('strong');
-          val.textContent = entry.claimed ? 'already claimed ✓' : 'ready';
-          if (entry.claimed) val.style.color = 'var(--muted)';
-          row.append(label, val);
-          list.append(row);
+        receiptsVerified = await readReceiptsInto(eligible);
+        // M2: no innerHTML — assemble from text nodes so chain/JSON values can
+        // never be parsed as markup.
+        const head = document.createDocumentFragment();
+        head.append('✅ eligible — ');
+        const count = document.createElement('strong');
+        count.textContent = String(entries.length);
+        head.append(count, ' raptor' + (entries.length > 1 ? 's' : '') + ':');
+        box.replaceChildren(head);
+        // L2: never pretend everything is unclaimed after a failed lookup.
+        if (!receiptsVerified) {
+          const warn = document.createElement('div');
+          warn.className = 'msg err';
+          warn.textContent = '⚠️ could not verify which raptors are already claimed ' +
+            '(RPC error). the list below may include claimed ones — they are re-checked ' +
+            'before claiming, so nothing is signed blindly.';
+          box.append(warn);
         }
+        renderEligibleRows();
         $('step-eligible').classList.remove('hidden');
         batchEthSignatures = null;
         batchNftIds = null;
@@ -331,9 +416,16 @@
       const saleLive = !!launch?.isLive;
       $('btn-claim-all').setAttribute('aria-disabled',
         String(!(bothConnected && nonceChecked && claimable.length && batchEthSignatures && saleLive)));
-      // Explain a disabled claim button instead of leaving it mysteriously dead
-      setMsg('sign-msg', '');
-      if (bothConnected && eligible?.length && !claimable.length && !claiming) {
+      // Explain a disabled claim button instead of leaving it mysteriously dead.
+      // Only the HINT is managed here — an error already shown in sign-msg (e.g.
+      // a rejected/failed signature) must survive, otherwise the user sees the
+      // signature silently do nothing.
+      const signMsgEl = $('sign-msg');
+      const holdingError = signMsgEl.classList.contains('err') && signMsgEl.textContent;
+      if (!holdingError) setMsg('sign-msg', '');
+      if (holdingError) {
+        // leave it alone
+      } else if (bothConnected && eligible?.length && !claimable.length && !claiming) {
         setMsg('sign-msg', 'all your eligible raptors are already claimed. nothing left to sign.', 'ok');
       } else if (bothConnected && claimable.length && !saleLive && !claiming) {
         setMsg('sign-msg', 'sale is not live yet (' + (launch?.saleState ?? 'unknown') +
@@ -348,10 +440,6 @@
         if (!window.ethereum) throw new Error('no ethereum wallet found.');
         const signer = (await window.ethereum.request({ method: 'eth_accounts' }))[0];
         if (!signer || signer.toLowerCase() !== ethAddress) throw new Error('ethereum wallet changed — reconnect.');
-        let BrowserProvider;
-        try { ({ BrowserProvider } = await import("https://esm.sh/ethers@6.13.4")); }
-        catch { throw new Error('could not load the signing library — check connection and retry.'); }
-        const browserProvider = new BrowserProvider(window.ethereum, 'any');
         // Canonical id order; per-id leaves keep their own deterministic nonces.
         // Only UNCLAIMED raptors are signed — already-claimed ones are skipped.
         // Chunked at MAX_SIGN_BATCH_IDS (32), below the protocol cap of 64, so the
@@ -381,7 +469,7 @@
             programId: PROGRAM_ID, recipient: wc.publicKey, nftIds: chunks[c],
             ethAddress, expiryUnix: cfg.expiryUnix,
           });
-          const sigHex = await browserProvider.send('personal_sign', [message, signer]);
+          const sigHex = await personalSign(message, signer);
           signed.push({ ids: chunks[c], sig: sigHex });
         }
         batchEthSignatures = signed;
@@ -400,16 +488,49 @@
     $('btn-claim-all').addEventListener('click', async () => {
       if ($('btn-claim-all').getAttribute('aria-disabled') === 'true' || claiming) return;
       claiming = true;
+      cancelRequested = false;
+      $('row-cancel').classList.remove('hidden');
+      $('btn-cancel-claim').disabled = false;
+      $('btn-cancel-claim').textContent = 'stop after this raptor';
       // Per-claim results live in their own list so later setMsg calls and
       // the final summary can never wipe explorer links (bug fixed 2026-08-26).
       const done = document.getElementById('claim-done');
-      if (done) { done.innerHTML = ''; done.classList.remove('hidden'); }
+      if (done) { done.replaceChildren(); done.classList.remove('hidden'); }
       try {
+        // H2 (review 2026-08-29): receipts were read once at eligibility time, so
+        // a tab left open — or a claim made from another device — led to signing
+        // and paying for transactions that fail on the receipt PDA. Re-read the
+        // receipts immediately before the loop; one getMultipleAccountsInfo call.
+        setMsg('claim-msg', 're-checking which raptors are still unclaimed…');
+        const fresh = await readReceiptsInto(eligible);
+        receiptsVerified = fresh;
+        if (!fresh) {
+          throw new Error('could not confirm which raptors are still unclaimed — ' +
+            'nothing was submitted. retry in a moment.');
+        }
+        renderEligibleRows();
         const claimable = eligible.filter((e) => !e.claimed);
+        if (!claimable.length) {
+          setMsg('claim-msg', 'all your eligible raptors are already claimed — nothing to do.', 'ok');
+          return;
+        }
+        // Any raptor claimed elsewhere since signing is dropped here. The signed
+        // chunk still covers it, so the remaining ids stay valid to submit.
+        const skipped = eligible.filter((e) => e.claimed).length;
+        if (skipped) {
+          setMsg('claim-msg', skipped + ' raptor' + (skipped > 1 ? 's were' : ' was') +
+            ' already claimed elsewhere — skipping ' + (skipped > 1 ? 'them' : 'it') + '.');
+        }
         const needsNonceSetup = !claimNonce;
         const solanaTxCount = claimable.length + (needsNonceSetup ? 1 : 0);
         await ensureClaimNonce(solanaTxCount);
         for (let i = 0; i < claimable.length; i++) {
+          if (cancelRequested) {
+            setMsg('claim-msg', 'stopped at your request after ' + i + ' of ' +
+              claimable.length + ' raptors. the rest are still claimable — press ' +
+              'claim again when ready.', 'ok');
+            return;
+          }
           const transactionNumber = i + 1 + (needsNonceSetup ? 1 : 0);
           setMsg('claim-msg', 'claiming #' + claimable[i].id + ' (' + transactionNumber +
             '/' + solanaTxCount + ')… approve in your Solana wallet.');
@@ -455,8 +576,18 @@
               }
               if (!/429|rate limit/i.test(perr) || attempt >= 4) throw e;
               const wait = 5 + attempt * 5;
-              setMsg('claim-msg', 'RPC rate-limited — waiting ' + wait + 's before retry…');
-              await new Promise((r) => setTimeout(r, wait * 1000));
+              // M4: the backoff used to sleep up to 50s with no countdown and no
+              // way out. Tick once a second and honour the cancel button.
+              const aborted = await countdownSleep(wait, (left) => {
+                setMsg('claim-msg', 'RPC rate-limited — retrying #' + claimable[i].id +
+                  ' in ' + left + 's… (you can stop after this raptor)');
+              });
+              if (aborted) {
+                setMsg('claim-msg', 'stopped at your request while waiting out an RPC ' +
+                  'rate limit. ' + i + ' of ' + claimable.length + ' raptors claimed — ' +
+                  'the rest are still claimable.', 'ok');
+                return;
+              }
             }
           }
         }
@@ -468,9 +599,30 @@
         console.error('[claim] full error:', e);
       } finally {
         claiming = false;
+        cancelRequested = false;
+        $('row-cancel').classList.add('hidden');
         updateButtons();
       }
     });
+
+    // M4: cancel affordance for the long sequential run / rate-limit backoff.
+    $('btn-cancel-claim').addEventListener('click', () => {
+      if (!claiming) return;
+      cancelRequested = true;
+      $('btn-cancel-claim').disabled = true;
+      $('btn-cancel-claim').textContent = 'stopping…';
+    });
+
+    // Sleep `seconds`, ticking a countdown each second, aborting early if the
+    // user pressed cancel. Resolves true when aborted (M4).
+    async function countdownSleep(seconds, onTick) {
+      for (let left = seconds; left > 0; left--) {
+        if (cancelRequested) return true;
+        onTick(left);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      return cancelRequested;
+    }
 
     // ---- shared claim lookup table (pre-created by the deployer) ----
     // Holds config, allocation, collection, and mpl-core so v0 claim
@@ -748,18 +900,23 @@
       }
     }
 
+    // L1: the UI gets a clean, actionable sentence; raw stacks and wrapped
+    // provider objects go to the console only (they used to be appended to the
+    // user-visible message).
     function prettyError(e) {
       const msg = e?.message || String(e);
       if (/cancelled by user/i.test(msg)) return 'cancelled.';
       if (/UserRejected|rejected/i.test(msg)) return 'you rejected the transaction.';
       if (/insufficient|Insufficient/i.test(msg)) return 'not enough SOL in your wallet for fees (~0.01).';
-      // Surface everything — Phantom wraps real causes as generic strings.
-      const extra = [
-        e?.shortMessage,
-        typeof e?.error === 'object' ? JSON.stringify(e.error) : e?.error,
-        e?.stack ? String(e.stack).split('\n')[0] : null,
-      ].filter(Boolean);
-      return extra.length ? msg + ' | ' + extra.join(' | ') : msg;
+      console.warn('[claim] error detail:', {
+        message: msg,
+        shortMessage: e?.shortMessage,
+        inner: e?.error,
+        stack: e?.stack,
+      });
+      // Phantom wraps real causes as generic strings; shortMessage is usually the
+      // most human of the available fields and is safe to show.
+      return e?.shortMessage || msg;
     }
 
     refreshStatus();
