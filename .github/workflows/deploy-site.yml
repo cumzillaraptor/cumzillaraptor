@@ -13,6 +13,11 @@ on:
       - 'wrangler.toml'
       - 'cumzillaraptors/mint/**'
       - 'cumzillaraptors/claim/**'
+      # Shared browser modules (wallet.js, chain.js, claim-nonce.js, …) are
+      # copied into both page bundles by build-site-dist.js. Without this path
+      # a client-only fix silently never deploys.
+      - 'cumzillaraptors/client/**'
+      - 'scripts/build-site-dist.js'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
