@@ -17,22 +17,44 @@ export function claimNonceAddress(claimerPubkey) {
 }
 
 // Fetch + decode the nonce account at `address`. Returns null when missing or
-// not an initialized nonce. Manual decode (no NonceAccount import needed):
-//   state u32le @0  (2 = Initialized, 4 = InitializedWithFeeCalculator-era values vary by version)
-//   authorized pubkey @4..36
-//   durable blockhash @36..68
+// not an initialized nonce.
+//
+// REAL on-chain nonce layout (80 bytes, verified against
+// NonceAccount.fromAccountData on live devnet 2026-08-29):
+//   version    u32le @0   (1)
+//   state      u32le @4   (0 = Uninitialized, 1 = Initialized)
+//   authority  32b   @8..40
+//   nonce hash 32b   @40..72
+//   feeCalculator u64le @72..80
+//
+// A previous version of this decoder read state@0 / authority@4 / hash@36 and
+// therefore saw version(1) as the state, rejected every real nonce account as
+// "not initialized", and made the page try to CREATE an account that already
+// existed ("already in use", custom program error 0x0).
+export const NONCE_ACCOUNT_SPAN = 80;
+const NONCE_STATE_INITIALIZED = 1;
+
+export function decodeClaimNonceData(data) {
+  if (!data || data.length < NONCE_ACCOUNT_SPAN) return null;
+  const state = data.readUInt32LE(4);
+  if (state !== NONCE_STATE_INITIALIZED) return null;
+  return {
+    version: data.readUInt32LE(0),
+    authorityBytes: data.slice(8, 40),
+    blockhashBytes: data.slice(40, 72),
+  };
+}
+
 export async function fetchClaimNonce(conn, address) {
   const info = await conn.getAccountInfo(address);
-  if (!info || !info.owner.equals(SYSTEM_PROGRAM_ID) || info.data.length < 68) return null;
-  const state = info.data.readUInt32LE(0);
-  if (state !== 2 && state !== 4) return null; // Uninitialized=0, Initialized=2 per layout enum
-  const w = (typeof window !== "undefined" && window.solanaWeb3) || null;
-  if (!w) throw new Error("solanaWeb3 not loaded");
+  if (!info || !info.owner.equals(SYSTEM_PROGRAM_ID)) return null;
+  const decoded = decodeClaimNonceData(info.data);
+  if (!decoded) return null;
   return {
     address,
-    authority: new w.PublicKey(info.data.slice(4, 36)),
+    authority: new PublicKey(decoded.authorityBytes),
     // stored "nonce" IS a recent-blockhash-shaped value
-    blockhash: new w.PublicKey(info.data.slice(36, 68)).toString(),
+    blockhash: new PublicKey(decoded.blockhashBytes).toString(),
     lamports: info.lamports,
   };
 }
@@ -48,6 +70,17 @@ export async function buildSetupNonceTx({ conn, claimer }) {
   const address = await claimNonceAddress(claimer);
   const existing = await fetchClaimNonce(conn, address);
   if (existing) return { exists: true, address };
+  // The account may exist without decoding as an initialized nonce (e.g. a
+  // partially-completed setup). Creating it again fails with the System
+  // program's opaque "already in use" / custom program error 0x0, so detect
+  // that here and report something actionable instead.
+  const raw = await conn.getAccountInfo(address);
+  if (raw) {
+    throw new Error(
+      'your claim setup account already exists but is not a usable nonce ' +
+      '(' + address.toString() + ') — contact support rather than retrying.',
+    );
+  }
   const { blockhash } = await conn.getLatestBlockhash('confirmed');
   const tx = new Transaction();
   const LAMPORTS_RENT = 1_500_000; // rent-exempt minimum for a nonce account
