@@ -10,6 +10,15 @@ const HELIUS_HOSTS = {
   devnet: "https://devnet.helius-rpc.com",
   mainnet: "https://mainnet.helius-rpc.com",
 };
+// WebSocket hosts for the same clusters. @solana/web3.js derives its wsEndpoint
+// from the http endpoint (https -> wss, same host), so rpc.cumzillaraptor.com
+// MUST accept an Upgrade: websocket request. Without it every
+// confirmTransaction() falls back to blockheight polling and only resolves when
+// the blockhash expires (~60-90s), or never at all for durable-nonce txs.
+const HELIUS_WS_HOSTS = {
+  devnet: "wss://devnet.helius-rpc.com",
+  mainnet: "wss://mainnet.helius-rpc.com",
+};
 const RPC_HOST = "rpc.cumzillaraptor.com";
 // basic abuse guard: only POST JSON-RPC bodies of sane size
 const MAX_RPC_BODY = 1_000_000; // 1 MB — getAccountInfo responses fit easily
@@ -44,6 +53,12 @@ export default {
 };
 
 async function handleRpc(request, env) {
+  // WebSocket upgrade must be handled BEFORE the POST-only guard: the
+  // subscription socket arrives as a GET with Upgrade: websocket, which the
+  // guard used to answer with 405 (breaking all signature subscriptions).
+  if ((request.headers.get("Upgrade") || "").toLowerCase() === "websocket") {
+    return handleRpcWebSocket(request, env);
+  }
   const cors = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -85,5 +100,47 @@ function json(obj, status, cors) {
   return new Response(JSON.stringify(obj), {
     status,
     headers: { "Content-Type": "application/json", ...cors },
+  });
+}
+
+// Proxy the JSON-RPC subscription WebSocket to Helius, keeping the API key
+// server-side exactly like the POST path. Cloudflare Workers support this by
+// forwarding the upgrade request and piping the returned socket.
+//
+// Browsers cannot set custom headers on a WebSocket handshake, so the client
+// connects to wss://rpc.cumzillaraptor.com with no credentials and the key is
+// attached here.
+async function handleRpcWebSocket(request, env) {
+  const apiKey = env.HELIUS_API_KEY;
+  if (!apiKey) {
+    return new Response("rpc proxy not configured (missing HELIUS_API_KEY)", { status: 503 });
+  }
+  const target = HELIUS_WS_HOSTS.devnet + "/?api-key=" + encodeURIComponent(apiKey);
+
+  // Forward the handshake. Only the headers the upgrade needs are passed on;
+  // notably we do NOT forward Origin/Cookie, so the key cannot be leaked back.
+  const upgradeHeaders = new Headers();
+  upgradeHeaders.set("Upgrade", "websocket");
+  upgradeHeaders.set("Connection", "Upgrade");
+  for (const h of ["Sec-WebSocket-Key", "Sec-WebSocket-Version",
+    "Sec-WebSocket-Protocol", "Sec-WebSocket-Extensions"]) {
+    const v = request.headers.get(h);
+    if (v) upgradeHeaders.set(h, v);
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(target, { headers: upgradeHeaders });
+  } catch (e) {
+    return new Response("rpc websocket upstream unreachable", { status: 502 });
+  }
+  // 101 with a socket is the success case; anything else is an upstream refusal.
+  if (upstream.status !== 101 || !upstream.webSocket) {
+    return new Response("rpc websocket upstream refused (" + upstream.status + ")", { status: 502 });
+  }
+  return new Response(null, {
+    status: 101,
+    webSocket: upstream.webSocket,
+    headers: upstream.headers,
   });
 }

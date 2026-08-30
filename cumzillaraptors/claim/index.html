@@ -149,6 +149,7 @@
       deterministicNonceHex, claimLeafHex, getReceiptPda,
       buildClaimMessage, claimMessageHashHex, buildClaimInstruction,
       buildBatchClaimMessage, buildClaimBatchInstruction, MAX_SIGN_BATCH_IDS, MAX_TX_BYTES,
+      confirmSignatureFast,
     } from "/cumzillaraptors/claim/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/claim/wallet.js";
     import web3 from "/cumzillaraptors/claim/web3-shim.js";
@@ -166,7 +167,11 @@
     const MPL_CORE = new PublicKey(cfg.mplCoreProgramId);
 
     const $ = (id) => document.getElementById(id);
-    const conn = new Connection(cfg.rpcUrl, "confirmed");
+    // Explicit wsEndpoint: web3.js otherwise derives it silently, and a broken
+    // socket degrades confirmTransaction() into a ~60-90s blockheight wait.
+    // cfg.wsUrl lets config override it; default mirrors the http endpoint.
+    const WS_URL = cfg.wsUrl || cfg.rpcUrl.replace(/^http/, 'ws');
+    const conn = new Connection(cfg.rpcUrl, { commitment: "confirmed", wsEndpoint: WS_URL });
 
     let launch = null, claimsByEth = null;
     let eligible = null;        // [{ id, p, nonce, leaf, claimed }]
@@ -858,8 +863,12 @@
         // able to see it instead of re-signing and submitting a duplicate.
         recordAttemptSignature(entry.id, sig);
         try {
-          const conf = await conn.confirmTransaction({ signature: sig }, 'confirmed');
-          if (conf.value.err) throw new Error('on-chain error on #' + entry.id + ': ' + JSON.stringify(conf.value.err));
+          // A durable-nonce tx has NO expiry, so web3's confirmTransaction has no
+          // deadline to fall back on: with a dead RPC WebSocket it can hang
+          // indefinitely. Race an HTTP status poll so confirmation always
+          // resolves in ~1s regardless of socket health.
+          const res = await confirmSignatureFast(conn, sig, { commitment: 'confirmed' });
+          if (res.status === 'timeout') throw new Error('confirmation timed out for #' + entry.id);
         } catch (e) {
           const landed = await findLandedClaim(entry.id);
           if (landed?.err) {

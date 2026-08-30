@@ -310,3 +310,22 @@ domTest('the unavailable message still shows when status never loaded at all', a
   const s = await bootClaimPage({ statusFailAfter: 0 });
   assert.match(s.text('stat-bar'), /devnet status unavailable/);
 });
+
+// ---------- dead RPC WebSocket must not stall the claim run ----------
+
+domTest('a claim completes promptly even when the RPC WebSocket is dead', async () => {
+  // deadWebSocket makes confirmTransaction() hang forever, exactly as it did in
+  // production when worker.js refused the wss upgrade with 405. A durable-nonce
+  // claim tx never expires, so the old code had no deadline to fall back on.
+  const started = Date.now();
+  const s = await signedAndClaimed({ claimIds: [4], deadWebSocket: true });
+  const elapsed = Date.now() - started;
+
+  assert.equal(s.submissions.length, 1, 'the claim was submitted');
+  assert.match(s.text('claim-msg'), /claimed/, 'claim must complete: ' + s.text('claim-msg'));
+  assert.match(s.$('claim-done').textContent, /#4 explorer/, 'reveal/receipt link must appear');
+  assert.ok(elapsed < 20000, `must not hang on the dead socket, took ${elapsed}ms`);
+  // it resolved via the HTTP status poll, not the socket
+  assert.ok(s.statusQueries > 0, 'the HTTP status poll must have been used');
+  s.restoreTimers();
+});

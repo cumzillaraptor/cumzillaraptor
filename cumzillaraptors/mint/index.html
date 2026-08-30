@@ -221,6 +221,7 @@
       Connection, PublicKey, Transaction,
       fetchLaunchState, fetchAllocatedIds, getConfigPda, getAllocationPda,
       getAssetPda, buildMintInstruction, fetchRaptorImageUrl,
+      confirmSignatureFast,
     } from "/cumzillaraptors/mint/chain.js";
     import { createWalletConnector } from "/cumzillaraptors/mint/wallet.js";
 
@@ -231,7 +232,11 @@
     const TREASURY = new PublicKey(cfg.treasury);
 
     const $ = (id) => document.getElementById(id);
-    const conn = new Connection(cfg.rpcUrl, "confirmed");
+    // Explicit wsEndpoint: web3.js otherwise derives it silently, and a broken
+    // socket degrades confirmTransaction() into a ~60-90s blockheight wait.
+    // cfg.wsUrl lets config override it; default mirrors the http endpoint.
+    const WS_URL = cfg.wsUrl || cfg.rpcUrl.replace(/^http/, 'ws');
+    const conn = new Connection(cfg.rpcUrl, { commitment: "confirmed", wsEndpoint: WS_URL });
 
     let provider = null, walletPubkey = null, launch = null;
     let poolOrder = null, metaCache = null, spinning = false;
@@ -485,18 +490,38 @@
         setMsg('approve the 1 SOL payment in your wallet… (Phantom users: make sure the wallet is set to Devnet)');
         const result = await sendWithRetry(tx);   // payment accepted HERE
         const sig = result.sig;
-        setMsg('payment accepted — confirming on-chain…');
-        if (result.landedEarly) {
-          // An earlier approval landed while we thought it had expired. It is
-          // already confirmed, so skip straight to the reveal.
-        } else {
-          await confirmMint(sig, {
-            blockhash: result.blockhash,
-            lastValidBlockHeight: result.lastValidBlockHeight,
+
+        // PERCEIVED SPEED: reveal as soon as the transaction is *processed*
+        // (~400ms) rather than waiting for full 'confirmed'. Previously the
+        // reveal was gated on confirmTransaction(), which — with a dead RPC
+        // WebSocket — only settled when the blockhash expired, so the user sat
+        // on "confirming on-chain…" for 60-90s after already paying.
+        //
+        // This is safe: the money already left at approval, the reveal shows the
+        // id the tx was BUILT for (not chain-derived), and a genuine on-chain
+        // failure is still surfaced below by the full confirmation.
+        if (!result.landedEarly) {
+          setMsg('payment accepted — landing your raptor…');
+          const early = await confirmSignatureFast(conn, sig, {
+            commitment: 'processed',
+            blockhashInfo: {
+              blockhash: result.blockhash,
+              lastValidBlockHeight: result.lastValidBlockHeight,
+            },
+            timeoutMs: 30_000,
           });
+          if (early.status === 'timeout') {
+            // Nothing seen yet — fall through to the strict confirm below rather
+            // than revealing something that might never land.
+            setMsg('payment accepted — confirming on-chain…');
+            await confirmMint(sig, {
+              blockhash: result.blockhash,
+              lastValidBlockHeight: result.lastValidBlockHeight,
+            });
+          }
         }
 
-        spin.settle();                     // only now does the drum land on your raptor
+        spin.settle();                     // reveal now — no full-confirm wait
         await spin.settled;
         setMsg('');
         fireConfetti();
@@ -508,8 +533,23 @@
         link.textContent = 'view transaction ↗';
         setMsg('🎉 you rolled ' + name + '! ', 'ok');
         $('mint-msg').append(link);
-        pendingSignatures = [];   // roll fully resolved — allow another
-        refreshStatus();
+
+        // Reconcile in the background: the raptor is already on screen, but if
+        // the tx ultimately failed the user must be told rather than left with a
+        // reveal for a mint that never landed.
+        if (!result.landedEarly) {
+          confirmSignatureFast(conn, sig, { commitment: 'confirmed' })
+            .then(() => { pendingSignatures = []; refreshStatus(); })
+            .catch((err) => {
+              console.error('[mint] post-reveal confirmation failed:', err);
+              setMsg('⚠️ this roll did not confirm on-chain: ' + prettyError(err) +
+                ' — check the transaction before rolling again.', 'err');
+              $('mint-msg').append(link);
+            });
+        } else {
+          pendingSignatures = [];   // roll fully resolved — allow another
+          refreshStatus();
+        }
       } catch (e) {
         // reset the slot box if we never revealed
         const box = $('reveal-box');

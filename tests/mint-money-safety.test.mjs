@@ -42,7 +42,24 @@ test('C1: an unverifiable status check refuses to re-prompt', () => {
 
 test('C1: a landed signature short-circuits confirmation instead of re-charging', () => {
   assert.match(mint, /landedEarly: true/);
-  assert.match(mint, /if \(result\.landedEarly\)/);
+  // The guard was inverted when the reveal moved off the full-confirm path
+  // (2026-08-30 RPC WebSocket fix): the roll handler now asks "if NOT already
+  // landed, confirm it", which is the same short-circuit. Assert the semantics,
+  // not one spelling of the condition.
+  assert.match(mint, /if \(!?result\.landedEarly\)/);
+
+  const handler = mint.slice(
+    mint.indexOf('const result = await sendWithRetry(tx)'),
+    mint.indexOf('} catch (e) {', mint.indexOf('const result = await sendWithRetry(tx)')),
+  );
+  // every confirmation attempt must sit behind the landedEarly check, so a
+  // signature we already know landed is never re-confirmed or re-charged
+  const guardAt = handler.indexOf('if (!result.landedEarly)');
+  assert.ok(guardAt > -1, 'confirmation must be guarded by landedEarly');
+  assert.ok(guardAt < handler.indexOf('confirmSignatureFast'),
+    'the guard must precede confirmation');
+  assert.ok(guardAt < handler.indexOf('await confirmMint('),
+    'the guard must precede the strict confirm fallback');
 });
 
 test('C2: hard re-entry guard blocks a second roll while unresolved', () => {

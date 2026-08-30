@@ -382,3 +382,97 @@ export async function fetchRaptorImageUrl(metaUri) {
     return null;
   }
 }
+
+
+// ---- confirmation that never depends on a live WebSocket ----
+//
+// web3.js confirmTransaction() races an onSignature WebSocket subscription
+// against a blockheight poll. If the wss endpoint is unreachable (our RPC proxy
+// answered the upgrade with 405 until worker.js learned to forward it), the
+// subscription never fires and the call only settles when the blockhash expires
+// — ~60-90s of dead wait after the user already approved, and NEVER for a
+// durable-nonce transaction, which cannot expire by design.
+//
+// pollSignatureStatus polls getSignatureStatuses over plain HTTP POST, so it
+// works regardless of WebSocket health.
+//
+// Returns:
+//   { status: "landed",  signature, confirmationStatus }
+//   { status: "failed",  signature, err }
+//   { status: "timeout", signature }
+export const CONFIRM_POLL_MS = 900;
+export const CONFIRM_TIMEOUT_MS = 90_000;
+
+export function meetsCommitment(confirmationStatus, target = "confirmed") {
+  if (!confirmationStatus) return false;
+  if (target === "processed") {
+    return confirmationStatus === "processed" || confirmationStatus === "confirmed" ||
+           confirmationStatus === "finalized";
+  }
+  if (target === "confirmed") {
+    return confirmationStatus === "confirmed" || confirmationStatus === "finalized";
+  }
+  return confirmationStatus === "finalized";
+}
+
+export async function pollSignatureStatus(conn, signature, opts = {}) {
+  const {
+    commitment = "confirmed",
+    intervalMs = CONFIRM_POLL_MS,
+    timeoutMs = CONFIRM_TIMEOUT_MS,
+    onTick = null,
+    shouldAbort = null,
+  } = opts;
+  const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  while (Date.now() < deadline) {
+    if (shouldAbort && shouldAbort()) return { status: "timeout", signature, aborted: true };
+    attempts++;
+    let value = null;
+    try {
+      const res = await conn.getSignatureStatuses([signature], { searchTransactionHistory: true });
+      value = res?.value?.[0] ?? null;
+    } catch (e) {
+      // transient RPC failure: keep polling until the deadline
+      if (onTick) onTick({ attempts, error: e });
+    }
+    if (value) {
+      if (value.err) return { status: "failed", signature, err: value.err };
+      if (meetsCommitment(value.confirmationStatus, commitment)) {
+        return { status: "landed", signature, confirmationStatus: value.confirmationStatus };
+      }
+    }
+    if (onTick) onTick({ attempts, value });
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return { status: "timeout", signature };
+}
+
+// Confirm `signature`, preferring the fast WebSocket path when it is healthy but
+// always racing an HTTP poll so a dead socket cannot stall the UI. Throws on a
+// genuine on-chain error; returns the winning result otherwise.
+export async function confirmSignatureFast(conn, signature, opts = {}) {
+  const { commitment = "confirmed", blockhashInfo = null } = opts;
+  const poll = pollSignatureStatus(conn, signature, opts);
+  const racers = [poll];
+  if (typeof conn.confirmTransaction === "function") {
+    racers.push((async () => {
+      try {
+        const arg = blockhashInfo
+          ? { signature, ...blockhashInfo }
+          : { signature };
+        const conf = await conn.confirmTransaction(arg, commitment);
+        if (conf?.value?.err) return { status: "failed", signature, err: conf.value.err };
+        return { status: "landed", signature, via: "websocket" };
+      } catch (e) {
+        // Let the poll decide; never surface a WS/expiry error as the truth.
+        return await poll;
+      }
+    })());
+  }
+  const winner = await Promise.race(racers);
+  if (winner.status === "failed") {
+    throw new Error("on-chain error on " + signature + ": " + JSON.stringify(winner.err));
+  }
+  return winner;
+}

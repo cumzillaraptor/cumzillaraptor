@@ -77,6 +77,7 @@ export async function bootClaimPage(opts = {}) {
     sendBehaviour = () => 'ok',
     nonceExists = true,
     signDelayMs = 0,
+    deadWebSocket = false,
   } = opts;
 
   const html = readFileSync(PAGE, 'utf8')
@@ -92,6 +93,7 @@ export async function bootClaimPage(opts = {}) {
     submissions: [],
     receiptChecks: 0,
     statusReads: 0,
+    submittedSigs: new Set(),
     phase: 'load',       // 'load' | 'claim'
     claimedNow: new Set(claimedAtLoad),
     dom,
@@ -148,11 +150,29 @@ export async function bootClaimPage(opts = {}) {
     events.push('send:' + i);
     const r = sendBehaviour(i);
     if (r instanceof Error) throw r;
-    return 'SIG' + i + 'x'.repeat(80);
+    const sig = 'SIG' + i + 'x'.repeat(80);
+    state.submittedSigs.add(sig);
+    return sig;
   };
-  C.confirmTransaction = async function () { return { value: { err: null } }; };
+  // deadWebSocket reproduces the production bug: the wss upgrade was refused, so
+  // web3's confirmTransaction (which awaits an onSignature subscription) never
+  // settles. A durable-nonce tx has no expiry, so this hangs forever.
+  C.confirmTransaction = deadWebSocket
+    ? () => new Promise(() => {})
+    : async function () { return { value: { err: null } }; };
   C.getSignatureStatuses = async function (sigs) {
-    return { value: sigs.map(() => (state.landed ? { err: null, confirmationStatus: 'confirmed' } : null)) };
+    state.statusQueries = (state.statusQueries || 0) + 1;
+    return {
+      value: sigs.map((s) => {
+        // A signature we actually accepted is on-chain. This is what lets the
+        // HTTP poll resolve confirmation when the WebSocket is dead.
+        const submitted = state.submittedSigs?.has(s);
+        if (state.landed || (deadWebSocket && submitted)) {
+          return { err: null, confirmationStatus: 'confirmed' };
+        }
+        return null;
+      }),
+    };
   };
 
   // ---- globals the page/shims expect ----
