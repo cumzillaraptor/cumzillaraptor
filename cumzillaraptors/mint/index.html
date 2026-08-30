@@ -330,8 +330,13 @@
 
     // pick a RANDOM unallocated public id (lottery, not lowest-first)
     async function rollNftId() {
-      const order = await loadPool();
-      const allocated = await fetchAllocatedIds(cfg.rpcUrl, cfg.programId);
+      // PERCEIVED SPEED: the pool order (static file) and the allocation registry
+      // (RPC) are independent, so fetch them concurrently. Serially these were two
+      // round trips stacked in front of the wallet popup.
+      const [order, allocated] = await Promise.all([
+        loadPool(),
+        fetchAllocatedIds(cfg.rpcUrl, cfg.programId),
+      ]);
       const available = order.filter((id) => !allocated.has(id));
       if (!available.length) throw new Error('the pool is empty — all raptors minted!');
       return available[Math.floor(Math.random() * available.length)];
@@ -480,15 +485,20 @@
         const tx = new Transaction().add(ix);
         tx.feePayer = walletPubkey;
 
-        // Explicit preflight simulation to catch real errors before the wallet
-        // popup. web3.js fetches its own blockhash for the simulation; the
-        // signing blockhash is set later in sendWithRetry.
+        // PERCEIVED SPEED: simulate and fetch the signing blockhash CONCURRENTLY.
+        // These are independent round trips, and web3.js's simulateTransaction
+        // always fetches its own blockhash regardless of what we preset, so running
+        // them in series stacked ~2 extra RPC round trips in front of the popup.
         setMsg('checking transaction…');
-        const sim = await conn.simulateTransaction(tx);
+        const [sim, signingBlockhash] = await Promise.all([
+          conn.simulateTransaction(tx),
+          conn.getLatestBlockhash('confirmed'),
+        ]);
         if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
 
         setMsg('approve the 1 SOL payment in your wallet… (Phantom users: make sure the wallet is set to Devnet)');
-        const result = await sendWithRetry(tx);   // payment accepted HERE
+        // Pass the already-fetched blockhash so the popup is not delayed again.
+        const result = await sendWithRetry(tx, 3, signingBlockhash);   // payment accepted HERE
         const sig = result.sig;
 
         // PERCEIVED SPEED: reveal as soon as the transaction is *processed*
@@ -581,14 +591,20 @@
     // could approve two prompts and pay 2 SOL for one roll. Now, before any
     // retry, every signature already produced for this roll is checked on-chain;
     // if one landed we return it instead of asking for another payment.
-    async function sendWithRetry(tx, maxAttempts = 3) {
+    async function sendWithRetry(tx, maxAttempts = 3, prefetchedBlockhash = null) {
       let lastErr;
+      let pending = prefetchedBlockhash;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+          // Use the blockhash fetched in parallel with simulation on the first
+          // attempt so the popup opens immediately. Any RETRY must fetch a fresh
+          // one — reusing the expired hash is what caused the failure.
+          const { blockhash, lastValidBlockHeight } =
+            pending || await conn.getLatestBlockhash('confirmed');
+          pending = null;
           tx.recentBlockhash = blockhash;
           tx.signatures = [];                 // stale partial signatures invalidate the tx
-          const sig = await wc.signAndSend(tx);
+          const sig = await wc.signAndSend(tx, { skipPreflight: true });
           pendingSignatures.push(sig);
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {

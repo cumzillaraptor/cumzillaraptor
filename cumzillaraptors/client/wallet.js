@@ -19,6 +19,21 @@ import { getMetamaskSolanaWallet } from "./metamask.js";
 const DETECT_GRACE_MS = 2500;     // how long to wait for late-injecting wallets
 const DETECT_POLL_MS = 150;
 
+// Mobile wallet in-app browsers (Phantom/Solflare) are the case where letting the
+// WALLET broadcast is unreliable: the in-app browser has its own network setting,
+// so signAndSendTransaction can broadcast to a different cluster than the page is
+// confirming against — or return a signature the page's RPC never sees. The page
+// then polls for a tx that does not exist on its cluster and reports a bogus
+// "transaction timed out", even though nothing failed.
+//
+// On mobile we therefore sign-only and broadcast through the page's own RPC, so
+// submission and confirmation always target the same cluster.
+export function isMobileWalletBrowser() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /Android|iPhone|iPad|iPod/i.test(ua);
+}
+
 function looksLikeSolanaProvider(p) {
   return !!(p && (p.isPhantom || p.isSolflare || p.isConnected !== undefined) &&
             (typeof p.connect === "function" || p.publicKey));
@@ -223,13 +238,18 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
     // RPC. This prevents a mobile wallet from replacing the transaction blockhash or
     // broadcasting to a different cluster than the page is confirming against.
     //
-    // Only use this where durability actually matters (durable-nonce txs). On the
-    // desktop extension it is a regression: signAndSendTransaction shows the popup
-    // promptly and the wallet broadcasts, whereas signing then re-running preflight
-    // server-side adds latency after approval and surfaces RPC hiccups as fake
-    // "timeouts". Callers that pass skipPreflight avoid the double simulation when
-    // the page already simulated the transaction.
-    if (options.preferSignOnly && typeof provider.signTransaction === "function") {
+    // Only use this where durability actually matters (durable-nonce txs) or on
+    // MOBILE, where the wallet's in-app browser has its own network setting and can
+    // broadcast somewhere the page's RPC cannot see (reported 2026-08-30: a Phantom
+    // mobile mint showed "transaction timed out" while every tx actually landed).
+    // On the desktop extension, keeping signAndSendTransaction is better: the popup
+    // appears promptly and the wallet broadcasts, whereas signing then re-running
+    // preflight server-side adds latency after approval and surfaces RPC hiccups as
+    // fake "timeouts". Callers that pass skipPreflight avoid the double simulation
+    // when the page already simulated the transaction.
+    const signOnly = options.preferSignOnly ||
+      (options.preferSignOnlyOnMobile !== false && isMobileWalletBrowser());
+    if (signOnly && typeof provider.signTransaction === "function") {
       const signed = await provider.signTransaction(transaction);
       return conn.sendRawTransaction(signed.serialize(), {
         skipPreflight: options.skipPreflight === true,
