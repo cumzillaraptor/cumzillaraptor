@@ -16,10 +16,16 @@ test('mint gets a confirmed blockhash immediately before wallet approval', () =>
   assert.doesNotMatch(mintSource, /getLatestBlockhash\(['"]finalized['"]\)/);
 });
 
-test('mint requests sign-only submission through the configured RPC', () => {
-  assert.match(mintSource, /wc\.signAndSend\(tx,\s*\{\s*preferSignOnly:\s*true\s*\}\)/);
+test('mint uses the wallet send path, not forced sign-only', () => {
+  // Reverted deliberately (review 2026-08-29, H1): forcing preferSignOnly on the
+  // desktop Phantom extension replaced its prompt signAndSendTransaction with
+  // sign + manual re-preflight, which surfaced as fake approval timeouts.
+  // Durability for expiry-sensitive flows is handled by the claim page's durable
+  // nonce, not by overriding the send path here.
+  assert.doesNotMatch(mintSource, /preferSignOnly/);
+  assert.match(mintSource, /const sig = await wc\.signAndSend\(tx\);/);
   assert.match(walletSource, /options\.preferSignOnly\s*&&\s*typeof provider\.signTransaction/);
-  assert.match(walletSource, /conn\.sendRawTransaction\(signed\.serialize\(\),\s*\{\s*skipPreflight:\s*false\s*\}\)/);
+  assert.match(walletSource, /skipPreflight: options\.skipPreflight === true/);
 });
 
 test('mint checks transaction history before reporting a confirmation timeout', () => {

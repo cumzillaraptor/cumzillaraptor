@@ -222,9 +222,18 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
     // For expiry-sensitive flows, sign first and submit through the dapp's configured
     // RPC. This prevents a mobile wallet from replacing the transaction blockhash or
     // broadcasting to a different cluster than the page is confirming against.
+    //
+    // Only use this where durability actually matters (durable-nonce txs). On the
+    // desktop extension it is a regression: signAndSendTransaction shows the popup
+    // promptly and the wallet broadcasts, whereas signing then re-running preflight
+    // server-side adds latency after approval and surfaces RPC hiccups as fake
+    // "timeouts". Callers that pass skipPreflight avoid the double simulation when
+    // the page already simulated the transaction.
     if (options.preferSignOnly && typeof provider.signTransaction === "function") {
       const signed = await provider.signTransaction(transaction);
-      return conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      return conn.sendRawTransaction(signed.serialize(), {
+        skipPreflight: options.skipPreflight === true,
+      });
     }
 
     // 1) convenience API

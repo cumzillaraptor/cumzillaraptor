@@ -235,17 +235,27 @@
 
     let provider = null, walletPubkey = null, launch = null;
     let poolOrder = null, metaCache = null, spinning = false;
+    // Every signature this page has handed to the wallet for the CURRENT roll.
+    // A blockhash-expiry retry re-opens the wallet, and the earlier request is
+    // still approvable — so before retrying we check these for an on-chain
+    // landing. Without this a slow user could approve twice and pay 2 SOL.
+    let pendingSignatures = [];
 
     const short = (s) => s.length > 18 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
     function setMsg(text, cls) { const el = $('mint-msg'); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
 
     // ---- status + progress ----
     async function refreshStatus() {
+      // Never run while a roll is in flight: this poll used to overwrite the
+      // "approve the 1 SOL payment" message the user was actively acting on,
+      // and could flip the Roll button's disabled state mid-approval.
+      if (spinning) return;
       try {
         launch = await fetchLaunchState(cfg.rpcUrl, cfg.programId);
         if (!launch) throw new Error('not initialized');
         updateProgress(launch.publicMinted, cfg.publicCount);
       } catch (e) {
+        if (spinning) return;
         setMsg('devnet status unavailable — launch setup may be incomplete.', 'err');
       }
       updateButtons();
@@ -267,6 +277,9 @@
       onConnect: (pk) => {
         walletPubkey = pk;
         $('btn-connect').textContent = 'connected · ' + short(pk.toBase58());
+        // Warm the pool + metadata caches now so the first roll does not spend
+        // ~450ms of its approval window fetching 330KB inside the click handler.
+        prefetchMintData();
         updateButtons();
       },
       onDisconnect: () => {
@@ -301,6 +314,13 @@
     async function loadMeta() {
       if (!metaCache) metaCache = await (await fetch('/cumzillaraptors/mint/data/metadata-slim.json')).json();
       return metaCache;
+    }
+
+    // Warm both caches in the background. Failures are ignored: the click path
+    // still fetches on demand, so a cold prefetch never blocks a roll.
+    function prefetchMintData() {
+      loadPool().catch(() => {});
+      loadMeta().catch(() => {});
     }
 
     // pick a RANDOM unallocated public id (lottery, not lowest-first)
@@ -416,8 +436,21 @@
     // ---- mint flow ----
     $('btn-mint').addEventListener('click', async () => {
       if ($('btn-mint').getAttribute('aria-disabled') === 'true') return;
+      // Hard re-entry guard. aria-disabled alone is cosmetic: a double-click or
+      // a stale unresolved payment must never start a second 1 SOL roll.
+      if (spinning) return;
+      if (pendingSignatures.length) {
+        const landed = await findLandedSignature();
+        if (landed) {
+          setMsg('your previous roll already went through — reload the page to see it.', 'ok');
+          return;
+        }
+        setMsg('a previous approval is still unresolved — reload the page before rolling again.', 'err');
+        return;
+      }
       setMsg('');
       spinning = true; updateButtons();
+      pendingSignatures = [];
       try {
         setMsg('rolling the drum…');
         const nftId = await rollNftId();
@@ -442,19 +475,26 @@
         const tx = new Transaction().add(ix);
         tx.feePayer = walletPubkey;
 
-        // preflight simulation first (no blockhash needed for sim) to catch real errors early
+        // Explicit preflight simulation to catch real errors before the wallet
+        // popup. web3.js fetches its own blockhash for the simulation; the
+        // signing blockhash is set later in sendWithRetry.
         setMsg('checking transaction…');
         const sim = await conn.simulateTransaction(tx);
         if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
 
-        // freshest possible blockhash, fetched AFTER simulation and immediately before the
-        // popup — maximizes approval window on slow mobile wallets
         setMsg('approve the 1 SOL payment in your wallet… (Phantom users: make sure the wallet is set to Devnet)');
-        let result = await sendWithRetry(tx);   // payment accepted HERE
+        const result = await sendWithRetry(tx);   // payment accepted HERE
         const sig = result.sig;
-        const bh = { blockhash: result.blockhash, lastValidBlockHeight: result.lastValidBlockHeight };
         setMsg('payment accepted — confirming on-chain…');
-        await confirmMint(sig, bh);
+        if (result.landedEarly) {
+          // An earlier approval landed while we thought it had expired. It is
+          // already confirmed, so skip straight to the reveal.
+        } else {
+          await confirmMint(sig, {
+            blockhash: result.blockhash,
+            lastValidBlockHeight: result.lastValidBlockHeight,
+          });
+        }
 
         spin.settle();                     // only now does the drum land on your raptor
         await spin.settled;
@@ -468,6 +508,7 @@
         link.textContent = 'view transaction ↗';
         setMsg('🎉 you rolled ' + name + '! ', 'ok');
         $('mint-msg').append(link);
+        pendingSignatures = [];   // roll fully resolved — allow another
         refreshStatus();
       } catch (e) {
         // reset the slot box if we never revealed
@@ -476,15 +517,30 @@
         $('slot-name').textContent = 'roll to reveal 🎲';
         $('slot-traits').innerHTML = '';
         $('raptor-stage').hidden = true;
+        // Only clear the pending set when we KNOW no payment can still land.
+        // A rejected/never-signed attempt is safe to clear; an expiry-related
+        // failure leaves signatures that might yet confirm, so we keep them and
+        // the re-entry guard forces a reload.
+        if (!pendingSignatures.length || isUserRejection(e)) pendingSignatures = [];
         setMsg(prettyError(e), 'err');
       } finally {
         spinning = false; updateButtons();
       }
     });
 
-    // A devnet blockhash stays valid for ~60s (150 blocks). If the user takes
+    function isUserRejection(e) {
+      const msg = e?.message || String(e);
+      return /cancelled by user|UserRejected|user rejected|rejected|denied/i.test(msg);
+    }
+
+    // A devnet blockhash stays valid for ~60-90s (150 blocks). If the user takes
     // too long in the wallet, submission fails with "block height exceeded".
-    // Retry up to twice: refresh the blockhash and re-open the wallet approval.
+    //
+    // MONEY SAFETY: the previous version re-opened the wallet on expiry without
+    // checking the earlier request. That request stays approvable, so a slow user
+    // could approve two prompts and pay 2 SOL for one roll. Now, before any
+    // retry, every signature already produced for this roll is checked on-chain;
+    // if one landed we return it instead of asking for another payment.
     async function sendWithRetry(tx, maxAttempts = 3) {
       let lastErr;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -492,15 +548,47 @@
           const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
           tx.recentBlockhash = blockhash;
           tx.signatures = [];                 // stale partial signatures invalidate the tx
-          const sig = await wc.signAndSend(tx, { preferSignOnly: true });
+          const sig = await wc.signAndSend(tx);
+          pendingSignatures.push(sig);
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {
           lastErr = e;
           if (!isBlockhashExpired(e) || attempt === maxAttempts) throw e;
-          setMsg('approval timed out — opening your wallet again, approve quickly this time…');
+          // Before re-opening the wallet, make sure an earlier approval did not
+          // already land. Re-prompting on top of a landed payment double-charges.
+          const landed = await findLandedSignature();
+          if (landed) return landed;
+          setMsg('approval window expired — opening your wallet again. approve promptly this time.');
         }
       }
       throw lastErr;
+    }
+
+    // Check every signature produced for the current roll. Returns the first one
+    // that is confirmed/finalized without error, or null if none landed.
+    async function findLandedSignature() {
+      if (!pendingSignatures.length) return null;
+      let statuses;
+      try {
+        statuses = (await conn.getSignatureStatuses(pendingSignatures, {
+          searchTransactionHistory: true,
+        })).value;
+      } catch (e) {
+        // Cannot prove nothing landed — refuse to re-prompt rather than risk
+        // charging the user a second SOL.
+        throw new Error(
+          'could not verify whether your previous approval went through. ' +
+          'check your wallet history before rolling again.',
+        );
+      }
+      for (let i = 0; i < statuses.length; i++) {
+        const s = statuses[i];
+        if (!s || s.err) continue;
+        if (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized') {
+          return { sig: pendingSignatures[i], landedEarly: true };
+        }
+      }
+      return null;
     }
 
     async function confirmMint(sig, blockhashInfo) {
