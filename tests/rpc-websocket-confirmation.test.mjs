@@ -52,8 +52,15 @@ test('worker.js handles the WebSocket upgrade before the POST-only guard', () =>
 });
 
 test('worker.js proxies the socket to the Helius WS host with the key server-side', () => {
-  assert.match(worker, /wss:\/\/devnet\.helius-rpc\.com/);
   assert.match(worker, /HELIUS_WS_HOSTS/);
+  // Must be https://, not wss:// — the Workers runtime rejects a wss:// URL in
+  // fetch() ("upstream unreachable"); outbound WS = https + Upgrade header.
+  const hosts = worker.slice(worker.indexOf('const HELIUS_WS_HOSTS'),
+    worker.indexOf('const RPC_HOST'));
+  assert.match(hosts, /https:\/\/devnet\.helius-rpc\.com/);
+  assert.doesNotMatch(hosts, /wss:\/\//,
+    'fetch() cannot take a wss:// URL in the Workers runtime');
+
   const fn = worker.slice(worker.indexOf('async function handleRpcWebSocket'));
   assert.match(fn, /api-key=" \+ encodeURIComponent\(apiKey\)/, 'key is attached server-side');
   assert.match(fn, /status: 101/, 'must return the 101 upgrade response');

@@ -15,9 +15,14 @@ const HELIUS_HOSTS = {
 // MUST accept an Upgrade: websocket request. Without it every
 // confirmTransaction() falls back to blockheight polling and only resolves when
 // the blockhash expires (~60-90s), or never at all for durable-nonce txs.
+//
+// NOTE: these are https:// not wss:// on purpose. The Workers runtime rejects a
+// wss:// URL passed to fetch() ("upstream unreachable"); an outbound WebSocket
+// is made by fetching the https:// origin with Upgrade: websocket, and the
+// runtime hands back a 101 response carrying .webSocket.
 const HELIUS_WS_HOSTS = {
-  devnet: "wss://devnet.helius-rpc.com",
-  mainnet: "wss://mainnet.helius-rpc.com",
+  devnet: "https://devnet.helius-rpc.com",
+  mainnet: "https://mainnet.helius-rpc.com",
 };
 const RPC_HOST = "rpc.cumzillaraptor.com";
 // basic abuse guard: only POST JSON-RPC bodies of sane size
@@ -132,7 +137,8 @@ async function handleRpcWebSocket(request, env) {
   try {
     upstream = await fetch(target, { headers: upgradeHeaders });
   } catch (e) {
-    return new Response("rpc websocket upstream unreachable", { status: 502 });
+    // surface the actual cause; a silent generic 502 made this hard to diagnose
+    return new Response("rpc websocket upstream unreachable: " + (e?.message || e), { status: 502 });
   }
   // 101 with a socket is the success case; anything else is an upstream refusal.
   if (upstream.status !== 101 || !upstream.webSocket) {
