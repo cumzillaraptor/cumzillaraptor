@@ -3,9 +3,42 @@
 // Unlike claim-page-hardening.test.mjs (which pins source shape), these boot the
 // real claim page module in jsdom with mocked wallets and RPC and assert on
 // observable behaviour: what gets submitted, what the user sees, what is skipped.
+//
+// jsdom is a devDependency. A production/lean install (npm ci --omit=dev) has no
+// jsdom, so these tests SKIP rather than hard-fail there — the source-shape
+// invariants in claim-page-hardening.test.mjs still run and still gate the fixes.
+// Set CUMZ_REQUIRE_DOM_TESTS=1 to turn a missing jsdom into a failure instead
+// (use this in any CI job that is meant to cover the runtime behaviour).
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bootClaimPage } from './fixtures/claim-page-harness.mjs';
+
+let bootClaimPage = null;
+let domUnavailable = null;
+try {
+  ({ bootClaimPage } = await import('./fixtures/claim-page-harness.mjs'));
+} catch (e) {
+  if (process.env.CUMZ_REQUIRE_DOM_TESTS === '1') {
+    throw new Error(
+      'CUMZ_REQUIRE_DOM_TESTS=1 but the jsdom claim-page harness could not load: ' +
+      (e?.message || e),
+    );
+  }
+  domUnavailable = e?.message || String(e);
+  console.warn('[claim-page-runtime] skipping DOM runtime tests — ' + domUnavailable);
+}
+
+// node:test has no top-level conditional skip, so gate every test on this.
+const domTest = (name, fn) => test(name, { skip: domUnavailable ? 'jsdom unavailable' : false }, fn);
+
+test('the jsdom harness is available in a full dev install', () => {
+  // Documents the skip explicitly instead of a silently empty file. In a full
+  // `npm ci` (jsdom present) this asserts the harness really loaded.
+  if (domUnavailable) {
+    assert.notEqual(process.env.CUMZ_REQUIRE_DOM_TESTS, '1');
+    return;
+  }
+  assert.equal(typeof bootClaimPage, 'function');
+});
 
 async function connected(opts = {}) {
   const s = await bootClaimPage(opts);
@@ -25,7 +58,7 @@ async function signedAndClaimed(opts = {}) {
   return s;
 }
 
-test('page boots and renders on-chain status from the config PDA', async () => {
+domTest('page boots and renders on-chain status from the config PDA', async () => {
   const s = await bootClaimPage();
   assert.equal(s.text('stat-bar'), 'minted: 7/246 · claimed: 3/174');
   // M2: the numbers live in <strong> elements, not interpolated markup
@@ -33,7 +66,7 @@ test('page boots and renders on-chain status from the config PDA', async () => {
   assert.deepEqual(s.intervals.map((i) => i.ms), [60000]);
 });
 
-test('connecting both wallets lists eligible raptors', async () => {
+domTest('connecting both wallets lists eligible raptors', async () => {
   const s = await connected({ claimIds: [4, 9] });
   assert.match(s.text('v-eth'), /^0xb0e683/);
   assert.equal(s.text('eligibility-result'), '✅ eligible — 2 raptors:');
@@ -44,7 +77,7 @@ test('connecting both wallets lists eligible raptors', async () => {
 
 // ---------- H2: receipts re-read immediately before claiming ----------
 
-test('a raptor claimed elsewhere after signing is skipped, not submitted', async () => {
+domTest('a raptor claimed elsewhere after signing is skipped, not submitted', async () => {
   const s = await signedAndClaimed({
     claimIds: [4, 9],
     claimedAtLoad: [],      // both look claimable when the user signs
@@ -65,7 +98,7 @@ test('a raptor claimed elsewhere after signing is skipped, not submitted', async
   assert.deepEqual(reads, ['receipts:load', 'receipts:claim']);
 });
 
-test('claiming submits nothing when everything was already claimed elsewhere', async () => {
+domTest('claiming submits nothing when everything was already claimed elsewhere', async () => {
   const s = await signedAndClaimed({
     claimIds: [4, 9],
     claimedAtLoad: [],
@@ -75,7 +108,7 @@ test('claiming submits nothing when everything was already claimed elsewhere', a
   assert.match(s.text('claim-msg'), /already claimed/);
 });
 
-test('an unverifiable pre-claim receipt read submits nothing', async () => {
+domTest('an unverifiable pre-claim receipt read submits nothing', async () => {
   const s = await signedAndClaimed({
     claimIds: [4, 9],
     receiptsFail: 'claim',   // the re-check itself fails
@@ -85,14 +118,14 @@ test('an unverifiable pre-claim receipt read submits nothing', async () => {
   assert.match(s.text('claim-msg'), /nothing was submitted/);
 });
 
-test('the pre-claim re-check costs exactly one extra RPC call', async () => {
+domTest('the pre-claim re-check costs exactly one extra RPC call', async () => {
   const s = await signedAndClaimed({ claimIds: [4, 9] });
   assert.equal(s.receiptChecks, 2, 'one eligibility read + one pre-claim read');
 });
 
 // ---------- M2: no innerHTML — values land as text ----------
 
-test('interpolated chain values are inserted as text, never parsed as markup', async () => {
+domTest('interpolated chain values are inserted as text, never parsed as markup', async () => {
   const s = await connected({ claimIds: [4] });
   const row = s.$('claim-list').children[0];
   assert.equal(row.querySelector('span').textContent, 'cumzillaraptor #4');
@@ -105,7 +138,7 @@ test('interpolated chain values are inserted as text, never parsed as markup', a
 
 // ---------- M3: signing works with no CDN / no ethers ----------
 
-test('ethereum signing uses EIP-1193 personal_sign with hex-encoded bytes', async () => {
+domTest('ethereum signing uses EIP-1193 personal_sign with hex-encoded bytes', async () => {
   const s = await connected({ claimIds: [4, 9] });
   s.$('btn-sign-all-eth').click();
   await s.settle(80);
@@ -127,7 +160,7 @@ test('ethereum signing uses EIP-1193 personal_sign with hex-encoded bytes', asyn
   );
 });
 
-test('a malformed wallet signature is rejected before any submission', async () => {
+domTest('a malformed wallet signature is rejected before any submission', async () => {
   const s = await connected({ claimIds: [4] });
   s.window.ethereum.request = async ({ method }) => {
     if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [s.ETH];
@@ -144,7 +177,7 @@ test('a malformed wallet signature is rejected before any submission', async () 
 
 // ---------- M4: cancellable, counted backoff ----------
 
-test('the cancel control appears during a claim run and is hidden after', async () => {
+domTest('the cancel control appears during a claim run and is hidden after', async () => {
   const s = await connected({ claimIds: [4, 9], signDelayMs: 30 });
   assert.ok(s.$('row-cancel').classList.contains('hidden'), 'hidden before claiming');
   s.$('btn-sign-all-eth').click();
@@ -163,7 +196,7 @@ test('the cancel control appears during a claim run and is hidden after', async 
   s.restoreTimers();
 });
 
-test('cancelling stops the run and leaves remaining raptors claimable', async () => {
+domTest('cancelling stops the run and leaves remaining raptors claimable', async () => {
   const s = await connected({
     claimIds: [4, 9, 14],
     // Slow the wallet down so there is a window to press cancel mid-run.
@@ -184,7 +217,7 @@ test('cancelling stops the run and leaves remaining raptors claimable', async ()
   s.restoreTimers();
 });
 
-test('rate-limit backoff counts down per second instead of one long sleep', async () => {
+domTest('rate-limit backoff counts down per second instead of one long sleep', async () => {
   let calls = 0;
   const s = await connected({
     claimIds: [4],
@@ -211,7 +244,7 @@ test('rate-limit backoff counts down per second instead of one long sleep', asyn
   s.restoreTimers();
 });
 
-test('cancelling during a rate-limit wait aborts the run', async () => {
+domTest('cancelling during a rate-limit wait aborts the run', async () => {
   const s = await connected({
     claimIds: [4, 9],
     sendBehaviour: () => new Error('429 rate limit exceeded'),
@@ -231,7 +264,7 @@ test('cancelling during a rate-limit wait aborts the run', async () => {
 
 // ---------- L1: no stack frames in the UI ----------
 
-test('a wallet error shows a clean message with no stack or JSON blob', async () => {
+domTest('a wallet error shows a clean message with no stack or JSON blob', async () => {
   const s = await connected({ claimIds: [4] });
   s.$('btn-sign-all-eth').click();
   await s.settle(80);
@@ -253,7 +286,7 @@ test('a wallet error shows a clean message with no stack or JSON blob', async ()
 
 // ---------- L2: eligibility failure surfaced, not silently downgraded ----------
 
-test('a failed eligibility receipt read warns instead of claiming all unclaimed', async () => {
+domTest('a failed eligibility receipt read warns instead of claiming all unclaimed', async () => {
   const s = await connected({ claimIds: [4, 9], receiptsFail: 'load' });
   assert.match(s.text('eligibility-result'), /could not verify which raptors are already claimed/);
   // the list is still shown so the user can proceed, but the warning is visible
@@ -262,7 +295,7 @@ test('a failed eligibility receipt read warns instead of claiming all unclaimed'
 
 // ---------- L3: transient RPC failure does not wipe the status bar ----------
 
-test('a transient status failure keeps the last known on-chain numbers', async () => {
+domTest('a transient status failure keeps the last known on-chain numbers', async () => {
   const s = await bootClaimPage({ statusFailAfter: 1 });
   const before = s.text('stat-bar');
   assert.equal(before, 'minted: 7/246 · claimed: 3/174');
@@ -273,7 +306,7 @@ test('a transient status failure keeps the last known on-chain numbers', async (
   assert.equal(s.text('stat-bar'), before, 'status bar must not be wiped (L3)');
 });
 
-test('the unavailable message still shows when status never loaded at all', async () => {
+domTest('the unavailable message still shows when status never loaded at all', async () => {
   const s = await bootClaimPage({ statusFailAfter: 0 });
   assert.match(s.text('stat-bar'), /devnet status unavailable/);
 });
