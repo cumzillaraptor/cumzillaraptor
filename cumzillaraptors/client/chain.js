@@ -164,7 +164,11 @@ export const MAX_BATCH_IDS = 64;
 // serialize to 1280 and are rejected outright. Relaxed claiming is now mandatory,
 // so every wallet takes the durable path.
 //
-// 32 leaves 16 bytes of headroom; 40 fits exactly and is too fragile to rely on.
+// 32 was verified exhaustively against every one of the 174 real claims across all
+// 77 wallets, building each claim's own transaction (proof lengths vary: metadata
+// 5-9 hashes, claim 5-8). Worst case: id 116 in the 87-claim wallet at 1218 bytes,
+// 14 bytes of headroom. Zero oversize. Chunk 24 would give 30 bytes if the
+// collection's proof depth ever grows.
 export const MAX_SIGN_BATCH_IDS = 32;
 
 // Hard Solana packet limit for a serialized transaction.
