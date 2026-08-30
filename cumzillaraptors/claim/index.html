@@ -98,10 +98,9 @@
             <h3>2 · your claimable raptors</h3>
             <p class="result" id="eligibility-result"></p>
             <div id="claim-list"></div>
-            <p class="result" style="margin-top:8px;">one ethereum signature authorizes all your raptors; then one solana approval per raptor to receive it.</p>
-            <div class="row-btns"><button class="action-btn" id="btn-sign-all-eth" aria-disabled="true">1 · sign ethereum message (all raptors)</button></div>
+            <div class="row-btns"><button class="action-btn" id="btn-sign-all-eth" aria-disabled="true">sign 0 transactions on ethereum</button></div>
             <p class="msg" id="sign-msg" aria-live="polite"></p>
-            <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">2 · claim all raptors</button></div>
+            <div class="row-btns"><button class="action-btn" id="btn-claim-all" aria-disabled="true">sign 0 transactions on solana</button></div>
             <p class="msg" id="claim-msg" aria-live="polite"></p>
             <p class="result" id="nonce-status"></p>
             <div class="row-btns hidden" id="nonce-setup-row"><button class="action-btn" id="btn-setup-nonce">enable relaxed claiming (one-time ~0.0015 SOL)</button></div>
@@ -316,6 +315,11 @@
     function updateButtons() {
       const bothConnected = !!(ethAddress && wc.publicKey && launch);
       const claimable = eligible?.filter((e) => !e.claimed) ?? [];
+      const ethereumTxCount = Math.ceil(claimable.length / MAX_BATCH_IDS);
+      $('btn-sign-all-eth').textContent = 'sign ' + ethereumTxCount +
+        ' transaction' + (ethereumTxCount === 1 ? '' : 's') + ' on ethereum';
+      $('btn-claim-all').textContent = 'sign ' + claimable.length +
+        ' transaction' + (claimable.length === 1 ? '' : 's') + ' on solana';
       $('btn-sign-all-eth').setAttribute('aria-disabled',
         String(!(bothConnected && claimable.length)));
       const saleLive = !!launch?.isLive;
