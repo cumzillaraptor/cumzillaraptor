@@ -153,6 +153,7 @@
     import web3 from "/cumzillaraptors/claim/web3-shim.js";
     import {
       claimNonceAddress, fetchClaimNonce, buildSetupNonceTx, buildDurableClaimTx,
+      advanceNonceInstruction,
     } from "/cumzillaraptors/claim/claim-nonce.js";
     // ethers is lazy-loaded at first ethereum signature — CDN failure can no longer kill the page
 
@@ -536,7 +537,7 @@
         const messageV0d = new web3.TransactionMessage({
           payerKey: wc.publicKey,
           recentBlockhash: claimNonce.blockhash,
-          instructions: [web3.SystemProgram.nonceAdvance({ noncePubkey: claimNonce.address }), ix],
+          instructions: [advanceNonceInstruction(claimNonce.address, claimNonce.authority), ix],
         }).compileToV0Message([lookupTable]);
         tx = new web3.VersionedTransaction(messageV0d);
         durable = true;

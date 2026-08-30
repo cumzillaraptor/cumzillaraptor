@@ -59,8 +59,20 @@ export async function fetchClaimNonce(conn, address) {
   };
 }
 
-export function advanceNonceInstruction(nonceAddress) {
-  return SystemProgram.nonceAdvance({ noncePubkey: nonceAddress });
+// Build the AdvanceNonceAccount instruction.
+//
+// `authorizedPubkey` is REQUIRED: web3.js puts it in the instruction's third
+// account key with no validation, so omitting it yields a key of literal
+// `undefined` and the transaction blows up at compile time with
+// "undefined is not an object (evaluating 'pubkey.toBase58')".
+export function advanceNonceInstruction(nonceAddress, authorizedPubkey) {
+  if (!authorizedPubkey) {
+    throw new Error("advanceNonceInstruction requires the nonce authority pubkey");
+  }
+  return SystemProgram.nonceAdvance({
+    noncePubkey: nonceAddress,
+    authorizedPubkey,
+  });
 }
 
 // Build the setup tx: create the nonce account AT the user's derived address,
@@ -108,7 +120,7 @@ export async function buildSetupNonceTx({ conn, claimer }) {
 // The recentBlockhash MUST be the nonce's currently-stored hash.
 export async function buildDurableClaimTx({ nonceInfo, claimIx, payer }) {
   const tx = new Transaction();
-  tx.add(advanceNonceInstruction(nonceInfo.address));
+  tx.add(advanceNonceInstruction(nonceInfo.address, nonceInfo.authority));
   tx.add(claimIx);
   tx.recentBlockhash = nonceInfo.blockhash;
   tx.feePayer = payer;
