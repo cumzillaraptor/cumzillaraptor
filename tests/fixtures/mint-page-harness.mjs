@@ -112,8 +112,9 @@ export async function bootMintPage(opts = {}) {
     publicKey: BUYER_KEYPAIR.publicKey,
     connect: async () => ({ publicKey: BUYER_KEYPAIR.publicKey }),
     on() {}, removeListener() {}, removeAllListeners() {},
-    signAndSendTransaction: async (tx) => {
+    signAndSendTransaction: async (tx, sendOptions) => {
       mark('POPUP_OPEN(signAndSendTransaction)');
+      mark('PHANTOM_OPTIONS ' + JSON.stringify(sendOptions || {}));
       await sleep(10);
       if (sendThrows) throw sendThrows;
       mark('POPUP_APPROVED');

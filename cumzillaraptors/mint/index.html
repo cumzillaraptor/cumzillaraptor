@@ -151,7 +151,7 @@
     <div class="wrap">
       <h1>mint</h1>
       <p class="tagline">roll for a raptor · 1 sol a roll · 246 in the pool</p>
-      <div class="beta-banner">devnet beta — test SOL only, no real-value purchase</div>
+      <div class="beta-banner">devnet beta — test SOL only · desktop-fast-v2</div>
 
       <section class="panel panel-box">
         <!-- progress -->
@@ -610,7 +610,14 @@
           }
           ({ nftId, meta, name, tx } = prepared);
           setMsg('approve the 1 SOL payment in your wallet…');
-          const sig = await wc.signAndSend(tx, { preferSignOnly: false });
+          // Phantom runs a slow internal devnet preflight before showing its UI
+          // unless this documented SendOption is forwarded. The prepared tx was
+          // already simulated and its blockhash is refreshed every five seconds.
+          const sig = await wc.signAndSend(tx, {
+            preferSignOnly: false,
+            skipPreflight: true,
+            maxRetries: 5,
+          });
           pendingSignatures.push(sig);
           result = { sig, ...prepared.blockhashInfo };
         } else {

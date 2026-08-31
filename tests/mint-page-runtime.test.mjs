@@ -64,6 +64,12 @@ domTest('desktop: native Phantom sign-and-send opens exactly once', async () => 
     'desktop must not use the slow page-side sign-only path');
   assert.ok(!labels.some((l) => l.includes('sendRawTransaction')),
     'desktop wallet owns submission; page must not submit a second time');
+  const options = labels.find((l) => l.startsWith('PHANTOM_OPTIONS '));
+  assert.ok(options, 'the harness must capture Phantom SendOptions');
+  assert.deepEqual(JSON.parse(options.slice('PHANTOM_OPTIONS '.length)), {
+    skipPreflight: true,
+    maxRetries: 5,
+  }, 'desktop must bypass Phantom\'s redundant slow preflight');
 });
 
 domTest('desktop: the raptor is revealed and no error is shown', async () => {

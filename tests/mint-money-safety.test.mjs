@@ -74,7 +74,9 @@ test('C2: pending signatures clear on success and on user rejection only', () =>
 
 test('H1: desktop explicitly uses one native wallet sign-and-send', () => {
   assert.match(mint, /if \(desktopFastPath\)/);
-  assert.match(mint, /wc\.signAndSend\(tx, \{ preferSignOnly: false \}\)/);
+  assert.match(mint, /preferSignOnly: false/);
+  assert.match(mint, /skipPreflight: true/);
+  assert.match(wallet, /provider\.signAndSendTransaction\(transaction, sendOptions\)/);
 });
 
 test('H1: wallet honours an explicit skipPreflight instead of hardcoding false', () => {
