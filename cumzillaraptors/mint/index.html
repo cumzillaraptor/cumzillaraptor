@@ -683,9 +683,18 @@
             stopCountdown();
           }
           if (!pendingSignatures.includes(sig)) pendingSignatures.push(sig);
+          console.info('[mint:signed] sig=' + (sig ? (sig.slice(0, 8) + '…') : 'null') +
+            ' hasRaw=' + !!signedRawTx);
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {
           lastErr = e;
+          // DIAGNOSTIC: surface the exact submission failure + state. This is
+          // how we finally see what the RPC/wallet returns after signing on the
+          // desktop extension. Remove once the desktop mint is confirmed working.
+          console.error('[mint:submit] attempt=' + attempt,
+            { msg: e?.message || String(e), name: e?.name, code: e?.code,
+              hasSig: pendingSignatures.length > 0, hasRaw: !!signedRawTx,
+              isExpiry: isBlockhashExpired(e) });
           // ORDER MATTERS. An EXPIRED blockhash means the signed transaction is
           // permanently dead: it can never land, so there is nothing to reconcile
           // or rebroadcast, and the only recovery is a fresh blockhash + a new
