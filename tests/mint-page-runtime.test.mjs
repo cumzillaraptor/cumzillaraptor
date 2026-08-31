@@ -203,6 +203,75 @@ domTest('the timeout message never blames the network setting', async () => {
     'should explain the real cause, got: ' + r.finalMsg);
 });
 
+domTest('a blockhash that expires during approval recovers by re-signing', async () => {
+  // THE 2026-08-30 report: the user signed "eventually", no SOL left the wallet,
+  // and the page timed out. Cause: with skipPreflight:true the RPC silently
+  // ACCEPTS a transaction whose blockhash already expired and returns a
+  // signature, so the page polls a signature that can never land.
+  //
+  // Verified against live devnet: skipPreflight:false => "Blockhash not found";
+  // skipPreflight:true => accepted with no error.
+  const r = await boot({
+    mobile: false,
+    rpcLatencyMs: 90,
+    expirePreflightAttempts: 1,   // first delivery rejected as expired
+  });
+  const rejected = r.trace.filter((t) => t.label.includes('PREFLIGHT_REJECT')).length;
+  assert.ok(rejected >= 1,
+    'preflight must REJECT the expired transaction rather than accept it');
+  assert.ok(!r.trace.some((t) => t.label.includes('ACCEPTED-DEAD-TX')),
+    'the page must never submit with skipPreflight:true — it hides expiry');
+  const popups = r.trace.filter((t) => t.label.startsWith('POPUP_OPEN')).length;
+  assert.equal(popups, 2, 'expiry must be recovered by exactly one re-sign');
+  assert.equal(r.revealed, true, 'the roll must succeed after re-signing: ' + r.finalMsg);
+  assert.equal(r.isError, false);
+});
+
+domTest('an expired approval says plainly that no payment was taken', async () => {
+  const r = await boot({ mobile: false, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
+  const all = r.msgs.join(' | ');
+  assert.match(all, /no payment was taken/i,
+    'the user must be told they were not charged, got: ' + all);
+  assert.doesNotMatch(all, /do NOT approve again/i,
+    'an expired (dead) transaction must not dead-end with the undeliverable warning');
+});
+
+domTest('dead expired bytes are never rebroadcast', async () => {
+  // Rebroadcasting a transaction whose blockhash expired can never succeed and
+  // would keep hammering the RPC. It must be discarded on expiry.
+  const r = await boot({ mobile: false, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
+  const firstResign = r.trace.filter((t) => t.label.startsWith('POPUP_OPEN'))[1];
+  const sendsBetween = r.trace.filter((t) =>
+    t.label.includes('send #') && t.at > r.trace[0].at && t.at < firstResign.at &&
+    t.label.includes('ACCEPTED'));
+  assert.equal(sendsBetween.length, 0, 'no dead-tx delivery may occur before the re-sign');
+});
+
+domTest('the approval prompt shows the remaining time window', async () => {
+  // The ~60s blockhash deadline starts BEFORE the popup opens and was previously
+  // invisible, so a user taking their time lost the signature with no warning.
+  const r = await boot({ mobile: false, rpcLatencyMs: 90, signDelayMs: 1200 });
+  const all = r.msgs.join(' | ');
+  assert.match(all, /before the approval window expires/i,
+    'the approval message must surface the deadline, got: ' + all);
+  // ticks once per second (harness clamps the wait but records the request)
+  assert.ok(r.sleeps.includes(1000), 'countdown must tick every 1000ms');
+  // and it must NOT keep ticking after the roll resolves
+  assert.doesNotMatch(r.finalMsg, /before the approval window expires/i,
+    'countdown must stop once the approval completes');
+});
+
+domTest('a retry gets a FRESH countdown, not a continued one', async () => {
+  const r = await boot({ mobile: false, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
+  const counts = r.msgs
+    .map((m) => /~(\d+)s before the approval window/.exec(m))
+    .filter(Boolean).map((m) => Number(m[1]));
+  // the second attempt must start again at the top rather than continuing down
+  const firstMax = counts[0];
+  assert.ok(counts.filter((c) => c === firstMax).length >= 2,
+    'each attempt must restart the countdown, saw: ' + counts.join(','));
+});
+
 domTest('a retry uses a FRESH blockhash, never the prefetched one', async () => {
   const r = await boot({
     mobile: false,

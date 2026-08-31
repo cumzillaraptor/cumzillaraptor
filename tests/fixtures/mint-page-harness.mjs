@@ -83,6 +83,8 @@ export async function bootMintPage(opts = {}) {
     confirmThrows = null,
     landsAfterSends = null,
     dropRebroadcast = false,
+    expirePreflightAttempts = 0,
+    signDelayMs = 0,
     allocatedIds = [1, 2, 3, 4, 5, 6, 7],
     roll = true,
   } = opts;
@@ -91,6 +93,7 @@ export async function bootMintPage(opts = {}) {
   const trace = [];
   const signedSigs = [];
   let landed = false;
+  let deadTx = false;
   const t0 = Date.now();
   const mark = (label) => trace.push({ label, at: Date.now() - t0 });
   const sleep = (ms) => new Promise((r) => realTimeout(r, ms));
@@ -118,7 +121,7 @@ export async function bootMintPage(opts = {}) {
     },
     signTransaction: async (tx) => {
       mark('POPUP_OPEN(signTransaction)');
-      await sleep(10);
+      await sleep(signDelayMs || 10);
       if (sendThrows) throw sendThrows;
       mark('POPUP_APPROVED');
       // Attach a deterministic 64-byte signature the way a real wallet does, so
@@ -226,8 +229,22 @@ export async function bootMintPage(opts = {}) {
   });
 
   let sendCount = 0;
-  patch('sendRawTransaction', async function () {
+  let preflightRejections = 0;
+  patch('sendRawTransaction', async function (raw, opts) {
     sendCount++;
+    // With skipPreflight:false the RPC REJECTS an expired blockhash. With
+    // skipPreflight:true it silently accepts it (verified on live devnet), which
+    // is what hid this bug.
+    if (preflightRejections < expirePreflightAttempts) {
+      if (opts && opts.skipPreflight === true) {
+        mark('RPC send #' + sendCount + ' ACCEPTED-DEAD-TX (skipPreflight hid expiry)');
+        deadTx = true;   // can never confirm — exactly the live failure
+        return SIG;
+      }
+      preflightRejections++;
+      mark('RPC send #' + sendCount + ' PREFLIGHT_REJECT(Blockhash not found)');
+      throw new Error('Simulation failed. \nMessage: Transaction simulation failed: Blockhash not found. ');
+    }
     mark('RPC sendRawTransaction #' + sendCount + ' (page submits)');
     await sleep(rpcLatencyMs);
     if (submitThrows) { mark('SUBMIT_FAILED'); throw submitThrows; }
@@ -239,6 +256,10 @@ export async function bootMintPage(opts = {}) {
   patch('getSignatureStatuses', async function (sigs) {
     mark('RPC getSignatureStatuses');
     await sleep(rpcLatencyMs);
+    // A transaction rejected at PREFLIGHT was never forwarded to the cluster, so
+    // it can never have a status. Without this the page's money-safety
+    // reconciliation reads the default mock status and "rescues" a dead tx.
+    if (deadTx || preflightRejections > 0) return { value: sigs.map(() => null) };
     // when landsAfterSends is used, the tx only becomes visible once rebroadcast
     // has actually delivered it
     const st = landsAfterSends ? (landed ? 'confirmed' : null) : statusOf;
@@ -258,6 +279,12 @@ export async function bootMintPage(opts = {}) {
         'Check signature ' + SIG + ' using the Solana Explorer or CLI tools.');
     }
     if (confirmThrows) throw new Error(String(confirmThrows));
+    // A transaction accepted while its blockhash was already expired can NEVER
+    // be confirmed — web3.js rejects it once the block height passes.
+    if (deadTx) {
+      throw new Error(
+        'Signature ' + SIG + ' has expired: block height exceeded.');
+    }
     return { value: { err: null } };
   });
 

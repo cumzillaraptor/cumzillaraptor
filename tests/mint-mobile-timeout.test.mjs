@@ -24,7 +24,10 @@ test('the page submits the signed tx itself, so one cluster is used throughout',
   // page signs and submits through its own RPC. Assert semantics, not spelling.
   assert.doesNotMatch(mintSource, /preferSignOnly/);
   // multi-line call: assert the option and the money-safety hook, not one line
-  assert.match(mintSource, /await wc\.signAndSend\(tx, \{[\s\S]{0,400}?skipPreflight: true/);
+  // skipPreflight is now FALSE by design: verified on live devnet that
+  // skipPreflight:true makes the RPC silently accept an expired-blockhash tx,
+  // which is exactly how the "signed but nothing happened" timeout arose.
+  assert.match(mintSource, /await wc\.signAndSend\(tx, \{[\s\S]{0,600}?skipPreflight: false/);
   assert.match(mintSource, /onSigned: \(s, raw\) =>/,
     'the page must record the signature AND the raw bytes before submission');
   assert.match(mintSource, /signedRawTx = raw/,

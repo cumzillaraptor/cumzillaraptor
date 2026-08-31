@@ -533,8 +533,11 @@
         ]);
         if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
 
-        setMsg('approve the 1 SOL payment in your wallet… (Phantom users: make sure the wallet is set to Devnet)');
-        // Pass the already-fetched blockhash so the popup is not delayed again.
+        setMsg('approve the 1 SOL payment in your wallet…');
+        // A devnet blockhash lives ~150 blocks (~60s, measured). That clock starts
+        // BEFORE the popup opens, so a slow approval silently kills the signature.
+        // The countdown is started per ATTEMPT inside sendWithRetry, so a retry
+        // gets a fresh clock and the retry notice is not overwritten.
         const result = await sendWithRetry(tx, 3, signingBlockhash);   // payment accepted HERE
         const sig = result.sig;
 
@@ -650,27 +653,62 @@
           pending = null;
           tx.recentBlockhash = blockhash;
           tx.signatures = [];                 // stale partial signatures invalidate the tx
-          // MONEY SAFETY: record the signature the moment the wallet produces it,
-          // BEFORE the page submits. If submission then fails, the signed
-          // transaction may still land, and findLandedSignature() must be able to
-          // find it rather than us opening a second paid approval.
-          const sig = await wc.signAndSend(tx, {
-            skipPreflight: true,
-            onSigned: (s, raw) => {
-              if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s);
-              // keep the signed bytes so we can REBROADCAST while confirming
-              if (raw) signedRawTx = raw;
-            },
-          });
+          // Fresh countdown for THIS attempt's blockhash.
+          const stopCountdown = startApprovalCountdown();
+          let sig;
+          try {
+            // MONEY SAFETY: record the signature the moment the wallet produces
+            // it, BEFORE the page submits. If submission then fails, the signed
+            // transaction may still land, and findLandedSignature() must be able
+            // to find it rather than us opening a second paid approval.
+            sig = await wc.signAndSend(tx, {
+              // CORRECTNESS over ~150ms. Verified against live devnet: with
+              // skipPreflight:true the RPC silently ACCEPTS a transaction whose
+              // blockhash has already expired and returns a signature, so the
+              // page then polls a signature that can NEVER land and reports a
+              // timeout. Preflight turns that into an immediate, actionable error.
+              skipPreflight: false,
+              onSigned: (s, raw) => {
+                if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s);
+                // keep the signed bytes so we can REBROADCAST while confirming
+                if (raw) signedRawTx = raw;
+              },
+            });
+          } finally {
+            stopCountdown();
+          }
           if (!pendingSignatures.includes(sig)) pendingSignatures.push(sig);
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {
           lastErr = e;
-          // A SIGNED transaction whose submission failed may still land: it can
-          // already have reached a node, and we keep rebroadcasting it. Never
-          // report a bare submission error in that state — reconcile first, and
-          // if nothing landed, recover by retrying delivery rather than asking
-          // for a second paid approval.
+          // ORDER MATTERS. An EXPIRED blockhash means the signed transaction is
+          // permanently dead: it can never land, so there is nothing to reconcile
+          // or rebroadcast, and the only recovery is a fresh blockhash + a new
+          // signature. Check this FIRST — routing it into the
+          // "signed but undelivered" branch below dead-ends the roll with a scary
+          // "do NOT approve again" even though nothing was ever charged.
+          if (isBlockhashExpired(e)) {
+            // MONEY SAFETY FIRST: a preflight "Blockhash not found" means the
+            // transaction was never forwarded, so it cannot land. But we must not
+            // rely on that inference to discard a signature the user already
+            // approved — if anything DID land we must return it instead of
+            // re-prompting. The check is free when no signature exists yet.
+            const landed = await findLandedSignature();
+            if (landed) return landed;
+            // Nothing landed and the bytes are permanently dead: they can never
+            // confirm, so they must not be rebroadcast or reported as pending.
+            signedRawTx = null;
+            pendingSignatures = [];
+            if (attempt === maxAttempts) throw e;
+            setMsg('the approval window expired before the network accepted it — ' +
+                   'no payment was taken. opening your wallet again; please approve promptly.');
+            continue;
+          }
+          // A SIGNED transaction whose submission failed for any OTHER reason may
+          // still land: it can already have reached a node, and we keep
+          // rebroadcasting it. Never report a bare submission error in that state
+          // — reconcile first, and if nothing landed, recover by retrying delivery
+          // rather than asking for a second paid approval.
           if (pendingSignatures.length && signedRawTx) {
             const landed = await findLandedSignature();
             if (landed) return landed;
@@ -680,15 +718,29 @@
               'your approval went through but the transaction could not be delivered. ' +
               'do NOT approve again — check your wallet history, then reload the page.');
           }
-          if (!isBlockhashExpired(e) || attempt === maxAttempts) throw e;
-          // Before re-opening the wallet, make sure an earlier approval did not
-          // already land. Re-prompting on top of a landed payment double-charges.
-          const landed = await findLandedSignature();
-          if (landed) return landed;
-          setMsg('approval window expired — opening your wallet again. approve promptly this time.');
+          if (attempt === maxAttempts) throw e;
         }
       }
       throw lastErr;
+    }
+
+    // Live countdown while the wallet popup is open. A devnet blockhash is valid
+    // ~60s and that clock starts before the popup appears, so users who take
+    // their time lose the signature with no warning. Counting down converts an
+    // invisible deadline into a visible one.
+    function startApprovalCountdown(seconds = 55) {
+      let left = seconds;
+      const base = 'approve the 1 SOL payment in your wallet';
+      const render = () => setMsg(left > 0
+        ? base + '… (~' + left + 's before the approval window expires)'
+        : base + '… (window expired — a fresh approval will be requested)');
+      render();
+      let timer = setTimeout(function tick() {
+        left -= 1;
+        render();
+        if (left > 0) timer = setTimeout(tick, 1000);
+      }, 1000);
+      return () => clearTimeout(timer);
     }
 
     // Recover a signed-but-undelivered transaction by resending the SAME bytes

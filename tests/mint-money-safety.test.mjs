@@ -80,7 +80,8 @@ test('H1: mint no longer forces preferSignOnly (desktop uses the wallet send pat
   // Assert semantics, not the exact argument list (2026-08-30: the call gained a
   // skipPreflight option because the page already simulated the transaction).
   assert.doesNotMatch(mint, /preferSignOnly/);
-  assert.match(mint, /const sig = await wc\.signAndSend\(tx[,)]/);
+  // multi-line call since the countdown wrapper was added (2026-08-30)
+  assert.match(mint, /sig = await wc\.signAndSend\(tx[,)]/);
 });
 
 test('H1: wallet honours an explicit skipPreflight instead of hardcoding false', () => {
