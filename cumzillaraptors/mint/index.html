@@ -246,6 +246,12 @@
     // landing. Without this a slow user could approve twice and pay 2 SOL.
     let pendingSignatures = [];
 
+    // The serialized signed transaction for the CURRENT roll. Kept so the page can
+    // rebroadcast the SAME bytes while waiting for confirmation. Resending an
+    // identical signed transaction is idempotent — the network dedupes by
+    // signature — so this can never double-charge.
+    let signedRawTx = null;
+
     const short = (s) => s.length > 18 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
     function setMsg(text, cls) { const el = $('mint-msg'); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
 
@@ -491,6 +497,7 @@
       setMsg('');
       spinning = true; updateButtons();
       pendingSignatures = [];
+      signedRawTx = null;      // never rebroadcast a previous roll's transaction
       try {
         setMsg('rolling the drum…');
         const nftId = await rollNftId();
@@ -542,14 +549,23 @@
         // failure is still surfaced below by the full confirmation.
         if (!result.landedEarly) {
           setMsg('payment accepted — landing your raptor…');
-          const early = await confirmSignatureFast(conn, sig, {
-            commitment: 'processed',
-            blockhashInfo: {
-              blockhash: result.blockhash,
-              lastValidBlockHeight: result.lastValidBlockHeight,
-            },
-            timeoutMs: 30_000,
-          });
+          // Rebroadcast the same signed bytes on a slow tick while we poll. A
+          // single blind send can be dropped by the network; without this the
+          // user waits out the whole blockhash and sees a bogus "timed out".
+          const stopRebroadcast = startRebroadcast();
+          let early;
+          try {
+            early = await confirmSignatureFast(conn, sig, {
+              commitment: 'processed',
+              blockhashInfo: {
+                blockhash: result.blockhash,
+                lastValidBlockHeight: result.lastValidBlockHeight,
+              },
+              timeoutMs: 30_000,
+            });
+          } finally {
+            stopRebroadcast();
+          }
           if (early.status === 'timeout') {
             // Nothing seen yet — fall through to the strict confirm below rather
             // than revealing something that might never land.
@@ -640,12 +656,30 @@
           // find it rather than us opening a second paid approval.
           const sig = await wc.signAndSend(tx, {
             skipPreflight: true,
-            onSigned: (s) => { if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s); },
+            onSigned: (s, raw) => {
+              if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s);
+              // keep the signed bytes so we can REBROADCAST while confirming
+              if (raw) signedRawTx = raw;
+            },
           });
           if (!pendingSignatures.includes(sig)) pendingSignatures.push(sig);
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {
           lastErr = e;
+          // A SIGNED transaction whose submission failed may still land: it can
+          // already have reached a node, and we keep rebroadcasting it. Never
+          // report a bare submission error in that state — reconcile first, and
+          // if nothing landed, recover by retrying delivery rather than asking
+          // for a second paid approval.
+          if (pendingSignatures.length && signedRawTx) {
+            const landed = await findLandedSignature();
+            if (landed) return landed;
+            const rescued = await retryDelivery(pendingSignatures[pendingSignatures.length - 1]);
+            if (rescued) return rescued;
+            throw new Error(
+              'your approval went through but the transaction could not be delivered. ' +
+              'do NOT approve again — check your wallet history, then reload the page.');
+          }
           if (!isBlockhashExpired(e) || attempt === maxAttempts) throw e;
           // Before re-opening the wallet, make sure an earlier approval did not
           // already land. Re-prompting on top of a landed payment double-charges.
@@ -655,6 +689,48 @@
         }
       }
       throw lastErr;
+    }
+
+    // Recover a signed-but-undelivered transaction by resending the SAME bytes
+    // and watching for it to land. Idempotent (the cluster dedupes by signature),
+    // so this can never charge the user twice. Returns a landed result or null.
+    async function retryDelivery(sig, attempts = 4, intervalMs = 1500) {
+      if (!signedRawTx || !sig) return null;
+      setMsg('payment accepted — retrying delivery to the network…');
+      for (let i = 0; i < attempts; i++) {
+        try {
+          await conn.sendRawTransaction(signedRawTx, { skipPreflight: true, maxRetries: 5 });
+        } catch (e) {
+          // "already processed" means it landed; anything else is transient.
+        }
+        const landed = await findLandedSignature();
+        if (landed) return landed;
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+      return null;
+    }
+
+    // Rebroadcast the current roll's signed transaction every 2s until stopped.
+    // Idempotent by design: the cluster dedupes by signature, so resending the
+    // identical signed bytes cannot produce a second payment. This replaces the
+    // rebroadcast duty the WALLET used to perform when it owned submission.
+    function startRebroadcast(intervalMs = 2000) {
+      if (!signedRawTx) return () => {};
+      let stopped = false;
+      const tick = async () => {
+        if (stopped || !signedRawTx) return;
+        try {
+          await conn.sendRawTransaction(signedRawTx, {
+            skipPreflight: true, maxRetries: 5,
+          });
+        } catch (e) {
+          // "already processed" means it LANDED — nothing to do; the poll wins.
+          // Any other error is transient; keep trying until stopped.
+        }
+        if (!stopped) timer = setTimeout(tick, intervalMs);
+      };
+      let timer = setTimeout(tick, intervalMs);
+      return () => { stopped = true; clearTimeout(timer); };
     }
 
     // Check every signature produced for the current roll. Returns the first one
@@ -712,8 +788,15 @@
       if (/UserRejected|rejected/i.test(msg)) return 'you rejected the transaction.';
       if (/insufficient|Insufficient/i.test(msg)) return 'not enough SOL in your wallet (need 1 SOL + fees).';
       if (/pool is empty/i.test(msg)) return msg;
-      if (/blockhash|block height|blockheight/i.test(msg))
-        return 'transaction timed out — check your wallet is on DEVNET (not testnet/mainnet), then roll again.';
+      // A blockhash/blockheight failure means the transaction was never
+      // DELIVERED — it says nothing about which cluster the wallet is on. The
+      // old copy blamed the network setting, which sent users hunting a
+      // non-existent misconfiguration (reported 2026-08-30 with devnet correctly
+      // selected). Report what actually happened and what to do about it.
+      if (/blockhash|block height|blockheight|not confirmed in/i.test(msg))
+        return 'the network did not pick up your transaction in time. it was not confirmed, ' +
+               'so no raptor was minted — reload the page before rolling again, and check ' +
+               'your wallet history first if you were asked to approve.';
       return msg;
     }
 

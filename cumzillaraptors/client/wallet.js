@@ -297,14 +297,25 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
       // transaction can STILL land — it may already have reached a node. Report
       // the signature to the caller BEFORE submitting so a retry can check it
       // on-chain instead of opening a second paid approval.
+      const raw = signed.serialize();
       if (typeof options.onSigned === "function") {
         try {
           const sig = signatureOf(signed);
-          if (sig) options.onSigned(sig);
+          if (sig) options.onSigned(sig, raw);
         } catch { /* never block submission on a reporting failure */ }
       }
-      return conn.sendRawTransaction(signed.serialize(), {
+      // DELIVERY: when the WALLET broadcasts it keeps re-sending the transaction
+      // until it lands. Taking submission over means we own that duty too — a
+      // single blind send (especially with skipPreflight) is silently dropped
+      // whenever the leader is mid-rotation or the network is congested, and the
+      // user then waits out the whole blockhash and sees "transaction timed out"
+      // for a transaction that simply never got delivered.
+      //
+      // maxRetries lets the RPC node itself rebroadcast; without it web3.js does
+      // not send the field at all and the node applies no retry hint.
+      return conn.sendRawTransaction(raw, {
         skipPreflight: options.skipPreflight === true,
+        maxRetries: options.maxRetries != null ? options.maxRetries : 5,
       });
     }
 

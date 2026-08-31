@@ -80,6 +80,9 @@ export async function bootMintPage(opts = {}) {
     sendThrows = null,
     submitThrows = null,
     confirmHangs = false,
+    confirmThrows = null,
+    landsAfterSends = null,
+    dropRebroadcast = false,
     allocatedIds = [1, 2, 3, 4, 5, 6, 7],
     roll = true,
   } = opts;
@@ -87,6 +90,7 @@ export async function bootMintPage(opts = {}) {
   const realTimeout = setTimeout;
   const trace = [];
   const signedSigs = [];
+  let landed = false;
   const t0 = Date.now();
   const mark = (label) => trace.push({ label, at: Date.now() - t0 });
   const sleep = (ms) => new Promise((r) => realTimeout(r, ms));
@@ -221,23 +225,39 @@ export async function bootMintPage(opts = {}) {
     return { value: { err: null, logs: [], unitsConsumed: 50000 } };
   });
 
+  let sendCount = 0;
   patch('sendRawTransaction', async function () {
-    mark('RPC sendRawTransaction (page submits)');
+    sendCount++;
+    mark('RPC sendRawTransaction #' + sendCount + ' (page submits)');
     await sleep(rpcLatencyMs);
     if (submitThrows) { mark('SUBMIT_FAILED'); throw submitThrows; }
+    if (dropRebroadcast) return SIG;   // never lands, exercises the timeout copy
+    if (landsAfterSends && sendCount >= landsAfterSends) { landed = true; mark('TX_LANDED'); }
     return SIG;
   });
 
   patch('getSignatureStatuses', async function (sigs) {
     mark('RPC getSignatureStatuses');
     await sleep(rpcLatencyMs);
-    return { value: sigs.map(() => ({ err: null, confirmationStatus: statusOf, slot: 1 })) };
+    // when landsAfterSends is used, the tx only becomes visible once rebroadcast
+    // has actually delivered it
+    const st = landsAfterSends ? (landed ? 'confirmed' : null) : statusOf;
+    return { value: sigs.map(() => (st ? { err: null, confirmationStatus: st, slot: 1 } : null)) };
   });
 
   patch('confirmTransaction', async function () {
     mark('RPC confirmTransaction');
     if (confirmHangs) return new Promise(() => {});
     await sleep(rpcLatencyMs);
+    // A DROPPED transaction: the RPC accepted it, but it never lands, so
+    // confirmTransaction eventually rejects at blockhash expiry. This is what
+    // web3.js really does, and mocking it as success hid the live bug.
+    if (confirmThrows === 'blockheight') {
+      throw new Error(
+        'Transaction was not confirmed in 30.00 seconds. It is unknown if it succeeded or failed. ' +
+        'Check signature ' + SIG + ' using the Solana Explorer or CLI tools.');
+    }
+    if (confirmThrows) throw new Error(String(confirmThrows));
     return { value: { err: null } };
   });
 
@@ -262,6 +282,18 @@ export async function bootMintPage(opts = {}) {
   setGlobal('innerHeight', 800);
   setGlobal('devicePixelRatio', 1);
 
+  // Clamp long page-side sleeps (e.g. the 2s rebroadcast tick) so tests observe
+  // several ticks quickly, but RECORD the requested delay so a test can assert
+  // the real cadence rather than trusting the clamp.
+  const sleeps = [];
+  const realClearTimeout = clearTimeout;
+  setGlobal('setTimeout', (fn, ms, ...rest) => {
+    sleeps.push(ms);
+    return realTimeout(fn, ms >= 250 ? 25 : ms, ...rest);
+  });
+  // Capture the REAL clearTimeout first: referring to the global name here would
+  // resolve back to this stub and recurse ("Maximum call stack size exceeded").
+  setGlobal('clearTimeout', (id) => realClearTimeout(id));
   // capture the status poller instead of letting it keep the process alive
   const intervals = [];
   setGlobal('setInterval', (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; });
@@ -291,9 +323,10 @@ export async function bootMintPage(opts = {}) {
         if (prop === 'signAndSend') {
           return (tx, options = {}) => origSend(tx, {
             ...options,
-            onSigned: (s) => {
+            onSigned: (s, raw) => {
               signedSigs.push(s);
-              if (typeof options.onSigned === 'function') options.onSigned(s);
+              // forward EVERY argument: the page needs the raw bytes to rebroadcast
+              if (typeof options.onSigned === 'function') options.onSigned(s, raw);
             },
           });
         }
@@ -346,7 +379,7 @@ export async function bootMintPage(opts = {}) {
 
   const doc = window.document;
   return {
-    trace, msgs, intervals, error, window,
+    trace, msgs, intervals, error, window, sleeps,
     // Signatures the PAGE was told about via the onSigned callback, i.e. before
     // submission. Proves the money-safety reconciliation hook actually fires.
     signedSignatures: signedSigs,

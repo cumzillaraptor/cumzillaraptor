@@ -25,8 +25,12 @@ test('the page submits the signed tx itself, so one cluster is used throughout',
   assert.doesNotMatch(mintSource, /preferSignOnly/);
   // multi-line call: assert the option and the money-safety hook, not one line
   assert.match(mintSource, /await wc\.signAndSend\(tx, \{[\s\S]{0,400}?skipPreflight: true/);
-  assert.match(mintSource, /onSigned: \(s\) =>/,
-    'the page must record the signature before submission');
+  assert.match(mintSource, /onSigned: \(s, raw\) =>/,
+    'the page must record the signature AND the raw bytes before submission');
+  assert.match(mintSource, /signedRawTx = raw/,
+    'the raw signed bytes must be kept so the page can rebroadcast');
+  assert.match(walletSource, /maxRetries: options\.maxRetries != null \? options\.maxRetries : 5/,
+    'submission must ask the RPC node to rebroadcast');
   assert.match(walletSource, /const canSignOnly = typeof provider\.signTransaction === "function";/);
   assert.match(walletSource, /options\.preferSignOnly !== false && canSignOnly/);
   assert.match(walletSource, /if \(signOnly && canSignOnly\)/);
