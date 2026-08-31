@@ -259,6 +259,8 @@
         launch = await fetchLaunchState(cfg.rpcUrl, cfg.programId);
         if (!launch) throw new Error('not initialized');
         updateProgress(launch.publicMinted, cfg.publicCount);
+        // Keep the allocation cache warm so a roll does not pay for this read.
+        if (walletPubkey) warmAllocated();
       } catch (e) {
         if (spinning) return;
         setMsg('devnet status unavailable — launch setup may be incomplete.', 'err');
@@ -326,6 +328,34 @@
     function prefetchMintData() {
       loadPool().catch(() => {});
       loadMeta().catch(() => {});
+      warmAllocated();
+    }
+
+    // PERCEIVED SPEED (desktop): the allocation registry is a ~586-byte account
+    // that only changes when someone mints. Fetching it inside the click handler
+    // put a full RPC round trip in front of the wallet popup. Warm it on connect
+    // and refresh it on the status poll, so a roll can usually start instantly.
+    //
+    // It is only ever a CACHE: rollNftId still awaits a fresh read when the warm
+    // copy is missing or stale, because minting an already-allocated id fails.
+    let allocatedCache = null;        // { ids:Set, at:number }
+    let allocatedInFlight = null;
+    const ALLOCATED_TTL_MS = 15_000;
+
+    function warmAllocated() {
+      if (allocatedInFlight) return allocatedInFlight;
+      allocatedInFlight = fetchAllocatedIds(cfg.rpcUrl, cfg.programId)
+        .then((ids) => { allocatedCache = { ids, at: Date.now() }; return ids; })
+        .catch(() => null)
+        .finally(() => { allocatedInFlight = null; });
+      return allocatedInFlight;
+    }
+
+    async function getAllocatedFresh() {
+      if (allocatedCache && Date.now() - allocatedCache.at < ALLOCATED_TTL_MS) {
+        return allocatedCache.ids;
+      }
+      return (await warmAllocated()) || await fetchAllocatedIds(cfg.rpcUrl, cfg.programId);
     }
 
     // pick a RANDOM unallocated public id (lottery, not lowest-first)
@@ -335,7 +365,7 @@
       // round trips stacked in front of the wallet popup.
       const [order, allocated] = await Promise.all([
         loadPool(),
-        fetchAllocatedIds(cfg.rpcUrl, cfg.programId),
+        getAllocatedFresh(),
       ]);
       const available = order.filter((id) => !allocated.has(id));
       if (!available.length) throw new Error('the pool is empty — all raptors minted!');
@@ -604,8 +634,15 @@
           pending = null;
           tx.recentBlockhash = blockhash;
           tx.signatures = [];                 // stale partial signatures invalidate the tx
-          const sig = await wc.signAndSend(tx, { skipPreflight: true });
-          pendingSignatures.push(sig);
+          // MONEY SAFETY: record the signature the moment the wallet produces it,
+          // BEFORE the page submits. If submission then fails, the signed
+          // transaction may still land, and findLandedSignature() must be able to
+          // find it rather than us opening a second paid approval.
+          const sig = await wc.signAndSend(tx, {
+            skipPreflight: true,
+            onSigned: (s) => { if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s); },
+          });
+          if (!pendingSignatures.includes(sig)) pendingSignatures.push(sig);
           return { sig, blockhash, lastValidBlockHeight };
         } catch (e) {
           lastErr = e;

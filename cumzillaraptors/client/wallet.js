@@ -34,6 +34,43 @@ export function isMobileWalletBrowser() {
   return /Android|iPhone|iPad|iPod/i.test(ua);
 }
 
+// Base58 (bitcoin alphabet) encode — used only to report a signed transaction's
+// signature back to the page before submission. Signatures are 64 raw bytes; the
+// canonical Solana signature string is their base58 encoding.
+const B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+function bs58Encode(bytes) {
+  const src = Array.from(bytes);
+  if (!src.length) return "";
+  let zeros = 0;
+  while (zeros < src.length && src[zeros] === 0) zeros++;
+  const out = [];
+  for (let i = zeros; i < src.length; i++) {
+    let carry = src[i];
+    for (let j = 0; j < out.length; j++) {
+      carry += out[j] << 8;
+      out[j] = carry % 58;
+      carry = (carry / 58) | 0;
+    }
+    while (carry > 0) { out.push(carry % 58); carry = (carry / 58) | 0; }
+  }
+  let str = "1".repeat(zeros);
+  for (let i = out.length - 1; i >= 0; i--) str += B58_ALPHABET[out[i]];
+  return str;
+}
+
+// Pull the fee-payer signature out of a signed legacy or versioned transaction.
+function signatureOf(signed) {
+  if (!signed) return null;
+  // legacy Transaction exposes a .signature Buffer getter
+  if (signed.signature) return bs58Encode(signed.signature);
+  const first = signed.signatures?.[0];
+  if (!first) return null;
+  // legacy: [{ signature: Buffer, publicKey }]; versioned: [Uint8Array]
+  const bytes = first.signature || first;
+  if (!bytes || typeof bytes === "string") return typeof bytes === "string" ? bytes : null;
+  return bs58Encode(bytes);
+}
+
 function looksLikeSolanaProvider(p) {
   return !!(p && (p.isPhantom || p.isSolflare || p.isConnected !== undefined) &&
             (typeof p.connect === "function" || p.publicKey));
@@ -234,23 +271,38 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
       transaction = transactionOrEnvelope.tx;
     }
 
-    // For expiry-sensitive flows, sign first and submit through the dapp's configured
-    // RPC. This prevents a mobile wallet from replacing the transaction blockhash or
-    // broadcasting to a different cluster than the page is confirming against.
+    // Sign first, then submit through the dapp's configured RPC. This keeps
+    // submission and confirmation on ONE cluster: the wallet's own network
+    // setting cannot strand the transaction somewhere the page never sees.
     //
-    // Only use this where durability actually matters (durable-nonce txs) or on
-    // MOBILE, where the wallet's in-app browser has its own network setting and can
-    // broadcast somewhere the page's RPC cannot see (reported 2026-08-30: a Phantom
-    // mobile mint showed "transaction timed out" while every tx actually landed).
-    // On the desktop extension, keeping signAndSendTransaction is better: the popup
-    // appears promptly and the wallet broadcasts, whereas signing then re-running
-    // preflight server-side adds latency after approval and surfaces RPC hiccups as
-    // fake "timeouts". Callers that pass skipPreflight avoid the double simulation
-    // when the page already simulated the transaction.
-    const signOnly = options.preferSignOnly ||
-      (options.preferSignOnlyOnMobile !== false && isMobileWalletBrowser());
-    if (signOnly && typeof provider.signTransaction === "function") {
+    // History (why this is now the default on desktop too):
+    //   - 2026-08-29 (H1): forcing sign-only regressed the desktop extension and
+    //     produced fake "timeouts". The cause was the page signing and then
+    //     re-running a full server-side PREFLIGHT, which added a simulation
+    //     between approval and confirmation.
+    //   - 2026-08-30: with `skipPreflight` passed by callers that already
+    //     simulated, that cost is gone — submission is a single
+    //     sendRawTransaction. Meanwhile desktop Phantom set to the wrong network
+    //     broadcasts where the page cannot confirm, so the page waits on a
+    //     signature its RPC will never see and reports a bogus timeout.
+    //
+    // Callers can still opt out per-call with preferSignOnly: false.
+    const canSignOnly = typeof provider.signTransaction === "function";
+    const signOnly = options.preferSignOnly === true ||
+      (options.preferSignOnly !== false && canSignOnly);
+    if (signOnly && canSignOnly) {
       const signed = await provider.signTransaction(transaction);
+      // MONEY SAFETY: the user has now approved and a fully signed transaction
+      // exists. If submission below fails (network blip, RPC 5xx) the signed
+      // transaction can STILL land — it may already have reached a node. Report
+      // the signature to the caller BEFORE submitting so a retry can check it
+      // on-chain instead of opening a second paid approval.
+      if (typeof options.onSigned === "function") {
+        try {
+          const sig = signatureOf(signed);
+          if (sig) options.onSigned(sig);
+        } catch { /* never block submission on a reporting failure */ }
+      }
       return conn.sendRawTransaction(signed.serialize(), {
         skipPreflight: options.skipPreflight === true,
       });

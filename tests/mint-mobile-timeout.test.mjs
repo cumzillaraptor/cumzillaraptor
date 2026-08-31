@@ -16,37 +16,35 @@ test('mint gets a confirmed blockhash immediately before wallet approval', () =>
   assert.doesNotMatch(mintSource, /getLatestBlockhash\(['"]finalized['"]\)/);
 });
 
-test('mint uses the wallet send path, not forced sign-only', () => {
-  // Reverted deliberately (review 2026-08-29, H1): forcing preferSignOnly on the
-  // desktop Phantom extension replaced its prompt signAndSendTransaction with
-  // sign + manual re-preflight, which surfaced as fake approval timeouts.
-  // Durability for expiry-sensitive flows is handled by the claim page's durable
-  // nonce, not by overriding the send path here.
-  //
-  // 2026-08-30: the mint page must still not FORCE sign-only, but wallet.js now
-  // also selects sign-only on MOBILE in-app browsers, whose own network setting
-  // can broadcast to a cluster the page cannot see. Assert the SEMANTICS (an
-  // opt-in flag plus the mobile condition gate the sign-only branch, and the
-  // desktop convenience API is still reachable) rather than one literal spelling.
+test('the page submits the signed tx itself, so one cluster is used throughout', () => {
+  // 2026-08-30 (desktop report): letting the WALLET broadcast means a Phantom
+  // extension set to the wrong network lands the tx where the page's RPC cannot
+  // see it — the page then waits on a signature that will never appear there and
+  // reports a bogus "transaction timed out". Signing works on any network, so the
+  // page signs and submits through its own RPC. Assert semantics, not spelling.
   assert.doesNotMatch(mintSource, /preferSignOnly/);
-  assert.match(mintSource, /const sig = await wc\.signAndSend\(tx, \{ skipPreflight: true \}\);/);
-  assert.match(walletSource, /options\.preferSignOnly/);
-  assert.match(walletSource, /isMobileWalletBrowser\(\)/);
-  assert.match(walletSource, /if \(signOnly && typeof provider\.signTransaction === "function"\)/);
+  // multi-line call: assert the option and the money-safety hook, not one line
+  assert.match(mintSource, /await wc\.signAndSend\(tx, \{[\s\S]{0,400}?skipPreflight: true/);
+  assert.match(mintSource, /onSigned: \(s\) =>/,
+    'the page must record the signature before submission');
+  assert.match(walletSource, /const canSignOnly = typeof provider\.signTransaction === "function";/);
+  assert.match(walletSource, /options\.preferSignOnly !== false && canSignOnly/);
+  assert.match(walletSource, /if \(signOnly && canSignOnly\)/);
   assert.match(walletSource, /skipPreflight: options\.skipPreflight === true/);
-  // the desktop path (wallet broadcasts) must remain, and must come AFTER the
-  // sign-only branch so mobile is intercepted first
-  const signOnlyIdx = walletSource.indexOf('if (signOnly &&');
+  // the sign-only branch must precede the wallet-broadcast convenience API,
+  // otherwise the wallet would broadcast first and the fix would be dead code
+  const signOnlyIdx = walletSource.indexOf('if (signOnly && canSignOnly)');
   const convenienceIdx = walletSource.indexOf('typeof provider.signAndSendTransaction === "function"');
   assert.ok(signOnlyIdx > 0 && convenienceIdx > signOnlyIdx,
     'sign-only branch must precede the wallet-broadcast convenience API');
 });
 
-test('desktop keeps wallet broadcast; mobile signs only (runtime)', async () => {
-  // Behavioural check: the source assertions above cannot prove which branch a
-  // real desktop vs mobile user actually takes.
+test('desktop AND mobile both submit via the page RPC (runtime)', async () => {
+  // Behavioural check: source assertions cannot prove which branch a real
+  // desktop vs mobile user takes.
   const { createWalletConnector } = await import('../cumzillaraptors/client/wallet.js');
   const realNavigator = globalThis.navigator;
+  const realWindow = globalThis.window;
   const results = {};
 
   for (const [label, ua] of [
@@ -63,13 +61,11 @@ test('desktop keeps wallet broadcast; mobile signs only (runtime)', async () => 
       publicKey: FAKE_PUBKEY,
       connect: async () => ({ publicKey: FAKE_PUBKEY }),
       signAndSendTransaction: async () => { calls.push('walletBroadcast'); return 'SIG_WALLET'; },
-      signTransaction: async (t) => { calls.push('signOnly'); return { serialize: () => Buffer.from([1]) }; },
+      signTransaction: async () => { calls.push('signOnly'); return { serialize: () => Buffer.from([1]) }; },
     };
     globalThis.window = { phantom: { solana: fakeProvider }, addEventListener() {} };
     const wc = createWalletConnector({ rpcUrl: 'https://example.invalid' });
     await wc.connect();
-    // stub the page-side RPC submission used by the sign-only branch
-    wc.__testConn = true;
     try {
       await wc.signAndSend({ recentBlockhash: 'x', serialize: () => Buffer.from([1]) },
         { skipPreflight: true });
@@ -80,8 +76,30 @@ test('desktop keeps wallet broadcast; mobile signs only (runtime)', async () => 
   Object.defineProperty(globalThis, 'navigator', {
     value: realNavigator, configurable: true, writable: true,
   });
-  assert.equal(results.desktop, 'walletBroadcast', 'desktop must let the wallet broadcast');
-  assert.equal(results.mobile, 'signOnly', 'mobile must sign only and submit via the page RPC');
+  globalThis.window = realWindow;
+  assert.equal(results.desktop, 'signOnly', 'desktop must sign and let the page submit');
+  assert.equal(results.mobile, 'signOnly', 'mobile must sign and let the page submit');
+});
+
+test('a caller can still opt out of sign-only', async () => {
+  const { createWalletConnector } = await import('../cumzillaraptors/client/wallet.js');
+  const realWindow = globalThis.window;
+  const calls = [];
+  const FAKE_PUBKEY = '11111111111111111111111111111112';
+  const fakeProvider = {
+    isPhantom: true,
+    publicKey: FAKE_PUBKEY,
+    connect: async () => ({ publicKey: FAKE_PUBKEY }),
+    signAndSendTransaction: async () => { calls.push('walletBroadcast'); return 'SIG_WALLET'; },
+    signTransaction: async () => { calls.push('signOnly'); return { serialize: () => Buffer.from([1]) }; },
+  };
+  globalThis.window = { phantom: { solana: fakeProvider }, addEventListener() {} };
+  const wc = createWalletConnector({ rpcUrl: 'https://example.invalid' });
+  await wc.connect();
+  const sig = await wc.signAndSend({ recentBlockhash: 'x' }, { preferSignOnly: false });
+  globalThis.window = realWindow;
+  assert.equal(calls[0], 'walletBroadcast');
+  assert.equal(sig, 'SIG_WALLET');
 });
 
 test('mint checks transaction history before reporting a confirmation timeout', () => {
