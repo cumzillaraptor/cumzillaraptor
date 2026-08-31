@@ -673,7 +673,9 @@
               skipPreflight: false,
               onSigned: (s, raw) => {
                 if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s);
-                // keep the signed bytes so we can REBROADCAST while confirming
+                // keep the signed bytes so we can REBROADCAST while confirming.
+                // Set even if signature extraction returned null — the raw bytes
+                // prove a signature was produced, so we must never re-prompt.
                 if (raw) signedRawTx = raw;
               },
             });
@@ -712,7 +714,12 @@
           // rebroadcasting it. Never report a bare submission error in that state
           // — reconcile first, and if nothing landed, recover by retrying delivery
           // rather than asking for a second paid approval.
-          if (pendingSignatures.length && signedRawTx) {
+          //
+          // Guard on EITHER a known signature OR known raw bytes: if the wallet
+          // signed at all, we must NEVER auto-re-prompt (that is the "approvals
+          // keep appearing without clicking Roll" bug). The raw bytes are proof
+          // of signing even when signature extraction failed.
+          if (pendingSignatures.length || signedRawTx) {
             const landed = await findLandedSignature();
             if (landed) return landed;
             const rescued = await retryDelivery(pendingSignatures[pendingSignatures.length - 1]);

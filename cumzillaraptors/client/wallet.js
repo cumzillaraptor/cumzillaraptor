@@ -299,10 +299,13 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
       // on-chain instead of opening a second paid approval.
       const raw = signed.serialize();
       if (typeof options.onSigned === "function") {
-        try {
-          const sig = signatureOf(signed);
-          if (sig) options.onSigned(sig, raw);
-        } catch { /* never block submission on a reporting failure */ }
+        // Report the signature AND the raw bytes. ALWAYS fire with raw so the
+        // page knows a signature has been produced even if extraction fails —
+        // otherwise a post-sign submission error appears to come from "no
+        // signature" and the page re-prompts (endless approvals).
+        let sig = null;
+        try { sig = signatureOf(signed); } catch {}
+        try { options.onSigned(sig, raw); } catch {}
       }
       // DELIVERY: when the WALLET broadcasts it keeps re-sending the transaction
       // until it lands. Taking submission over means we own that duty too — a

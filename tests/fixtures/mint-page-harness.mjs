@@ -86,6 +86,7 @@ export async function bootMintPage(opts = {}) {
     expirePreflightAttempts = 0,
     signDelayMs = 0,
     allocatedIds = [1, 2, 3, 4, 5, 6, 7],
+    signatureOfNull = false,   // model Phantom sign that returns no extractable sig
     roll = true,
   } = opts;
 
@@ -358,8 +359,12 @@ export async function bootMintPage(opts = {}) {
             ...options,
             onSigned: (s, raw) => {
               signedSigs.push(s);
-              // forward EVERY argument: the page needs the raw bytes to rebroadcast
-              if (typeof options.onSigned === 'function') options.onSigned(s, raw);
+              // Model the reported production case: Phantom signs but the page's
+              // signatureOf extraction returns nothing (s=null) while raw bytes are
+              // still present. The page must still treat this as "a signature was
+              // produced" and never re-prompt.
+              const effectiveSig = signatureOfNull ? null : s;
+              if (typeof options.onSigned === 'function') options.onSigned(effectiveSig, raw);
             },
           });
         }

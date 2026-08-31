@@ -296,3 +296,26 @@ domTest('a retry uses a FRESH blockhash, never the prefetched one', async () => 
   assert.ok(blockhashes >= popups,
     'each retry must fetch a fresh blockhash (fetches=' + blockhashes + ', popups=' + popups + ')');
 });
+
+domTest('once signed, a submission failure never opens a fresh approval', async () => {
+  // THE 2026-08-30 desktop report: popup opened fast (signTransaction), the user
+  // signed quickly, but then fresh approvals kept appearing WITHOUT clicking Roll.
+  // Root cause: when submission failed after signing and signature extraction had
+  // returned nothing, the money-safety guard (`pendingSignatures.length &&
+  // signedRawTx`) was false, so sendWithRetry fell through and re-opened the
+  // wallet. Fix: guard on `||` so a produced raw tx proves a signature exists and
+  // we must reconcile, never re-prompt.
+  const r = await boot({
+    mobile: false,
+    rpcLatencyMs: 100,
+    submitThrows: new Error('failed to send transaction: node is behind'),
+    statusOf: null,          // nothing ever lands
+    signatureOfNull: true,   // Phantom signed but the page could not extract a sig
+  });
+  const approvals = r.trace.filter((t) => t.label === 'POPUP_APPROVED').length;
+  assert.equal(approvals, 1,
+    'exactly one approval may ever be requested after signing (approvals=' + approvals + ')');
+  assert.equal(r.revealed, false, 'nothing may be revealed when nothing landed');
+  assert.match(r.finalMsg, /do NOT approve again|wallet history/i,
+    'must warn instead of re-opening the wallet, got: ' + r.finalMsg);
+});
