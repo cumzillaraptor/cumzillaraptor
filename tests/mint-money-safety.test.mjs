@@ -48,10 +48,7 @@ test('C1: a landed signature short-circuits confirmation instead of re-charging'
   // not one spelling of the condition.
   assert.match(mint, /if \(!?result\.landedEarly\)/);
 
-  const handler = mint.slice(
-    mint.indexOf('const result = await sendWithRetry('),
-    mint.indexOf('} catch (e) {', mint.indexOf('const result = await sendWithRetry(')),
-  );
+  const handler = mint.slice(mint.indexOf("$('btn-mint').addEventListener"));
   // every confirmation attempt must sit behind the landedEarly check, so a
   // signature we already know landed is never re-confirmed or re-charged
   const guardAt = handler.indexOf('if (!result.landedEarly)');
@@ -75,13 +72,9 @@ test('C2: pending signatures clear on success and on user rejection only', () =>
   assert.match(mint, /function isUserRejection\(e\)/);
 });
 
-test('H1: mint no longer forces preferSignOnly (desktop uses the wallet send path)', () => {
-  // The page must never FORCE sign-only; wallet.js decides per-platform.
-  // Assert semantics, not the exact argument list (2026-08-30: the call gained a
-  // skipPreflight option because the page already simulated the transaction).
-  assert.doesNotMatch(mint, /preferSignOnly/);
-  // multi-line call since the countdown wrapper was added (2026-08-30)
-  assert.match(mint, /sig = await wc\.signAndSend\(tx[,)]/);
+test('H1: desktop explicitly uses one native wallet sign-and-send', () => {
+  assert.match(mint, /if \(desktopFastPath\)/);
+  assert.match(mint, /wc\.signAndSend\(tx, \{ preferSignOnly: false \}\)/);
 });
 
 test('H1: wallet honours an explicit skipPreflight instead of hardcoding false', () => {

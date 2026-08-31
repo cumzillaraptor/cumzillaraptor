@@ -316,7 +316,9 @@ export async function bootMintPage(opts = {}) {
   const realClearTimeout = clearTimeout;
   setGlobal('setTimeout', (fn, ms, ...rest) => {
     sleeps.push(ms);
-    return realTimeout(fn, ms >= 250 ? 25 : ms, ...rest);
+    // Keep the desktop preparation refresh from becoming a 25ms busy loop in
+    // tests. Other long transactional waits stay clamped for fast scenarios.
+    return realTimeout(fn, ms === 5000 ? 1000 : (ms >= 250 ? 25 : ms), ...rest);
   });
   // Capture the REAL clearTimeout first: referring to the global name here would
   // resolve back to this stub and recurse ("Maximum call stack size exceeded").
@@ -336,8 +338,11 @@ export async function bootMintPage(opts = {}) {
 
   // Wrap the REAL connector so we can observe the onSigned callback the page
   // passes, without reimplementing any of the send logic.
+  // Fresh module instance per jsdom page. wallet.js discovers injected providers
+  // through browser globals; sharing its module instance across repeated boots
+  // couples one page's replaced globals to the next scenario.
   const walletMod = await import(
-    pathToFileURL(join(process.cwd(), CLIENT, 'wallet.js')).href);
+    pathToFileURL(join(process.cwd(), CLIENT, 'wallet.js')).href + '?boot=' + Date.now() + '-' + Math.random());
   const realCreate = walletMod.createWalletConnector;
   const wrapCreate = (args) => {
     const wc = realCreate(args);
@@ -365,10 +370,13 @@ export async function bootMintPage(opts = {}) {
   const file = join(mkdtempSync(join(tmpdir(), 'mintpage-')), 'page.mjs');
   // Route the page's connector import through our wrapper.
   const moduleSrc = extractModule().replace(
-    /import \{ createWalletConnector \} from ("[^"]+");/,
-    'const { createWalletConnector } = globalThis.__mintHarnessWallet;',
+    /import \{ createWalletConnector, isMobileWalletBrowser \} from ("[^"]+");/,
+    'const { createWalletConnector, isMobileWalletBrowser } = globalThis.__mintHarnessWallet;',
   );
-  globalThis.__mintHarnessWallet = { createWalletConnector: wrapCreate };
+  globalThis.__mintHarnessWallet = {
+    createWalletConnector: wrapCreate,
+    isMobileWalletBrowser: () => mobile,
+  };
   writeFileSync(file, moduleSrc);
 
   let error = null;
@@ -377,8 +385,13 @@ export async function bootMintPage(opts = {}) {
     await new Promise((r) => realTimeout(r, 30));
     window.document.getElementById('btn-connect').click();
     for (let i = 0; i < 60 && !window.document.getElementById('btn-mint'); i++) await sleep(10);
-    // wait for connect + prefetch to settle
-    await new Promise((r) => realTimeout(r, 400));
+    // Wait for the page's explicit ready state. Desktop Roll is intentionally
+    // disabled until a complete fresh transaction is prepared; a fixed 400ms
+    // sleep races that preparation when simulated RPC latency is high.
+    for (let i = 0; i < 300; i++) {
+      if (window.document.getElementById('btn-mint')?.getAttribute('aria-disabled') === 'false') break;
+      await sleep(10);
+    }
     mark('--- CONNECTED, clicking Roll ---');
     if (roll) {
       window.document.getElementById('btn-mint').click();
@@ -390,10 +403,16 @@ export async function bootMintPage(opts = {}) {
         await sleep(25);
       }
       mark('--- ROLL SETTLED ---');
+      // The production page intentionally reconciles `confirmed` in the
+      // background after revealing at `processed`. Let that short mocked task
+      // drain before restoring shared globals/prototypes, or it leaks into the
+      // next jsdom page in this process.
+      await new Promise((r) => realTimeout(r, Math.max(40, rpcLatencyMs + 20)));
     }
   } catch (e) {
     error = e;
   } finally {
+    window.dispatchEvent(new window.Event('beforeunload'));
     obs.disconnect();
     for (const [k, v] of Object.entries(saved)) C[k] = v;
     for (const [k, s] of Object.entries(savedGlobals)) {

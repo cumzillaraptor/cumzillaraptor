@@ -179,8 +179,8 @@ test('both pages pin an explicit wsEndpoint', () => {
 
 test('the mint reveal is no longer gated on full confirmation', () => {
   const handler = mintSrc.slice(
-    mintSrc.indexOf('const result = await sendWithRetry('),
-    mintSrc.indexOf('} catch (e) {', mintSrc.indexOf('const result = await sendWithRetry(')),
+    mintSrc.indexOf("$('btn-mint').addEventListener"),
+    mintSrc.indexOf('function isUserRejection'),
   );
   const fastAt = handler.indexOf("commitment: 'processed'");
   const revealAt = handler.indexOf('spin.settle()');

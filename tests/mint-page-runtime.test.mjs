@@ -18,7 +18,10 @@ try {
   domUnavailable = e?.message || String(e);
 }
 const domTest = (name, fn) =>
-  test(name, { skip: domUnavailable ? 'jsdom unavailable: ' + domUnavailable : false }, fn);
+  test(name, {
+    concurrency: false,
+    skip: domUnavailable ? 'jsdom unavailable: ' + domUnavailable : false,
+  }, fn);
 
 test('mint runtime harness availability is explicit', () => {
   assert.ok(domUnavailable === null || typeof domUnavailable === 'string');
@@ -32,24 +35,17 @@ function prePopupRpc(r) {
   );
 }
 
-domTest('desktop: at most one RPC round trip blocks the wallet popup', async () => {
+domTest('desktop: ZERO RPC calls block the wallet popup', async () => {
   const r = await boot({ mobile: false, rpcLatencyMs: 250, fetchLatencyMs: 250 });
   assert.equal(r.error, null);
   const pre = prePopupRpc(r);
   assert.ok(pre, 'the popup must open');
-
-  // simulateTransaction + getLatestBlockhash run CONCURRENTLY, so they are one
-  // round trip of latency. The allocation registry must NOT be read here — it is
-  // warmed on connect. Regressing that adds a full round trip before the popup.
   const labels = pre.map((p) => p.label);
-  assert.ok(!labels.some((l) => l.includes('registry')),
-    'the allocation registry must be warmed on connect, not read in the click path: ' + labels.join(', '));
-  assert.ok(pre.length <= 2, 'expected <=2 concurrent pre-popup calls, got: ' + labels.join(', '));
-
-  // With 250ms simulated latency, one concurrent round trip should dominate.
+  assert.deepEqual(labels, [],
+    'prepared desktop mint means NO RPC may run between click and popup');
   const clickToPopup = r.popupAt - r.rollAt;
-  assert.ok(clickToPopup < 700,
-    'click->popup should be ~1 round trip, was ' + clickToPopup + 'ms');
+  assert.ok(clickToPopup < 100,
+    'click->popup must be immediate, was ' + clickToPopup + 'ms');
 });
 
 domTest('desktop: the registry is warmed before the roll click', async () => {
@@ -59,15 +55,15 @@ domTest('desktop: the registry is warmed before the roll click', async () => {
   assert.ok(warm.at < r.rollAt, 'registry read must happen before the click');
 });
 
-domTest('desktop: the PAGE submits the signed transaction, not the wallet', async () => {
+domTest('desktop: native Phantom sign-and-send opens exactly once', async () => {
   const r = await boot({ mobile: false, rpcLatencyMs: 120 });
   const labels = r.trace.map((t) => t.label);
-  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
-    'desktop must use signTransaction so the page controls submission');
-  assert.ok(labels.some((l) => l.includes('sendRawTransaction')),
-    'the page must submit through its own RPC');
-  assert.ok(!labels.some((l) => l.includes('signAndSendTransaction')),
-    'the wallet must not broadcast (its network may differ from the page RPC)');
+  assert.equal(labels.filter((l) => l.includes('POPUP_OPEN(signAndSendTransaction)')).length, 1,
+    'desktop must open exactly one native sign-and-send approval');
+  assert.ok(!labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
+    'desktop must not use the slow page-side sign-only path');
+  assert.ok(!labels.some((l) => l.includes('sendRawTransaction')),
+    'desktop wallet owns submission; page must not submit a second time');
 });
 
 domTest('desktop: the raptor is revealed and no error is shown', async () => {
@@ -86,21 +82,25 @@ domTest('desktop: reveal happens without waiting for full confirmation', async (
     'reveal took ' + (r.settledAt - r.approvedAt) + 'ms after approval');
 });
 
-domTest('a signing rejection retries without ever double-charging', async () => {
-  // The wallet throws at SIGNING, so no signature exists and there is nothing to
-  // reconcile — re-prompting is safe here. What must hold: nothing is revealed.
+domTest('desktop rejection never opens a circular second approval', async () => {
   const r = await boot({
     mobile: false,
     rpcLatencyMs: 100,
-    sendThrows: new Error(
-      'Transaction signature expired because the allowed block height limit was exceeded'),
+    sendThrows: new Error('Transaction signature expired because block height was exceeded'),
   });
   const popups = r.trace.filter((t) => t.label.startsWith('POPUP_OPEN')).length;
   const approvals = r.trace.filter((t) => t.label === 'POPUP_APPROVED').length;
-  assert.ok(popups > 1, 'expiry should trigger a retry');
-  assert.equal(approvals, 0, 'no approval succeeded in this scenario');
-  assert.equal(r.revealed, false, 'nothing may be revealed when no payment landed');
+  assert.equal(popups, 1, 'desktop must request exactly one approval');
+  assert.equal(approvals, 0);
+  assert.equal(r.revealed, false);
   assert.equal(r.isError, true);
+});
+
+domTest('desktop: complete click-to-reveal path is under 5 seconds', async () => {
+  const r = await boot({ mobile: false, rpcLatencyMs: 1000, fetchLatencyMs: 1000 });
+  assert.equal(r.revealed, true, r.finalMsg);
+  assert.ok(r.settledAt - r.rollAt < 5000,
+    'desktop click-to-reveal took ' + (r.settledAt - r.rollAt) + 'ms');
 });
 
 domTest('a signature approved but not submitted is still reconciled', async () => {
@@ -109,7 +109,7 @@ domTest('a signature approved but not submitted is still reconciled', async () =
   // land, so the page must have recorded the signature before submitting and
   // must refuse to silently re-charge.
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 100,
     submitThrows: new Error('failed to send transaction: node is behind'),
   });
@@ -132,7 +132,7 @@ domTest('an approved-but-undeliverable tx warns instead of re-charging', async (
   // Submission fails AND the transaction never lands. The page must not offer a
   // fresh approval; it must tell the user not to approve again.
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 80,
     submitThrows: new Error('failed to send transaction: node is behind'),
     statusOf: null,          // nothing ever lands
@@ -150,7 +150,7 @@ domTest('a dropped transaction is rebroadcast until it lands', async () => {
   // blockhash expired. When the wallet broadcast it retried for us; taking
   // submission over means the page owes that duty.
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 100,
     landsAfterSends: 2,      // first delivery is dropped; a rebroadcast lands it
     confirmThrows: 'blockheight',
@@ -163,7 +163,7 @@ domTest('a dropped transaction is rebroadcast until it lands', async () => {
 
 domTest('rebroadcast uses a ~2s cadence, not a busy loop', async () => {
   const r = await boot({
-    mobile: false, rpcLatencyMs: 100, landsAfterSends: 3, confirmThrows: 'blockheight',
+    mobile: true, rpcLatencyMs: 100, landsAfterSends: 3, confirmThrows: 'blockheight',
   });
   // the harness clamps long sleeps but records the REQUESTED delay
   assert.ok(r.sleeps.includes(2000),
@@ -172,7 +172,7 @@ domTest('rebroadcast uses a ~2s cadence, not a busy loop', async () => {
 
 domTest('rebroadcast stops once the roll settles', async () => {
   // A leaked rebroadcast timer would keep hitting the RPC after the reveal.
-  const r = await boot({ mobile: false, rpcLatencyMs: 100, landsAfterSends: 2,
+  const r = await boot({ mobile: true, rpcLatencyMs: 100, landsAfterSends: 2,
     confirmThrows: 'blockheight' });
   const sendsAtSettle = r.trace.filter(
     (t) => t.label.includes('sendRawTransaction') && t.at <= r.settledAt).length;
@@ -190,7 +190,7 @@ domTest('the timeout message never blames the network setting', async () => {
   // run stays on "landing your raptor…" until the 30s poll deadline, so asserting
   // on it would pass vacuously.)
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 80,
     sendThrows: new Error(
       'Transaction signature expired because the allowed block height limit was exceeded'),
@@ -212,7 +212,7 @@ domTest('a blockhash that expires during approval recovers by re-signing', async
   // Verified against live devnet: skipPreflight:false => "Blockhash not found";
   // skipPreflight:true => accepted with no error.
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 90,
     expirePreflightAttempts: 1,   // first delivery rejected as expired
   });
@@ -228,7 +228,7 @@ domTest('a blockhash that expires during approval recovers by re-signing', async
 });
 
 domTest('an expired approval says plainly that no payment was taken', async () => {
-  const r = await boot({ mobile: false, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
+  const r = await boot({ mobile: true, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
   const all = r.msgs.join(' | ');
   assert.match(all, /no payment was taken/i,
     'the user must be told they were not charged, got: ' + all);
@@ -239,7 +239,7 @@ domTest('an expired approval says plainly that no payment was taken', async () =
 domTest('dead expired bytes are never rebroadcast', async () => {
   // Rebroadcasting a transaction whose blockhash expired can never succeed and
   // would keep hammering the RPC. It must be discarded on expiry.
-  const r = await boot({ mobile: false, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
+  const r = await boot({ mobile: true, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
   const firstResign = r.trace.filter((t) => t.label.startsWith('POPUP_OPEN'))[1];
   const sendsBetween = r.trace.filter((t) =>
     t.label.includes('send #') && t.at > r.trace[0].at && t.at < firstResign.at &&
@@ -250,7 +250,7 @@ domTest('dead expired bytes are never rebroadcast', async () => {
 domTest('the approval prompt shows the remaining time window', async () => {
   // The ~60s blockhash deadline starts BEFORE the popup opens and was previously
   // invisible, so a user taking their time lost the signature with no warning.
-  const r = await boot({ mobile: false, rpcLatencyMs: 90, signDelayMs: 1200 });
+  const r = await boot({ mobile: true, rpcLatencyMs: 90, signDelayMs: 1200 });
   const all = r.msgs.join(' | ');
   assert.match(all, /before the approval window expires/i,
     'the approval message must surface the deadline, got: ' + all);
@@ -262,7 +262,7 @@ domTest('the approval prompt shows the remaining time window', async () => {
 });
 
 domTest('a retry gets a FRESH countdown, not a continued one', async () => {
-  const r = await boot({ mobile: false, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
+  const r = await boot({ mobile: true, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
   const counts = r.msgs
     .map((m) => /~(\d+)s before the approval window/.exec(m))
     .filter(Boolean).map((m) => Number(m[1]));
@@ -274,7 +274,7 @@ domTest('a retry gets a FRESH countdown, not a continued one', async () => {
 
 domTest('a retry uses a FRESH blockhash, never the prefetched one', async () => {
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 100,
     sendThrows: new Error('block height exceeded'),
   });

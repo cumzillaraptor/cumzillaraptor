@@ -16,13 +16,12 @@ test('mint gets a confirmed blockhash immediately before wallet approval', () =>
   assert.doesNotMatch(mintSource, /getLatestBlockhash\(['"]finalized['"]\)/);
 });
 
-test('the page submits the signed tx itself, so one cluster is used throughout', () => {
-  // 2026-08-30 (desktop report): letting the WALLET broadcast means a Phantom
-  // extension set to the wrong network lands the tx where the page's RPC cannot
-  // see it — the page then waits on a signature that will never appear there and
-  // reports a bogus "transaction timed out". Signing works on any network, so the
-  // page signs and submits through its own RPC. Assert semantics, not spelling.
-  assert.doesNotMatch(mintSource, /preferSignOnly/);
+test('desktop uses native wallet send; mobile keeps page-side submission', () => {
+  // Desktop extension report (2026-08-30): forcing page-side sign-only caused a
+  // ~40s popup delay and circular approvals. Desktop now explicitly opts into
+  // native signAndSend; mobile keeps the proven page-submit path.
+  assert.match(mintSource, /if \(desktopFastPath\)/);
+  assert.match(mintSource, /preferSignOnly: false/);
   // multi-line call: assert the option and the money-safety hook, not one line
   // skipPreflight is now FALSE by design: verified on live devnet that
   // skipPreflight:true makes the RPC silently accept an expired-blockhash tx,
