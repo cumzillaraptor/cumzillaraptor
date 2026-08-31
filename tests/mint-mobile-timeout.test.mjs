@@ -17,11 +17,13 @@ test('mint gets a confirmed blockhash immediately before wallet approval', () =>
 });
 
 test('desktop uses native wallet send; mobile keeps page-side submission', () => {
-  // Desktop extension report (2026-08-30): forcing page-side sign-only caused a
-  // ~40s popup delay and circular approvals. Desktop now explicitly opts into
-  // native signAndSend; mobile keeps the proven page-submit path.
-  assert.match(mintSource, /if \(desktopFastPath\)/);
-  assert.match(mintSource, /preferSignOnly: false/);
+  // Desktop extension (2026-08-30, final resolution): restore the desktop path
+  // that worked for the user — build + simulate, then PREFFER native Phantom
+  // sign-and-send (preferSignOnly:false set per-platform, not hardcoded). Mobile
+  // keeps page-side submission. Both must coexist: desktop -> native, mobile ->
+  // sign-only.
+  assert.match(mintSource, /sendWithRetry\(tx, 3, signingBlockhash, !desktopFastPath\)/);
+  assert.match(mintSource, /preferSignOnly,/);
   // multi-line call: assert the option and the money-safety hook, not one line
   // skipPreflight is now FALSE by design: verified on live devnet that
   // skipPreflight:true makes the RPC silently accept an expired-blockhash tx,

@@ -240,13 +240,8 @@
 
     let provider = null, walletPubkey = null, launch = null;
     let poolOrder = null, metaCache = null, spinning = false;
-    const desktopFastPath = !isMobileWalletBrowser();
-    let preparedDesktopMint = null;
-    let desktopPrepareInFlight = null;
-    let desktopRefreshTimer = null;
-    let desktopPrepareGeneration = 0;
+    const desktopFastPath = !isMobileWalletBrowser();   // false => native Phantom signAndSend
     let pageActive = true;
-    const DESKTOP_PREPARE_MAX_AGE_MS = 15_000;
     // Every signature this page has handed to the wallet for the CURRENT roll.
     // A blockhash-expiry retry re-opens the wallet, and the earlier request is
     // still approvable — so before retrying we check these for an on-chain
@@ -276,7 +271,6 @@
         updateProgress(launch.publicMinted, cfg.publicCount);
         // Keep the allocation cache warm so a roll does not pay for this read.
         if (walletPubkey) warmAllocated();
-        if (walletPubkey) prepareDesktopMint();
       } catch (e) {
         if (spinning) return;
         setMsg('devnet status unavailable — launch setup may be incomplete.', 'err');
@@ -291,8 +285,7 @@
     function updateButtons() {
       if (!pageActive) return;
       const ready = !!(wc.publicKey && launch && launch.isLive &&
-                        launch.publicMinted < cfg.publicCount && !spinning &&
-                        (!desktopFastPath || preparedDesktopMint));
+                        launch.publicMinted < cfg.publicCount && !spinning);
       $('btn-mint').setAttribute('aria-disabled', String(!ready));
     }
 
@@ -305,20 +298,16 @@
         // Warm the pool + metadata caches now so the first roll does not spend
         // ~450ms of its approval window fetching 330KB inside the click handler.
         prefetchMintData();
-        prepareDesktopMint();
         updateButtons();
       },
       onDisconnect: () => {
         walletPubkey = null;
-        clearPreparedDesktopMint();
         $('btn-connect').textContent = 'connect wallet';
         updateButtons();
       },
       onAccountChange: (pk) => {
         walletPubkey = pk;
-        clearPreparedDesktopMint();
         $('btn-connect').textContent = 'connected · ' + short(pk.toBase58());
-        prepareDesktopMint();
         updateButtons();
       },
     });
@@ -394,88 +383,9 @@
       return available[Math.floor(Math.random() * available.length)];
     }
 
-    // DESKTOP FAST PATH. Prepare the complete transaction BEFORE the user clicks
-    // Roll. A ready Roll therefore has no fetch, RPC, simulation, blockhash read,
-    // or instruction build between the click and Phantom's native popup.
-    function clearPreparedDesktopMint() {
-      desktopPrepareGeneration++;
-      preparedDesktopMint = null;
-      desktopPrepareInFlight = null;
-      if (desktopRefreshTimer) clearTimeout(desktopRefreshTimer);
-      desktopRefreshTimer = null;
-    }
     window.addEventListener('beforeunload', () => {
       pageActive = false;
-      clearPreparedDesktopMint();
     });
-
-    function scheduleDesktopRefresh() {
-      if (!desktopFastPath || !walletPubkey) return;
-      if (desktopRefreshTimer) clearTimeout(desktopRefreshTimer);
-      desktopRefreshTimer = setTimeout(() => {
-        desktopRefreshTimer = null;
-        // Disable Roll while replacing the prepared transaction. This prevents a
-        // click from consuming the old blockhash during the atomic refresh.
-        preparedDesktopMint = null;
-        updateButtons();
-        prepareDesktopMint({ force: true });
-      }, 5_000);
-    }
-
-    function prepareDesktopMint({ force = false } = {}) {
-      if (!pageActive || !desktopFastPath || !walletPubkey || !launch?.isLive || spinning) return null;
-      if (!force && preparedDesktopMint &&
-          Date.now() - preparedDesktopMint.preparedAt < DESKTOP_PREPARE_MAX_AGE_MS) {
-        scheduleDesktopRefresh();
-        return Promise.resolve(preparedDesktopMint);
-      }
-      if (desktopPrepareInFlight) return desktopPrepareInFlight;
-      const generation = desktopPrepareGeneration;
-      const preparingFor = walletPubkey.toBase58();
-      desktopPrepareInFlight = (async () => {
-        const nftId = await rollNftId();
-        const metaAll = await loadMeta();
-        const meta = metaAll[String(nftId)];
-        if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + nftId);
-        const name = 'cumzillaraptor #' + nftId;
-        const ix = await buildMintInstruction({
-          programId: PROGRAM_ID,
-          configPda: getConfigPda(PROGRAM_ID),
-          registryPda: getAllocationPda(PROGRAM_ID),
-          buyer: walletPubkey,
-          treasury: TREASURY,
-          collection: new PublicKey(launch.collection),
-          assetPda: getAssetPda(PROGRAM_ID, nftId),
-          mplCore: MPL_CORE,
-          nftId, name, uri: meta.u, metadataProof: meta.p,
-        });
-        const tx = new Transaction().add(ix);
-        tx.feePayer = walletPubkey;
-        const [sim, blockhashInfo] = await Promise.all([
-          conn.simulateTransaction(tx),
-          conn.getLatestBlockhash('confirmed'),
-        ]);
-        if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
-        tx.recentBlockhash = blockhashInfo.blockhash;
-        // Account may have changed while asynchronous preparation was running.
-        if (generation !== desktopPrepareGeneration || !walletPubkey ||
-            walletPubkey.toBase58() !== preparingFor || spinning) return null;
-        preparedDesktopMint = {
-          nftId, meta, name, tx, blockhashInfo, preparedAt: Date.now(),
-        };
-        updateButtons();
-        scheduleDesktopRefresh();
-        return preparedDesktopMint;
-      })().catch((err) => {
-        if (generation !== desktopPrepareGeneration) return null;
-        console.error('[mint] desktop preparation failed:', err);
-        scheduleDesktopRefresh();
-        return null;
-      }).finally(() => {
-        if (generation === desktopPrepareGeneration) desktopPrepareInFlight = null;
-      });
-      return desktopPrepareInFlight;
-    }
 
     // ---- raptor portrait (raw arweave png, unfiltered) ----
 
@@ -599,58 +509,37 @@
       signedRawTx = null;      // never rebroadcast a previous roll's transaction
       try {
         let nftId, meta, name, tx, result;
-        if (desktopFastPath) {
-          // Consume the atomically prepared transaction SYNCHRONOUSLY. There must
-          // be no await before wc.signAndSend below: Chromium extensions may
-          // throttle/defer popups that are no longer in the original click task.
-          const prepared = preparedDesktopMint;
-          preparedDesktopMint = null;
-          if (!prepared || Date.now() - prepared.preparedAt > DESKTOP_PREPARE_MAX_AGE_MS) {
-            throw new Error('mint preparation expired — please wait for Roll to become ready again.');
-          }
-          ({ nftId, meta, name, tx } = prepared);
-          setMsg('approve the 1 SOL payment in your wallet…');
-          // Phantom runs a slow internal devnet preflight before showing its UI
-          // unless this documented SendOption is forwarded. The prepared tx was
-          // already simulated and its blockhash is refreshed every five seconds.
-          const sig = await wc.signAndSend(tx, {
-            preferSignOnly: false,
-            skipPreflight: true,
-            maxRetries: 5,
-          });
-          pendingSignatures.push(sig);
-          result = { sig, ...prepared.blockhashInfo };
-        } else {
-          // Keep the proven mobile path unchanged. Mobile in-app wallets work best
-          // when the page signs then submits through its configured RPC.
-          setMsg('rolling the drum…');
-          nftId = await rollNftId();
-          const metaAll = await loadMeta();
-          meta = metaAll[String(nftId)];
-          if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + nftId);
-          name = 'cumzillaraptor #' + nftId;
-          const ix = await buildMintInstruction({
-            programId: PROGRAM_ID,
-            configPda: getConfigPda(PROGRAM_ID),
-            registryPda: getAllocationPda(PROGRAM_ID),
-            buyer: walletPubkey,
-            treasury: TREASURY,
-            collection: new PublicKey(launch.collection),
-            assetPda: getAssetPda(PROGRAM_ID, nftId),
-            mplCore: MPL_CORE,
-            nftId, name, uri: meta.u, metadataProof: meta.p,
-          });
-          tx = new Transaction().add(ix);
-          tx.feePayer = walletPubkey;
-          setMsg('checking transaction…');
-          const [sim, signingBlockhash] = await Promise.all([
-            conn.simulateTransaction(tx),
-            conn.getLatestBlockhash('confirmed'),
-          ]);
-          if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
-          setMsg('approve the 1 SOL payment in your wallet…');
-          result = await sendWithRetry(tx, 3, signingBlockhash);
-        }
+        // Unified path (restored 2026-08-30 to the flow that worked for desktop
+        // Phantom). The ONLY platform difference is how the wallet is called:
+        //   desktop -> preferSignOnly:false => Phantom's native signAndSendTransaction
+        //   mobile  -> preferSignOnly:true  => page signs then submits
+        setMsg('rolling the drum…');
+        nftId = await rollNftId();
+        const metaAll = await loadMeta();
+        meta = metaAll[String(nftId)];
+        if (!meta?.u || !Array.isArray(meta.p)) throw new Error('metadata proof missing for #' + nftId);
+        name = 'cumzillaraptor #' + nftId;
+        const ix = await buildMintInstruction({
+          programId: PROGRAM_ID,
+          configPda: getConfigPda(PROGRAM_ID),
+          registryPda: getAllocationPda(PROGRAM_ID),
+          buyer: walletPubkey,
+          treasury: TREASURY,
+          collection: new PublicKey(launch.collection),
+          assetPda: getAssetPda(PROGRAM_ID, nftId),
+          mplCore: MPL_CORE,
+          nftId, name, uri: meta.u, metadataProof: meta.p,
+        });
+        tx = new Transaction().add(ix);
+        tx.feePayer = walletPubkey;
+        setMsg('checking transaction…');
+        const [sim, signingBlockhash] = await Promise.all([
+          conn.simulateTransaction(tx),
+          conn.getLatestBlockhash('confirmed'),
+        ]);
+        if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
+        setMsg('approve the 1 SOL payment in your wallet…');
+        result = await sendWithRetry(tx, 3, signingBlockhash, !desktopFastPath);
         const sig = result.sig;
 
         // Animation starts only after Phantom returns a signature. This avoids a
@@ -741,9 +630,6 @@
       } finally {
         spinning = false;
         updateButtons();
-        // Desktop Roll stays disabled until the NEXT complete transaction is
-        // ready. Preparation happens now, never after the next click.
-        prepareDesktopMint({ force: true });
       }
     });
 
@@ -760,7 +646,7 @@
     // could approve two prompts and pay 2 SOL for one roll. Now, before any
     // retry, every signature already produced for this roll is checked on-chain;
     // if one landed we return it instead of asking for another payment.
-    async function sendWithRetry(tx, maxAttempts = 3, prefetchedBlockhash = null) {
+    async function sendWithRetry(tx, maxAttempts = 3, prefetchedBlockhash = null, preferSignOnly = false) {
       let lastErr;
       let pending = prefetchedBlockhash;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -773,20 +659,14 @@
           pending = null;
           tx.recentBlockhash = blockhash;
           tx.signatures = [];                 // stale partial signatures invalidate the tx
-          // Fresh countdown for THIS attempt's blockhash.
           const stopCountdown = startApprovalCountdown();
           let sig;
           try {
-            // MONEY SAFETY: record the signature the moment the wallet produces
-            // it, BEFORE the page submits. If submission then fails, the signed
-            // transaction may still land, and findLandedSignature() must be able
-            // to find it rather than us opening a second paid approval.
             sig = await wc.signAndSend(tx, {
-              // CORRECTNESS over ~150ms. Verified against live devnet: with
-              // skipPreflight:true the RPC silently ACCEPTS a transaction whose
-              // blockhash has already expired and returns a signature, so the
-              // page then polls a signature that can NEVER land and reports a
-              // timeout. Preflight turns that into an immediate, actionable error.
+              // Desktop: preferSignOnly:false -> Phantom's native
+              // signAndSendTransaction (the flow that worked). Mobile: true ->
+              // page signs then submits through its RPC.
+              preferSignOnly,
               skipPreflight: false,
               onSigned: (s, raw) => {
                 if (s && !pendingSignatures.includes(s)) pendingSignatures.push(s);

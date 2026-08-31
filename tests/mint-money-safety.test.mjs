@@ -72,11 +72,12 @@ test('C2: pending signatures clear on success and on user rejection only', () =>
   assert.match(mint, /function isUserRejection\(e\)/);
 });
 
-test('H1: desktop explicitly uses one native wallet sign-and-send', () => {
-  assert.match(mint, /if \(desktopFastPath\)/);
-  assert.match(mint, /preferSignOnly: false/);
-  assert.match(mint, /skipPreflight: true/);
-  assert.match(wallet, /provider\.signAndSendTransaction\(transaction, sendOptions\)/);
+test('H1: desktop uses native wallet sign-and-send, per-platform', () => {
+  // Restored (b629573) desktop flow: preferSignOnly is derived per-platform and
+  // passed to the shared sendWithRetry, so desktop stays native (Phantom owns
+  // sign + broadcast) while mobile keeps page submission.
+  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, !desktopFastPath\)/);
+  assert.match(mint, /preferSignOnly,/);
 });
 
 test('H1: wallet honours an explicit skipPreflight instead of hardcoding false', () => {

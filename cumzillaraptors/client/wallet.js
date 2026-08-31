@@ -321,19 +321,7 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
 
     // 1) convenience API
     if (typeof provider.signAndSendTransaction === "function") {
-      // Phantom documents SendOptions as the second argument. Forward them:
-      // dropping skipPreflight here made desktop Phantom run its own slow devnet
-      // preflight before it rendered the approval UI (~40s in production), even
-      // though the page had already simulated the prepared transaction.
-      const sendOptions = {};
-      if (options.skipPreflight != null) {
-        sendOptions.skipPreflight = options.skipPreflight === true;
-      }
-      if (options.preflightCommitment) {
-        sendOptions.preflightCommitment = options.preflightCommitment;
-      }
-      if (options.maxRetries != null) sendOptions.maxRetries = options.maxRetries;
-      const res = await provider.signAndSendTransaction(transaction, sendOptions);
+      const res = await provider.signAndSendTransaction(transaction);
       return typeof res === "string" ? res : res.signature;
     }
     // 2) sign-only API
