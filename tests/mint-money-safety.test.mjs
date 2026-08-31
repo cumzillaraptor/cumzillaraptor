@@ -76,7 +76,7 @@ test('H1: desktop uses native wallet sign-and-send, per-platform', () => {
   // Restored (b629573) desktop flow: preferSignOnly is derived per-platform and
   // passed to the shared sendWithRetry, so desktop stays native (Phantom owns
   // sign + broadcast) while mobile keeps page submission.
-  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, !desktopFastPath\)/);
+  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, true\)/);
   assert.match(mint, /preferSignOnly,/);
 });
 

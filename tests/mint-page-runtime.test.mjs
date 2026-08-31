@@ -60,17 +60,19 @@ domTest('desktop: the registry is warmed before the roll click', async () => {
   assert.ok(warm.at < r.rollAt, 'registry read must happen before the click');
 });
 
-domTest('desktop: native Phantom sign-and-send is used for the payment', async () => {
-  // Restored (b629573) desktop flow: the page builds + simulates the tx, then
-  // hands it to Phantom's native signAndSendTransaction and lets the wallet own
-  // signing AND broadcast — this is the path that worked for the user. Do NOT
-  // route desktop through the page-side sign-only path, which was a regression.
+domTest('desktop uses the fast sign-only popup, page submits', async () => {
+  // THE 2026-08-30 desktop fix (final): Phantom runs an internal simulation
+  // before showing a signAndSendTransaction popup (~40s), but a signTransaction
+  // popup appears immediately. Both desktop and mobile now use the sign-only
+  // path + page-side submission, so the popup opens fast on desktop too.
   const r = await boot({ mobile: false, rpcLatencyMs: 120 });
   const labels = r.trace.map((t) => t.label);
-  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signAndSendTransaction)')),
-    'desktop must use Phantom native sign-and-send');
-  assert.ok(!labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
-    'desktop must not use the page-side sign-only path');
+  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
+    'desktop must use the fast signTransaction popup');
+  assert.ok(!labels.some((l) => l.includes('POPUP_OPEN(signAndSendTransaction)')),
+    'desktop must NOT use signAndSendTransaction (slow Phantom simulation)');
+  assert.ok(labels.some((l) => l.includes('sendRawTransaction')),
+    'the page must submit the signed tx through its own RPC');
 });
 
 domTest('desktop: the raptor is revealed and no error is shown', async () => {

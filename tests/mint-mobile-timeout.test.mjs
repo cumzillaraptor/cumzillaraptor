@@ -22,7 +22,7 @@ test('desktop uses native wallet send; mobile keeps page-side submission', () =>
   // sign-and-send (preferSignOnly:false set per-platform, not hardcoded). Mobile
   // keeps page-side submission. Both must coexist: desktop -> native, mobile ->
   // sign-only.
-  assert.match(mintSource, /sendWithRetry\(tx, 3, signingBlockhash, !desktopFastPath\)/);
+  assert.match(mintSource, /sendWithRetry\(tx, 3, signingBlockhash, true\)/);
   assert.match(mintSource, /preferSignOnly,/);
   // multi-line call: assert the option and the money-safety hook, not one line
   // skipPreflight is now FALSE by design: verified on live devnet that

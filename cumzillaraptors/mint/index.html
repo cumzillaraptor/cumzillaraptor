@@ -509,10 +509,13 @@
       signedRawTx = null;      // never rebroadcast a previous roll's transaction
       try {
         let nftId, meta, name, tx, result;
-        // Unified path (restored 2026-08-30 to the flow that worked for desktop
-        // Phantom). The ONLY platform difference is how the wallet is called:
-        //   desktop -> preferSignOnly:false => Phantom's native signAndSendTransaction
-        //   mobile  -> preferSignOnly:true  => page signs then submits
+        // Unified path (restored 2026-08-30). Both desktop and mobile use the
+        // sign-only path (signTransaction) + page-side submission. This is the
+        // flow that opens the wallet popup FAST: Phantom runs an internal
+        // simulation before showing a signAndSendTransaction popup (the ~40s
+        // desktop delay), but a signTransaction popup appears immediately. The
+        // page owns submission (maxRetries + rebroadcast + reconciliation), so
+        // delivery is robust.
         setMsg('rolling the drum…');
         nftId = await rollNftId();
         const metaAll = await loadMeta();
@@ -539,7 +542,7 @@
         ]);
         if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
         setMsg('approve the 1 SOL payment in your wallet…');
-        result = await sendWithRetry(tx, 3, signingBlockhash, !desktopFastPath);
+        result = await sendWithRetry(tx, 3, signingBlockhash, true);
         const sig = result.sig;
 
         // Animation starts only after Phantom returns a signature. This avoids a
