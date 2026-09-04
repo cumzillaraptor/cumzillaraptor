@@ -287,33 +287,36 @@
     // buyer, owned/authorized by the buyer — same trustless shape as the claim
     // page. Folded into the roll click, so the user sees it as approval 1 of 2.
     //
-    // The setup tx itself is blockhash-based (chicken-and-egg: no nonce exists
-    // yet), but it is two plain SystemProgram instructions — Phantom's pre-popup
-    // simulation of those is fast, unlike the mint tx whose mpl-core CPI is what
-    // stalls the popup for ~40s. If it still expires, sendWithRetry's normal
-    // expiry recovery (fresh blockhash + re-prompt) applies and no money is at
-    // risk beyond rent.
+    // The setup tx is blockhash-based (chicken-and-egg: no nonce exists yet),
+    // and Phantom's ~40s devnet popup delay applies to EVERY popup — page-side
+    // signing expired this tx on every attempt (2026-09-03 round 4: "the 1st
+    // approval loops infinitely"). So the WALLET owns submission here:
+    // signAndSendTransaction applies a FRESH blockhash at approval time, making
+    // its own popup delay harmless. The page then confirms by OUTCOME — the
+    // nonce account existing — because the wallet may have replaced our
+    // blockhash, so no blockheight window applies. Re-running setup can never
+    // double-charge: create-with-seed on an existing account simply fails.
     async function ensureMintNonce() {
       if (mintNonce) return;
       const res = await buildSetupNonceTx({ conn, claimer: walletPubkey, seed: MINT_NONCE_SEED });
       if (!res.exists) {
         setMsg('one-time setup (approval 1 of 2): approve the small rent deposit (~0.0015 SOL) ' +
-               'in your wallet…');
-        const setupResult = await sendWithRetry(res.tx, 3, null, true,
-          'one-time setup (approval 1 of 2): approve the small rent deposit (~0.0015 SOL)');
-        const conf = await confirmSignatureFast(conn, setupResult.sig, {
-          commitment: 'confirmed',
-          blockhashInfo: setupResult.blockhash ? {
-            blockhash: setupResult.blockhash,
-            lastValidBlockHeight: setupResult.lastValidBlockHeight,
-          } : null,
-        });
-        if (conf.status === 'failed') throw new Error('setup failed: ' + JSON.stringify(conf.err));
-        if (conf.status === 'timeout') throw new Error('setup did not confirm — reload and retry.');
-        // setup signatures are resolved; they must not block the mint approval
-        pendingSignatures = [];
-        signedRawTx = null;
+               'in your wallet — no rush, and the popup can take up to a minute to appear…');
+        const sig = await wc.signAndSend(res.tx, { preferSignOnly: false });
+        console.info('[mint:setup] wallet-submitted setup sig=' + (sig ? sig.slice(0, 8) + '…' : 'null'));
+        setMsg('setup accepted — confirming on-chain…');
+        const deadline = Date.now() + 90_000;
+        while (Date.now() < deadline) {
+          mintNonce = await fetchClaimNonce(conn, res.address);
+          if (mintNonce) break;
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+        if (!mintNonce) {
+          throw new Error('the setup transaction did not confirm — check your wallet history, ' +
+            'then reload the page and roll again (you will not be charged twice).');
+        }
         setMsg('setup complete — building your roll (approval 2 of 2)…');
+        return;
       }
       mintNonce = await fetchClaimNonce(conn, res.address);
       if (!mintNonce) throw new Error('setup could not be verified — reload the page and retry.');

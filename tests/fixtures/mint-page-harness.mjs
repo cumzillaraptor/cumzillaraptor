@@ -121,6 +121,13 @@ export async function bootMintPage(opts = {}) {
       await sleep(10);
       if (sendThrows) throw sendThrows;
       mark('POPUP_APPROVED');
+      // Wallet-owned submission of the one-time NONCE SETUP tx: the real
+      // Phantom applies a fresh blockhash at approval and broadcasts itself,
+      // so the account exists shortly after. Model that outcome directly.
+      if (!nonceExists && !nonceCreated) {
+        nonceCreated = true;
+        mark('WALLET_SENT(NONCE_SETUP)');
+      }
       return { signature: SIG };
     },
     signTransaction: async (tx) => {
