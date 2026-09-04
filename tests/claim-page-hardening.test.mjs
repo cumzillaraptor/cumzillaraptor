@@ -58,8 +58,8 @@ test('the page never assigns innerHTML', () => {
 });
 
 test('status bar and eligibility summary are built from elements', () => {
-  assert.match(src, /function renderStatBar\(publicMinted, claimsMinted\)/);
-  assert.match(src, /bar\.replaceChildren\(frag\)/);
+  assert.match(src, /function renderClaimProgress\(claimsMinted\)/);
+  assert.match(src, /prog-fill'\)\.style\.width/);
   assert.match(src, /box\.replaceChildren\(head\)/);
   assert.match(src, /count\.textContent = String\(entries\.length\)/);
   // list clearing no longer goes through innerHTML = ''

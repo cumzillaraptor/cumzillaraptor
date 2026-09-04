@@ -58,11 +58,15 @@ async function signedAndClaimed(opts = {}) {
   return s;
 }
 
-domTest('page boots and renders on-chain status from the config PDA', async () => {
+domTest('page boots and renders claim-pool progress from the config PDA', async () => {
   const s = await bootClaimPage();
-  assert.equal(s.text('stat-bar'), 'minted: 7/246 · claimed: 3/174');
-  // M2: the numbers live in <strong> elements, not interpolated markup
-  assert.equal(s.$('stat-bar').querySelectorAll('strong').length, 2);
+  // claim-pool progress only — claimed count vs claim pool, never mint progress
+  assert.equal(s.text('prog-claimed'), '3');
+  assert.equal(s.text('prog-claim-total'), '174');
+  assert.match(s.$('prog-fill').style.width, /^\d/);
+  // no mint progress is rendered on the claim page
+  assert.equal(s.$('prog-claimed').querySelectorAll('strong').length, 0);
+  assert.equal(s.$('prog-claimed').tagName, 'STRONG');
   assert.deepEqual(s.intervals.map((i) => i.ms), [60000]);
 });
 
@@ -297,18 +301,18 @@ domTest('a failed eligibility receipt read warns instead of claiming all unclaim
 
 domTest('a transient status failure keeps the last known on-chain numbers', async () => {
   const s = await bootClaimPage({ statusFailAfter: 1 });
-  const before = s.text('stat-bar');
-  assert.equal(before, 'minted: 7/246 · claimed: 3/174');
+  const before = s.text('prog-claimed');
+  assert.equal(before, '3');
 
   // fire the poll callback the page registered; its RPC read now throws
   await s.intervals[0].fn();
   await s.settle(20);
-  assert.equal(s.text('stat-bar'), before, 'status bar must not be wiped (L3)');
+  assert.equal(s.text('prog-claimed'), before, 'claim progress must not be wiped (L3)');
 });
 
 domTest('the unavailable message still shows when status never loaded at all', async () => {
   const s = await bootClaimPage({ statusFailAfter: 0 });
-  assert.match(s.text('stat-bar'), /devnet status unavailable/);
+  assert.match(s.text('stat-note'), /devnet status unavailable/);
 });
 
 // ---------- dead RPC WebSocket must not stall the claim run ----------
