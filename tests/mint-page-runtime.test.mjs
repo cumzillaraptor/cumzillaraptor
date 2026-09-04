@@ -35,22 +35,56 @@ function prePopupRpc(r) {
   );
 }
 
-domTest('desktop: prep work before the popup is one concurrent round trip', async () => {
-  // Restored (b629573) desktop flow: the page builds the tx, then runs simulation
-  // and blockhash fetch CONCURRENTLY before handing it to Phantom's native
-  // sign-and-send. This is the latency shape that worked; the walkaway regression
-  // was a prepared-cache/complex path that re-broke desktop. Assert a single
-  // concurrent round trip of pre-popup RPC, not zero, not many.
+domTest('desktop: prep work before the popup stays minimal (durable-nonce path)', async () => {
+  // 2026-09-03 desktop fix: Phantom's pre-popup simulation takes ~40s on devnet
+  // while a devnet blockhash (measured through our proxy) dies in ~25-27s, so
+  // desktop now signs a DURABLE-NONCE transaction that never expires. Pre-popup
+  // work is a nonce re-read (plus warm-cache hits); crucially there is NO
+  // getLatestBlockhash race to lose — no time pressure exists at all.
   const r = await boot({ mobile: false, rpcLatencyMs: 250, fetchLatencyMs: 250 });
   assert.equal(r.error, null);
   const pre = prePopupRpc(r);
   assert.ok(pre, 'the popup must open');
   const labels = pre.map((p) => p.label);
-  assert.ok(labels.includes('RPC simulateTransaction') && labels.includes('RPC getLatestBlockhash'),
-    'desktop must simulate + fetch blockhash before the popup, got: ' + labels.join(', '));
+  assert.ok(labels.some((l) => l.includes('getAccountInfo(nonce)')),
+    'desktop must re-read the nonce before the popup, got: ' + labels.join(', '));
+  assert.ok(!labels.includes('RPC getLatestBlockhash'),
+    'the durable tx must NOT depend on a fresh blockhash: ' + labels.join(', '));
   const clickToPopup = r.popupAt - r.rollAt;
-  assert.ok(clickToPopup < 700,
-    'click->popup should be ~1 concurrent round trip, was ' + clickToPopup + 'ms');
+  assert.ok(clickToPopup < 1500,
+    'click->popup should be ~2 round trips max, was ' + clickToPopup + 'ms');
+});
+
+domTest('desktop: the mint tx is durable (advance-nonce first, nonce hash)', async () => {
+  // THE 2026-09-03 report: 40s popup delay + ~25s devnet blockhash life =>
+  // every desktop signature was born expired => preflight "Blockhash not found"
+  // => expiry branch re-prompted => endless approval loop, nothing minted.
+  // Durability removes the deadline entirely.
+  const r = await boot({ mobile: false, rpcLatencyMs: 120 });
+  assert.equal(r.isError, false, 'no error expected, got: ' + r.finalMsg);
+  assert.equal(r.revealed, true, 'the raptor must be revealed');
+  // The user-facing copy must tell the user there is no time pressure and warn
+  // about the slow popup, not show a countdown that no longer applies.
+  const all = r.msgs.join(' | ');
+  assert.match(all, /never expires/i,
+    'desktop approval message must say the approval never expires, got: ' + all);
+  assert.doesNotMatch(all, /before the approval window expires/i,
+    'no countdown may be shown for a durable transaction');
+});
+
+domTest('desktop: first roll folds the one-time nonce setup into the flow', async () => {
+  const r = await boot({ mobile: false, rpcLatencyMs: 120, nonceExists: false });
+  assert.equal(r.isError, false, 'no error expected, got: ' + r.finalMsg);
+  assert.equal(r.revealed, true, 'the raptor must be revealed after setup + mint');
+  const labels = r.trace.map((t) => t.label);
+  assert.ok(labels.some((l) => l.includes('NONCE_SETUP')),
+    'the setup transaction must be submitted first');
+  const all = r.msgs.join(' | ');
+  assert.match(all, /approval 1 of 2/i,
+    'setup must be labeled as approval 1 of 2, got: ' + all);
+  // both approvals happened: setup + paid mint
+  const approvals = r.trace.filter((t) => t.label === 'POPUP_APPROVED').length;
+  assert.equal(approvals, 2, 'exactly two approvals (setup + mint), got ' + approvals);
 });
 
 domTest('desktop: the registry is warmed before the roll click', async () => {

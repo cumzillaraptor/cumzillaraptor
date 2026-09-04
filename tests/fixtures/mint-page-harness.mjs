@@ -87,6 +87,7 @@ export async function bootMintPage(opts = {}) {
     signDelayMs = 0,
     allocatedIds = [1, 2, 3, 4, 5, 6, 7],
     signatureOfNull = false,   // model Phantom sign that returns no extractable sig
+    nonceExists = true,        // desktop durable-nonce account already set up
     roll = true,
   } = opts;
 
@@ -95,6 +96,7 @@ export async function bootMintPage(opts = {}) {
   const signedSigs = [];
   let landed = false;
   let deadTx = false;
+  let nonceCreated = false;   // set once a setup tx is submitted (nonceExists:false runs)
   const t0 = Date.now();
   const mark = (label) => trace.push({ label, at: Date.now() - t0 });
   const sleep = (ms) => new Promise((r) => realTimeout(r, ms));
@@ -213,6 +215,22 @@ export async function bootMintPage(opts = {}) {
       await sleep(rpcLatencyMs);
       return { data: registryAccountData(allocatedIds), owner: new web3.PublicKey(PROGRAM_ID), lamports: 1 };
     }
+    // The desktop durable-nonce account, derived with the same seed the page
+    // uses. Real 80-byte layout: version u32, state u32(1=Initialized),
+    // authority 32, stored hash 32, feeCalculator u64.
+    const nonceAddr = (await web3.PublicKey.createWithSeed(
+      BUYER_KEYPAIR.publicKey, 'cumz-claim-nonce', web3.SystemProgram.programId)).toBase58();
+    if (key === nonceAddr) {
+      mark('RPC getAccountInfo(nonce)');
+      await sleep(rpcLatencyMs);
+      if (!nonceExists && !nonceCreated) return null;
+      const d = Buffer.alloc(80);
+      d.writeUInt32LE(1, 0);                                   // version
+      d.writeUInt32LE(1, 4);                                   // state: Initialized
+      BUYER_KEYPAIR.publicKey.toBuffer().copy(d, 8);            // authority
+      new web3.PublicKey(BLOCKHASH).toBuffer().copy(d, 40);     // stored hash
+      return { data: d, owner: web3.SystemProgram.programId, lamports: 1_500_000 };
+    }
     mark('RPC getAccountInfo(other)');
     await sleep(rpcLatencyMs);
     return null;
@@ -234,6 +252,13 @@ export async function bootMintPage(opts = {}) {
   let preflightRejections = 0;
   patch('sendRawTransaction', async function (raw, opts) {
     sendCount++;
+    // First submission in a nonceExists:false run is the one-time nonce setup tx.
+    if (!nonceExists && !nonceCreated) {
+      nonceCreated = true;
+      mark('RPC sendRawTransaction(NONCE_SETUP)');
+      await sleep(rpcLatencyMs);
+      return SIG;
+    }
     // With skipPreflight:false the RPC REJECTS an expired blockhash. With
     // skipPreflight:true it silently accepts it (verified on live devnet), which
     // is what hid this bug.

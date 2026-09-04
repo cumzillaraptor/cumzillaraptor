@@ -23,7 +23,7 @@ cp assets/cumz.css assets/cumzillaraptor116.svg assets/cumzillaraptor-transparen
 cp assets/vendor/*.js dist/assets/vendor/
 cp ${configFile} dist/config/site.js
 cp cumzillaraptors/mint/index.html dist/cumzillaraptors/mint/
-cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js cumzillaraptors/client/keccak-shim.js cumzillaraptors/client/metamask.js dist/cumzillaraptors/mint/
+cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js cumzillaraptors/client/keccak-shim.js cumzillaraptors/client/metamask.js cumzillaraptors/client/claim-nonce.js dist/cumzillaraptors/mint/
 cp cumzillaraptors/client/data/metadata-slim.json cumzillaraptors/client/data/pool-order.json dist/cumzillaraptors/mint/data/
 cp cumzillaraptors/claim/index.html dist/cumzillaraptors/claim/
 cp cumzillaraptors/client/chain.js cumzillaraptors/client/wallet.js cumzillaraptors/client/web3-shim.js cumzillaraptors/client/keccak-shim.js cumzillaraptors/client/metamask.js cumzillaraptors/client/claim-nonce.js dist/cumzillaraptors/claim/
