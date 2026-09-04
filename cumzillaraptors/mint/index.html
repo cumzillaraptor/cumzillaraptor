@@ -234,6 +234,9 @@
     import {
       claimNonceAddress, fetchClaimNonce, buildSetupNonceTx, advanceNonceInstruction,
     } from "/cumzillaraptors/mint/claim-nonce.js";
+    // v0 compilation for the durable desktop tx (see below): web3-shim exposes
+    // the extra classes chain.js does not re-export.
+    import web3 from "/cumzillaraptors/mint/web3-shim.js";
 
     const cfg = window.CUMZ_CONFIG;
     if (cfg.network !== "devnet") throw new Error("this build targets devnet only");
@@ -615,17 +618,24 @@
           const freshNonce = await fetchClaimNonce(conn, mintNonce.address);
           if (!freshNonce) throw new Error('setup account vanished — reload the page and retry.');
           mintNonce = freshNonce;
-          tx = new Transaction()
-            .add(advanceNonceInstruction(mintNonce.address, mintNonce.authority))
-            .add(ix);
-          tx.feePayer = walletPubkey;
-          tx.recentBlockhash = mintNonce.blockhash;
-          // NOTE: no page-side simulateTransaction here — the RPC's simulator
-          // treats the nonce's stored hash as an unknown blockhash and returns
-          // BlockhashNotFound unless replaceRecentBlockhash is set. Preflight
-          // (sendRawTransaction with skipPreflight:false) DOES understand
-          // durable nonces, so bad transactions are still rejected pre-charge,
-          // and Phantom runs its own simulation before the popup anyway.
+          // v0 VersionedTransaction, NOT legacy (2026-09-03, round 2): with a
+          // LEGACY tx, desktop Phantom re-wrote recentBlockhash before signing
+          // (its "helpful" refresh), silently replacing the nonce hash with a
+          // fresh blockhash. By the time its 40s pre-popup simulation finished,
+          // that swapped-in hash was expired → preflight "Blockhash not found"
+          // on every attempt, even though our nonce tx was provably valid (the
+          // same tx submitted from a script confirms fine). A compiled v0
+          // message is opaque to the wallet — Phantom signs the bytes as-is.
+          // This matches the claim page, whose durable flow works.
+          const msgV0 = new web3.TransactionMessage({
+            payerKey: walletPubkey,
+            recentBlockhash: mintNonce.blockhash,
+            instructions: [
+              advanceNonceInstruction(mintNonce.address, mintNonce.authority),
+              ix,
+            ],
+          }).compileToV0Message();
+          tx = new web3.VersionedTransaction(msgV0);
           setMsg('approve the 1 SOL payment in your wallet — no rush, this approval never expires. ' +
                  'the popup can take up to a minute to appear.');
           result = await sendWithRetry(tx, 2,
@@ -775,8 +785,13 @@
             ? prefetchedBlockhash
             : (pending || await conn.getLatestBlockhash('confirmed'));
           pending = null;
-          tx.recentBlockhash = blockhash;
-          tx.signatures = [];                 // stale partial signatures invalidate the tx
+          // Legacy-only mutations. A durable v0 VersionedTransaction is already
+          // compiled — writing recentBlockhash is meaningless and emptying its
+          // fixed-length signatures array corrupts the wire format.
+          if (!durable) {
+            tx.recentBlockhash = blockhash;
+            tx.signatures = [];               // stale partial signatures invalidate the tx
+          }
           const stopCountdown = durable ? () => {} : startApprovalCountdown(55, approvalLabel);
           let sig;
           try {
@@ -792,6 +807,17 @@
                 // Set even if signature extraction returned null — the raw bytes
                 // prove a signature was produced, so we must never re-prompt.
                 if (raw) signedRawTx = raw;
+                // DIAGNOSTIC (durable): confirm the wallet did not tamper with
+                // the message. v0 raw bytes round-trip losslessly.
+                if (raw && durable) {
+                  try {
+                    const back = web3.VersionedTransaction.deserialize(raw);
+                    const kept = back.message.recentBlockhash === prefetchedBlockhash.blockhash;
+                    console.info('[mint:durable] nonce hash preserved after signing: ' + kept);
+                    if (!kept) console.error('[mint:durable] WALLET REPLACED THE NONCE HASH:',
+                      back.message.recentBlockhash, '!=', prefetchedBlockhash.blockhash);
+                  } catch (e) { console.warn('[mint:durable] could not decode signed bytes', e); }
+                }
               },
             });
           } finally {

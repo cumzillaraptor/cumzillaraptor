@@ -63,6 +63,12 @@ domTest('desktop: the mint tx is durable (advance-nonce first, nonce hash)', asy
   const r = await boot({ mobile: false, rpcLatencyMs: 120 });
   assert.equal(r.isError, false, 'no error expected, got: ' + r.finalMsg);
   assert.equal(r.revealed, true, 'the raptor must be revealed');
+  // 2026-09-03 round 2: the durable tx MUST be a compiled v0 VersionedTransaction.
+  // With a legacy Transaction, desktop Phantom rewrites recentBlockhash before
+  // signing, silently replacing the nonce hash — which resurrects the expiry
+  // loop. A v0 message is signed as-is.
+  assert.ok(r.trace.some((t) => t.label === 'SIGN_TX(v0-versioned)'),
+    'the desktop mint tx must be a v0 VersionedTransaction (Phantom rewrites legacy blockhashes)');
   // The user-facing copy must tell the user there is no time pressure and warn
   // about the slow popup, not show a countdown that no longer applies.
   const all = r.msgs.join(' | ');

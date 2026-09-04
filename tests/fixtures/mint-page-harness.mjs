@@ -130,6 +130,12 @@ export async function bootMintPage(opts = {}) {
       mark('POPUP_APPROVED');
       // Attach a deterministic 64-byte signature the way a real wallet does, so
       // the connector's signatureOf() has something genuine to base58-encode.
+      if (typeof tx.sign === 'function' && tx.message && !tx.instructions) {
+        // VersionedTransaction (durable desktop path): sign([keypairs])
+        mark('SIGN_TX(v0-versioned)');
+        tx.sign([BUYER_KEYPAIR]);
+        return tx;
+      }
       try {
         tx.partialSign(BUYER_KEYPAIR);
       } catch {
