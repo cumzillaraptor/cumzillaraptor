@@ -138,6 +138,68 @@
     }
     .status-wrap { margin-top: 6px; display: grid; gap: 8px; justify-items: center; width: min(100%, 640px); }
 
+    /* ---- BUY $CUM (top-right splash button) ---- */
+    .buy-cum {
+      position: fixed;
+      top: clamp(20px, 3vw, 34px);
+      right: clamp(20px, 3vw, 34px);
+      z-index: 50;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+    .buy-cum-splash {
+      position: absolute;
+      inset: -42% -30% -46% -30%;
+      z-index: -1;
+      opacity: .9;
+      filter: drop-shadow(0 0 16px rgba(109, 254, 65, .55));
+      animation: buy-splash-float 3.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .buy-cum-splash svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    @keyframes buy-splash-float {
+      0%, 100% { transform: rotate(-3deg) scale(1); }
+      50% { transform: rotate(3deg) scale(1.06); }
+    }
+    .buy-cum-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: clamp(14px, 1.7vw, 20px) clamp(24px, 2.8vw, 38px);
+      background: var(--green);
+      color: var(--charcoal);
+      font-family: "Chewy", system-ui, sans-serif;
+      font-size: clamp(21px, 2.6vw, 30px);
+      letter-spacing: .01em;
+      text-transform: uppercase;
+      line-height: 1;
+      border-radius: 50px;
+      border: 3px solid rgba(255, 255, 255, .85);
+      box-shadow:
+        0 0 0 6px rgba(109, 254, 65, .18),
+        0 0 34px rgba(109, 254, 65, .55),
+        inset 0 -5px 0 rgba(0, 0, 0, .28),
+        0 10px 24px rgba(0, 0, 0, .55);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, .35);
+      will-change: transform;
+      transition: transform 160ms cubic-bezier(.16, 1, .3, 1), box-shadow 160ms ease;
+    }
+    .buy-cum:hover .buy-cum-label,
+    .buy-cum:focus-visible .buy-cum-label {
+      transform: scale(1.08) rotate(-1deg);
+      box-shadow:
+        0 0 0 8px rgba(109, 254, 65, .26),
+        0 0 60px rgba(109, 254, 65, .85),
+        inset 0 -5px 0 rgba(0, 0, 0, .28),
+        0 12px 30px rgba(0, 0, 0, .6);
+    }
+    .buy-cum:focus-visible .buy-cum-label { outline: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .buy-cum-splash { animation: none; }
+    }
+
     @keyframes splash-enter {
       0% { opacity: 0; transform: scale(.45) rotate(-15deg); }
       70% { opacity: 1; transform: scale(1.04) rotate(2deg); }
@@ -187,6 +249,19 @@
     </ul>
   </nav>
   <button class="scrim" type="button" aria-label="Close menu" tabindex="-1" data-open="false"></button>
+
+  <a class="buy-cum" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer" aria-label="Buy $CUM on pump.fun">
+    <span class="buy-cum-splash" aria-hidden="true">
+      <svg viewBox="0 0 200 200" role="presentation">
+        <path fill="var(--green)" d="M100 6c22 0 37 20 51 27 19 10 40 3 49 20 10 18-2 33-7 47-5 15 3 34-5 48-9 15-31 17-42 29-11 13-5 35-20 39-16 4-25-11-35-17-10-7-29-5-39-13-11-9-13-29-21-41-7-11-28-17-31-31-3-15 10-24 14-36 5-14-2-30 5-42 7-11 25-13 36-19 9-6 12-24 30-31 6-2 11-3 15-3Z"/>
+        <path fill="var(--green)" d="M12 62c7-4 16-1 19 6 3 7-1 15-8 18-7 3-15 0-18-6-3-7 1-14 7-18Z"/>
+        <path fill="var(--green)" d="M183 34c6-4 15-2 18 4 3 6 0 14-7 17-6 3-14 1-17-5-3-6 0-12 6-16Z"/>
+        <path fill="var(--green)" d="M170 168c8-5 18-2 21 4 3 7-1 15-9 18-7 3-15 0-18-6-2-6 1-12 6-16Z"/>
+        <path fill="var(--green)" d="M28 158c6-3 13-1 15 4 3 6 0 13-6 16-6 3-13 0-16-5-2-6 1-12 7-15Z"/>
+      </svg>
+    </span>
+    <span class="buy-cum-label">BUY $CUM <span aria-hidden="true">💦</span></span>
+  </a>
 
   <main>
     <section class="hero" aria-labelledby="hero-title">
