@@ -225,7 +225,7 @@ export async function bootMintPage(opts = {}) {
     // uses. Real 80-byte layout: version u32, state u32(1=Initialized),
     // authority 32, stored hash 32, feeCalculator u64.
     const nonceAddr = (await web3.PublicKey.createWithSeed(
-      BUYER_KEYPAIR.publicKey, 'cumz-claim-nonce', web3.SystemProgram.programId)).toBase58();
+      BUYER_KEYPAIR.publicKey, 'cumz-mint-nonce', web3.SystemProgram.programId)).toBase58();
     if (key === nonceAddr) {
       mark('RPC getAccountInfo(nonce)');
       await sleep(rpcLatencyMs);

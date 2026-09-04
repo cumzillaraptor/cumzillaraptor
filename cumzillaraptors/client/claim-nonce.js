@@ -11,9 +11,15 @@ const SYSTEM_PROGRAM_ID = SystemProgram.programId;
 
 // Deterministic nonce address per claimer wallet. createWithSeed is async in
 // web3.js 1.x, so this returns a Promise.
-export function claimNonceAddress(claimerPubkey) {
+//
+// `seed` isolates nonce accounts per FLOW: the claim page uses the default;
+// the mint page passes its own seed. Sharing one nonce account across pages
+// caused live cross-invalidation (2026-09-03): every submitted claim advances
+// the nonce, so a mint built on the shared hash during a claim run was stale
+// by the time the wallet returned — "Blockhash not found" on every attempt.
+export function claimNonceAddress(claimerPubkey, seed = NONCE_SEED) {
   const pk = typeof claimerPubkey === "string" ? new PublicKey(claimerPubkey) : claimerPubkey;
-  return PublicKey.createWithSeed(pk, NONCE_SEED, SYSTEM_PROGRAM_ID);
+  return PublicKey.createWithSeed(pk, seed, SYSTEM_PROGRAM_ID);
 }
 
 // Fetch + decode the nonce account at `address`. Returns null when missing or
@@ -78,8 +84,8 @@ export function advanceNonceInstruction(nonceAddress, authorizedPubkey) {
 // Build the setup tx: create the nonce account AT the user's derived address,
 // funded and owned-by-authority = the user. User pays rent (~0.0015 SOL) —
 // trustless, no deployer custody involved.
-export async function buildSetupNonceTx({ conn, claimer }) {
-  const address = await claimNonceAddress(claimer);
+export async function buildSetupNonceTx({ conn, claimer, seed = NONCE_SEED }) {
+  const address = await claimNonceAddress(claimer, seed);
   const existing = await fetchClaimNonce(conn, address);
   if (existing) return { exists: true, address };
   // The account may exist without decoding as an initialized nonce (e.g. a
@@ -100,7 +106,7 @@ export async function buildSetupNonceTx({ conn, claimer }) {
     SystemProgram.createAccountWithSeed({
       fromPubkey: claimer,
       basePubkey: claimer,
-      seed: NONCE_SEED,
+      seed,
       newAccountPubkey: address,
       lamports: LAMPORTS_RENT,
       space: 80, // NonceAccountLayout.span

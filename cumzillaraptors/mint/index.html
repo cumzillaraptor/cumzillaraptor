@@ -271,10 +271,14 @@
     // whether the one-time setup popup is needed (for the "1/2" count) without
     // paying an extra RPC read inside the click handler.
     let mintNonce = null;      // { address, authority, blockhash, lamports } | null
+    // The mint flow gets its OWN nonce account, isolated from the claim page's.
+    // Sharing one (2026-09-03) let every claim advance the hash under a pending
+    // mint — preflight "Blockhash not found" on every roll.
+    const MINT_NONCE_SEED = 'cumz-mint-nonce';
     async function warmNonce() {
       if (!desktopFastPath || !walletPubkey) return;
       try {
-        const address = await claimNonceAddress(walletPubkey);
+        const address = await claimNonceAddress(walletPubkey, MINT_NONCE_SEED);
         mintNonce = await fetchClaimNonce(conn, address);
       } catch { /* click path re-reads; a cold warm never blocks a roll */ }
     }
@@ -291,7 +295,7 @@
     // risk beyond rent.
     async function ensureMintNonce() {
       if (mintNonce) return;
-      const res = await buildSetupNonceTx({ conn, claimer: walletPubkey });
+      const res = await buildSetupNonceTx({ conn, claimer: walletPubkey, seed: MINT_NONCE_SEED });
       if (!res.exists) {
         setMsg('one-time setup (approval 1 of 2): approve the small rent deposit (~0.0015 SOL) ' +
                'in your wallet…');
