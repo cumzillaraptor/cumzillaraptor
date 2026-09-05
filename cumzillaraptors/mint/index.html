@@ -227,18 +227,6 @@
       confirmSignatureFast,
     } from "/cumzillaraptors/mint/chain.js";
     import { createWalletConnector, isMobileWalletBrowser } from "/cumzillaraptors/mint/wallet.js";
-    // Durable-nonce helpers (shared with the claim page). Desktop Phantom takes
-    // ~40s of internal simulation before its approval popup renders on devnet,
-    // while a devnet 'confirmed' blockhash measured through our RPC dies after
-    // ~25-27s (2026-09-03: 146 blocks left at fetch, ~6 blocks/s). A
-    // blockhash-based desktop tx is therefore DEAD before the user can even see
-    // the approve button — a durable-nonce tx never expires, so the slow popup
-    // is harmless.
-    import {
-      claimNonceAddress, fetchClaimNonce, buildSetupNonceTx, advanceNonceInstruction,
-    } from "/cumzillaraptors/mint/claim-nonce.js";
-    // v0 compilation for the durable desktop tx (see below): web3-shim exposes
-    // the extra classes chain.js does not re-export.
     import web3 from "/cumzillaraptors/mint/web3-shim.js";
 
     const cfg = window.CUMZ_CONFIG;
@@ -256,7 +244,7 @@
 
     let provider = null, walletPubkey = null, launch = null;
     let poolOrder = null, metaCache = null, spinning = false;
-    const desktopFastPath = !isMobileWalletBrowser();   // false => native Phantom signAndSend
+    const isMobile = isMobileWalletBrowser();
     let pageActive = true;
     // Every signature this page has handed to the wallet for the CURRENT roll.
     // A blockhash-expiry retry re-opens the wallet, and the earlier request is
@@ -270,60 +258,6 @@
     // signature — so this can never double-charge.
     let signedRawTx = null;
 
-    // Desktop durable-nonce state. Warmed on connect so the roll click knows
-    // whether the one-time setup popup is needed (for the "1/2" count) without
-    // paying an extra RPC read inside the click handler.
-    let mintNonce = null;      // { address, authority, blockhash, lamports } | null
-    // The mint flow gets its OWN nonce account, isolated from the claim page's.
-    // Sharing one (2026-09-03) let every claim advance the hash under a pending
-    // mint — preflight "Blockhash not found" on every roll.
-    const MINT_NONCE_SEED = 'cumz-mint-nonce';
-    async function warmNonce() {
-      if (!desktopFastPath || !walletPubkey) return;
-      try {
-        const address = await claimNonceAddress(walletPubkey, MINT_NONCE_SEED);
-        mintNonce = await fetchClaimNonce(conn, address);
-      } catch { /* click path re-reads; a cold warm never blocks a roll */ }
-    }
-
-    // One-time durable-nonce setup (desktop only). ~0.0015 SOL rent, paid by the
-    // buyer, owned/authorized by the buyer — same trustless shape as the claim
-    // page. Folded into the roll click, so the user sees it as approval 1 of 2.
-    //
-    // The setup tx is blockhash-based (chicken-and-egg: no nonce exists yet),
-    // and Phantom's ~40s devnet popup delay applies to EVERY popup — page-side
-    // signing expired this tx on every attempt (2026-09-03 round 4: "the 1st
-    // approval loops infinitely"). So the WALLET owns submission here:
-    // signAndSendTransaction applies a FRESH blockhash at approval time, making
-    // its own popup delay harmless. The page then confirms by OUTCOME — the
-    // nonce account existing — because the wallet may have replaced our
-    // blockhash, so no blockheight window applies. Re-running setup can never
-    // double-charge: create-with-seed on an existing account simply fails.
-    async function ensureMintNonce() {
-      if (mintNonce) return;
-      const res = await buildSetupNonceTx({ conn, claimer: walletPubkey, seed: MINT_NONCE_SEED });
-      if (!res.exists) {
-        setMsg('one-time setup (approval 1 of 2): approve the small rent deposit (~0.0015 SOL) ' +
-               'in your wallet — no rush, and the popup can take up to a minute to appear…');
-        const sig = await wc.signAndSend(res.tx, { preferSignOnly: false });
-        console.info('[mint:setup] wallet-submitted setup sig=' + (sig ? sig.slice(0, 8) + '…' : 'null'));
-        setMsg('setup accepted — confirming on-chain…');
-        const deadline = Date.now() + 90_000;
-        while (Date.now() < deadline) {
-          mintNonce = await fetchClaimNonce(conn, res.address);
-          if (mintNonce) break;
-          await new Promise((r) => setTimeout(r, 1200));
-        }
-        if (!mintNonce) {
-          throw new Error('the setup transaction did not confirm — check your wallet history, ' +
-            'then reload the page and roll again (you will not be charged twice).');
-        }
-        setMsg('setup complete — building your roll (approval 2 of 2)…');
-        return;
-      }
-      mintNonce = await fetchClaimNonce(conn, res.address);
-      if (!mintNonce) throw new Error('setup could not be verified — reload the page and retry.');
-    }
 
     const short = (s) => s.length > 18 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
     function setMsg(text, cls) { const el = $('mint-msg'); el.textContent = text || ''; el.className = 'msg' + (cls ? ' ' + cls : ''); }
@@ -369,7 +303,6 @@
         // Warm the pool + metadata caches now so the first roll does not spend
         // ~450ms of its approval window fetching 330KB inside the click handler.
         prefetchMintData();
-        warmNonce();
         updateButtons();
       },
       onDisconnect: () => {
@@ -379,8 +312,6 @@
       },
       onAccountChange: (pk) => {
         walletPubkey = pk;
-        mintNonce = null;      // nonce accounts are per-wallet
-        warmNonce();
         $('btn-connect').textContent = 'connected · ' + short(pk.toBase58());
         updateButtons();
       },
@@ -583,13 +514,8 @@
       signedRawTx = null;      // never rebroadcast a previous roll's transaction
       try {
         let nftId, meta, name, tx, result;
-        // Unified path (restored 2026-08-30). Both desktop and mobile use the
-        // sign-only path (signTransaction) + page-side submission. This is the
-        // flow that opens the wallet popup FAST: Phantom runs an internal
-        // simulation before showing a signAndSendTransaction popup (the ~40s
-        // desktop delay), but a signTransaction popup appears immediately. The
-        // page owns submission (maxRetries + rebroadcast + reconciliation), so
-        // delivery is robust.
+        // Select the raptor and build the exact one-payment instruction before
+        // asking the wallet for approval.
         setMsg('rolling the drum…');
         nftId = await rollNftId();
         const metaAll = await loadMeta();
@@ -607,61 +533,21 @@
           mplCore: MPL_CORE,
           nftId, name, uri: meta.u, metadataProof: meta.p,
         });
-        if (desktopFastPath) {
-          // DESKTOP (2026-09-03 fix): durable-nonce transaction, no expiry.
-          //
-          // The reported failure: the Phantom EXTENSION takes ~40s of internal
-          // simulation before rendering the approval popup, but a devnet
-          // 'confirmed' blockhash measured through rpc.cumzillaraptor.com is
-          // only valid ~25-27s (146 blocks at ~6 blocks/s). Every desktop
-          // approval was therefore signed AFTER its blockhash died: preflight
-          // rejected it with "Blockhash not found", the expiry branch re-opened
-          // the wallet with a fresh hash, and the same 40s popup delay killed
-          // that one too — the endless approval loop, no SOL ever spent.
-          //
-          // A durable-nonce tx (AdvanceNonceAccount first, recentBlockhash =
-          // the nonce's stored hash) NEVER expires, so the 40s popup is
-          // harmless. This is the exact machinery the claim page has used in
-          // production; the one-time setup (~0.0015 SOL rent) is folded into
-          // the roll as approval 1 of 2.
-          await ensureMintNonce();
-          const freshNonce = await fetchClaimNonce(conn, mintNonce.address);
-          if (!freshNonce) throw new Error('setup account vanished — reload the page and retry.');
-          mintNonce = freshNonce;
-          // v0 VersionedTransaction, NOT legacy (2026-09-03, round 2): with a
-          // LEGACY tx, desktop Phantom re-wrote recentBlockhash before signing
-          // (its "helpful" refresh), silently replacing the nonce hash with a
-          // fresh blockhash. By the time its 40s pre-popup simulation finished,
-          // that swapped-in hash was expired → preflight "Blockhash not found"
-          // on every attempt, even though our nonce tx was provably valid (the
-          // same tx submitted from a script confirms fine). A compiled v0
-          // message is opaque to the wallet — Phantom signs the bytes as-is.
-          // This matches the claim page, whose durable flow works.
-          const msgV0 = new web3.TransactionMessage({
-            payerKey: walletPubkey,
-            recentBlockhash: mintNonce.blockhash,
-            instructions: [
-              advanceNonceInstruction(mintNonce.address, mintNonce.authority),
-              ix,
-            ],
-          }).compileToV0Message();
-          tx = new web3.VersionedTransaction(msgV0);
-          setMsg('approve the 1 SOL payment in your wallet — no rush, this approval never expires. ' +
-                 'the popup can take up to a minute to appear.');
-          result = await sendWithRetry(tx, 2,
-            { blockhash: mintNonce.blockhash, lastValidBlockHeight: null, durable: true }, true);
-        } else {
-          tx = new Transaction().add(ix);
-          tx.feePayer = walletPubkey;
-          setMsg('checking transaction…');
-          const [sim, signingBlockhash] = await Promise.all([
-            conn.simulateTransaction(tx),
-            conn.getLatestBlockhash('confirmed'),
-          ]);
-          if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
-          setMsg('approve the 1 SOL payment in your wallet…');
-          result = await sendWithRetry(tx, 3, signingBlockhash, true);
-        }
+        // Use a normal recent-blockhash transaction for mint approvals. Phantom
+        // deliberately warns on durable nonces because a signed transaction can
+        // be retained and submitted later. Desktop therefore uses Phantom's
+        // sign-and-send API so approval and broadcast are one immediate action;
+        // mobile keeps page-side submission to stay on the configured cluster.
+        tx = new Transaction().add(ix);
+        tx.feePayer = walletPubkey;
+        setMsg('checking transaction…');
+        const [sim, signingBlockhash] = await Promise.all([
+          conn.simulateTransaction(tx),
+          conn.getLatestBlockhash('confirmed'),
+        ]);
+        if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
+        setMsg('approve the 1 SOL payment in your wallet…');
+        result = await sendWithRetry(tx, 3, signingBlockhash, isMobile);
         const sig = result.sig;
 
         // Animation starts only after Phantom returns a signature. This avoids a

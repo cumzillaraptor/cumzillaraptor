@@ -73,11 +73,14 @@ test('C2: pending signatures clear on success and on user rejection only', () =>
 });
 
 test('H1: desktop uses native wallet sign-and-send, per-platform', () => {
-  // Restored (b629573) desktop flow: preferSignOnly is derived per-platform and
-  // passed to the shared sendWithRetry, so desktop stays native (Phantom owns
-  // sign + broadcast) while mobile keeps page submission.
-  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, true\)/);
+  assert.match(mint, /const isMobile = isMobileWalletBrowser\(\)/);
+  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, isMobile\)/);
   assert.match(mint, /preferSignOnly,/);
+});
+
+test('H3: mint does not use a durable nonce that triggers Phantom drain warnings', () => {
+  assert.doesNotMatch(mint, /advanceNonceInstruction|MINT_NONCE_SEED|ensureMintNonce/);
+  assert.doesNotMatch(mint, /never expires/i);
 });
 
 test('H1: wallet honours an explicit skipPreflight instead of hardcoding false', () => {

@@ -35,62 +35,26 @@ function prePopupRpc(r) {
   );
 }
 
-domTest('desktop: prep work before the popup stays minimal (durable-nonce path)', async () => {
-  // 2026-09-03 desktop fix: Phantom's pre-popup simulation takes ~40s on devnet
-  // while a devnet blockhash (measured through our proxy) dies in ~25-27s, so
-  // desktop now signs a DURABLE-NONCE transaction that never expires. Pre-popup
-  // work is a nonce re-read (plus warm-cache hits); crucially there is NO
-  // getLatestBlockhash race to lose — no time pressure exists at all.
+domTest('desktop: mint approval uses a normal wallet-submitted transaction', async () => {
+  // Phantom labels durable-nonce approvals as transactions that can be retained
+  // and submitted later, with a frightening "could steal your funds" warning.
+  // A public mint must use a normal recent blockhash and ask Phantom to submit it
+  // immediately, so no durable authorization survives the approval.
   const r = await boot({ mobile: false, rpcLatencyMs: 250, fetchLatencyMs: 250 });
   assert.equal(r.error, null);
   const pre = prePopupRpc(r);
   assert.ok(pre, 'the popup must open');
   const labels = pre.map((p) => p.label);
-  assert.ok(labels.some((l) => l.includes('getAccountInfo(nonce)')),
-    'desktop must re-read the nonce before the popup, got: ' + labels.join(', '));
-  assert.ok(!labels.includes('RPC getLatestBlockhash'),
-    'the durable tx must NOT depend on a fresh blockhash: ' + labels.join(', '));
-  const clickToPopup = r.popupAt - r.rollAt;
-  assert.ok(clickToPopup < 1500,
-    'click->popup should be ~2 round trips max, was ' + clickToPopup + 'ms');
-});
-
-domTest('desktop: the mint tx is durable (advance-nonce first, nonce hash)', async () => {
-  // THE 2026-09-03 report: 40s popup delay + ~25s devnet blockhash life =>
-  // every desktop signature was born expired => preflight "Blockhash not found"
-  // => expiry branch re-prompted => endless approval loop, nothing minted.
-  // Durability removes the deadline entirely.
-  const r = await boot({ mobile: false, rpcLatencyMs: 120 });
-  assert.equal(r.isError, false, 'no error expected, got: ' + r.finalMsg);
-  assert.equal(r.revealed, true, 'the raptor must be revealed');
-  // 2026-09-03 round 2: the durable tx MUST be a compiled v0 VersionedTransaction.
-  // With a legacy Transaction, desktop Phantom rewrites recentBlockhash before
-  // signing, silently replacing the nonce hash — which resurrects the expiry
-  // loop. A v0 message is signed as-is.
-  assert.ok(r.trace.some((t) => t.label === 'SIGN_TX(v0-versioned)'),
-    'the desktop mint tx must be a v0 VersionedTransaction (Phantom rewrites legacy blockhashes)');
-  // The user-facing copy must tell the user there is no time pressure and warn
-  // about the slow popup, not show a countdown that no longer applies.
-  const all = r.msgs.join(' | ');
-  assert.match(all, /never expires/i,
-    'desktop approval message must say the approval never expires, got: ' + all);
-  assert.doesNotMatch(all, /before the approval window expires/i,
-    'no countdown may be shown for a durable transaction');
-});
-
-domTest('desktop: first roll folds the one-time nonce setup into the flow', async () => {
-  const r = await boot({ mobile: false, rpcLatencyMs: 120, nonceExists: false });
-  assert.equal(r.isError, false, 'no error expected, got: ' + r.finalMsg);
-  assert.equal(r.revealed, true, 'the raptor must be revealed after setup + mint');
-  const labels = r.trace.map((t) => t.label);
-  assert.ok(labels.some((l) => l.includes('NONCE_SETUP')),
-    'the setup transaction must be submitted first');
-  const all = r.msgs.join(' | ');
-  assert.match(all, /approval 1 of 2/i,
-    'setup must be labeled as approval 1 of 2, got: ' + all);
-  // both approvals happened: setup + paid mint
-  const approvals = r.trace.filter((t) => t.label === 'POPUP_APPROVED').length;
-  assert.equal(approvals, 2, 'exactly two approvals (setup + mint), got ' + approvals);
+  assert.ok(labels.includes('RPC getLatestBlockhash'),
+    'normal mint must obtain a recent blockhash: ' + labels.join(', '));
+  assert.ok(!labels.some((l) => l.includes('getAccountInfo(nonce)')),
+    'mint must not use a durable nonce: ' + labels.join(', '));
+  assert.ok(r.trace.some((t) => t.label.includes('POPUP_OPEN(signAndSendTransaction)')),
+    'Phantom must sign and immediately submit the normal transaction');
+  assert.ok(!r.trace.some((t) => t.label === 'SIGN_TX(v0-versioned)'),
+    'mint approval must not be a retained durable v0 transaction');
+  assert.equal(r.trace.filter((t) => t.label === 'POPUP_APPROVED').length, 1,
+    'a mint with no setup account must need exactly one approval');
 });
 
 domTest('desktop: the registry is warmed before the roll click', async () => {
@@ -100,19 +64,13 @@ domTest('desktop: the registry is warmed before the roll click', async () => {
   assert.ok(warm.at < r.rollAt, 'registry read must happen before the click');
 });
 
-domTest('desktop uses the fast sign-only popup, page submits', async () => {
-  // THE 2026-08-30 desktop fix (final): Phantom runs an internal simulation
-  // before showing a signAndSendTransaction popup (~40s), but a signTransaction
-  // popup appears immediately. Both desktop and mobile now use the sign-only
-  // path + page-side submission, so the popup opens fast on desktop too.
+domTest('desktop delegates immediate submission to Phantom', async () => {
   const r = await boot({ mobile: false, rpcLatencyMs: 120 });
   const labels = r.trace.map((t) => t.label);
-  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
-    'desktop must use the fast signTransaction popup');
-  assert.ok(!labels.some((l) => l.includes('POPUP_OPEN(signAndSendTransaction)')),
-    'desktop must NOT use signAndSendTransaction (slow Phantom simulation)');
-  assert.ok(labels.some((l) => l.includes('sendRawTransaction')),
-    'the page must submit the signed tx through its own RPC');
+  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signAndSendTransaction)')),
+    'desktop must use Phantom sign-and-send so the approval cannot be retained');
+  assert.ok(!labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
+    'desktop must not request a sign-only approval');
 });
 
 domTest('desktop: the raptor is revealed and no error is shown', async () => {
@@ -346,7 +304,7 @@ domTest('once signed, a submission failure never opens a fresh approval', async 
   // wallet. Fix: guard on `||` so a produced raw tx proves a signature exists and
   // we must reconcile, never re-prompt.
   const r = await boot({
-    mobile: false,
+    mobile: true,
     rpcLatencyMs: 100,
     submitThrows: new Error('failed to send transaction: node is behind'),
     statusOf: null,          // nothing ever lands
