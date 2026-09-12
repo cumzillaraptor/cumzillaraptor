@@ -297,6 +297,7 @@
     // ---- wallet (shared connector: phantom/solflare/backpack/glow/exodus + wallet-standard) ----
     const wc = createWalletConnector({
       rpcUrl: cfg.rpcUrl,
+      network: cfg.network,
       onConnect: (pk) => {
         walletPubkey = pk;
         $('btn-connect').textContent = 'connected · ' + short(pk.toBase58());

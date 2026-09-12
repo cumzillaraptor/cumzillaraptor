@@ -112,10 +112,11 @@ function standardConnectFeature(wallet) {
   return wallet.features?.["standard:connect"] ?? null;
 }
 
-export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccountChange } = {}) {
+export function createWalletConnector({ rpcUrl, network = "devnet", onConnect, onDisconnect, onAccountChange } = {}) {
   let provider = null;       // legacy provider object or wallet-standard wallet
   let kind = null;           // "legacy" | "standard"
   let publicKey = null;      // PublicKey | null
+  let standardAccount = null;
   let conn = rpcUrl ? new Connection(rpcUrl, "confirmed") : null;
 
   function emitConnect(pk) {
@@ -152,7 +153,7 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
         const res = await feat.connect({ silent: false });
         const addr = res?.accounts?.[0]?.address;
         if (!addr) throw new Error(w.name + " returned no account.");
-        kind = "standard"; provider = w;
+        kind = "standard"; provider = w; standardAccount = res.accounts[0];
         emitConnect(new PublicKey(addr));
         return { status: "ok", publicKey };
       }
@@ -191,7 +192,7 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
           ]);
           const addr = res?.accounts?.[0]?.address;
           if (!addr) throw new Error("MetaMask returned no account.");
-          kind = "standard"; provider = mmWallet;
+          kind = "standard"; provider = mmWallet; standardAccount = res.accounts[0];
           emitConnect(new PublicKey(addr));
           return { status: "ok", publicKey };
         }
@@ -253,6 +254,7 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
   async function disconnect() {
     try { await provider?.disconnect?.(); } catch {}
     publicKey = null;
+    standardAccount = null;
     try { onDisconnect?.(); } catch {}
   }
 
@@ -287,6 +289,37 @@ export function createWalletConnector({ rpcUrl, onConnect, onDisconnect, onAccou
     //     signature its RPC will never see and reports a bogus timeout.
     //
     // Callers can still opt out per-call with preferSignOnly: false.
+    // Wallet Standard sign-only feature. Its output is the complete serialized
+    // signed transaction, so it gets the same page-side submission, onSigned
+    // reconciliation, and idempotent rebroadcast guarantees as injected wallets.
+    const standardSign = kind === "standard"
+      ? provider.features?.["solana:signTransaction"]?.signTransaction
+      : null;
+    if (options.preferSignOnly === true && standardSign && standardAccount) {
+      const unsigned = transaction instanceof VersionedTransaction
+        ? transaction.serialize()
+        : transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const chain = network === "mainnet-beta" ? "solana:mainnet" : "solana:" + network;
+      const outputs = await standardSign({
+        account: standardAccount,
+        transaction: new Uint8Array(unsigned),
+        chain,
+        options: { preflightCommitment: "confirmed" },
+      });
+      const raw = outputs?.[0]?.signedTransaction;
+      if (!raw) throw new Error("Wallet returned no signed transaction.");
+      const signed = transaction instanceof VersionedTransaction
+        ? VersionedTransaction.deserialize(raw)
+        : Transaction.from(raw);
+      let sig = null;
+      try { sig = signatureOf(signed); } catch {}
+      try { options.onSigned?.(sig, raw); } catch {}
+      return conn.sendRawTransaction(raw, {
+        skipPreflight: options.skipPreflight === true,
+        maxRetries: options.maxRetries != null ? options.maxRetries : 5,
+      });
+    }
+
     const canSignOnly = typeof provider.signTransaction === "function";
     const signOnly = options.preferSignOnly === true ||
       (options.preferSignOnly !== false && canSignOnly);

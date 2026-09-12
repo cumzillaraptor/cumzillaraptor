@@ -212,6 +212,7 @@
     let claiming = false;       // pause status refresh + block re-entry while claiming
     const wc = createWalletConnector({
       rpcUrl: cfg.rpcUrl,
+      network: cfg.network,
       onConnect: (pk) => {
         $('v-recipient').textContent = short(pk.toBase58());
         maybeCheckEligibility();

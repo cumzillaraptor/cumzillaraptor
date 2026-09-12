@@ -108,6 +108,72 @@ test('a caller can still opt out of sign-only', async () => {
   assert.equal(sig, 'SIG_WALLET');
 });
 
+test('wallet-standard signTransaction keeps signed bytes and page-submits', async () => {
+  const { createWalletConnector } = await import('../cumzillaraptors/client/wallet.js');
+  const web3 = await import('@solana/web3.js');
+  const realWindow = globalThis.window;
+  const realNavigator = globalThis.navigator;
+  const realSend = web3.Connection.prototype.sendRawTransaction;
+  const payer = web3.Keypair.generate();
+  const tx = new web3.Transaction({
+    feePayer: payer.publicKey,
+    recentBlockhash: 'GHtXQBsoZHVnNFa9YevAzFr17DJjgHXk3ycTKD5xD3Zi',
+  }).add(web3.SystemProgram.transfer({
+    fromPubkey: payer.publicKey,
+    toPubkey: web3.Keypair.generate().publicKey,
+    lamports: 1,
+  }));
+  const account = { address: payer.publicKey.toBase58(), features: ['solana:signTransaction'] };
+  const calls = [];
+  const standardWallet = {
+    name: 'Standard Test Wallet',
+    features: {
+      'standard:connect': { connect: async () => ({ accounts: [account] }) },
+      'solana:signTransaction': {
+        signTransaction: async (input) => {
+          calls.push({ kind: 'sign', input });
+          const signed = web3.Transaction.from(input.transaction);
+          signed.partialSign(payer);
+          return [{ signedTransaction: signed.serialize() }];
+        },
+      },
+      'solana:signAndSendTransaction': {
+        signAndSendTransaction: async () => { calls.push({ kind: 'walletBroadcast' }); },
+      },
+    },
+  };
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { getWallets: () => [standardWallet], userAgent: 'Desktop' },
+    configurable: true, writable: true,
+  });
+  globalThis.window = { addEventListener() {} };
+  web3.Connection.prototype.sendRawTransaction = async (raw, options) => {
+    calls.push({ kind: 'pageSubmit', raw, options });
+    return 'STANDARD_SIG';
+  };
+  try {
+    const wc = createWalletConnector({ rpcUrl: 'https://example.invalid', network: 'mainnet' });
+    await wc.connect();
+    let signedEvidence = null;
+    const sig = await wc.signAndSend(tx, {
+      preferSignOnly: true,
+      skipPreflight: false,
+      onSigned: (signedSig, raw) => { signedEvidence = { signedSig, raw }; },
+    });
+    assert.equal(sig, 'STANDARD_SIG');
+    assert.deepEqual(calls.map((c) => c.kind), ['sign', 'pageSubmit']);
+    assert.equal(calls[0].input.chain, 'solana:mainnet');
+    assert.ok(signedEvidence?.signedSig, 'signature must be reported before page submission');
+    assert.ok(signedEvidence?.raw?.length, 'raw signed bytes must be retained for rebroadcast');
+  } finally {
+    web3.Connection.prototype.sendRawTransaction = realSend;
+    Object.defineProperty(globalThis, 'navigator', {
+      value: realNavigator, configurable: true, writable: true,
+    });
+    globalThis.window = realWindow;
+  }
+});
+
 test('mint checks transaction history before reporting a confirmation timeout', () => {
   assert.match(mintSource, /getSignatureStatuses\(\[sig\],\s*\{[\s\S]*searchTransactionHistory:\s*true/);
   assert.match(mintSource, /confirmationStatus === ['"]confirmed['"]/);
