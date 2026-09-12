@@ -4,7 +4,7 @@
 
 **Architecture:** Same program (Anchor, secp-in-program claims), same site, parameterized by `network`. Deploy via existing x86_64 GitHub Actions pipeline (no ARM local builds), then run launch setup + sale-enable against mainnet RPC, then flip site config.
 
-**Status: PLAN ONLY.** Nothing here executes without an explicit "go" from the owner per phase. This document authorizes nothing.
+**Status: PHASES 0–1 COMPLETE; PAUSED BEFORE PHASE 2 FUNDING/KEY PREP.** Nothing in Phase 2 or later executes without an explicit "go" from the owner. This document authorizes no funding, key generation, signing, deployment, setup transaction, sale enable, or live cutover.
 
 ---
 
@@ -32,13 +32,13 @@ Output of Phase 0: a filled worksheet committed as `docs/operations/mainnet-deci
 
 ## Phase 1 — Parameterize the codebase for cluster
 
-1. **Program source:** grep all `'devnet'` literals in `programs/cumzillaraptors/src/` — the cluster tag feeds the allocation hash and claim message builder. Introduce a `CLUSTER` const set at deploy time (or instruction arg already present — verify which).
-2. **Tests:** add/extend Bankrun tests asserting mainnet-tag hashes differ from devnet-tag hashes and that a devnet-signed claim fails on a mainnet-initialized registry (cross-cluster rejection).
-3. **Scripts:** copy `execute-devnet-launch-setup.mjs` / `execute-devnet-enable-sale.mjs` to `-mainnet` variants: swap RPC, cluster tag `'mainnet'`, treasury/authority consts from Phase 0, and add balance preflight (refuse if authority < ~1 SOL).
+1. **Program source:** compile-time `mainnet` feature retargets allocation/claim/metadata/EIP-191 domains; authority and approved metadata root are cluster-gated and intentionally zero placeholders until the fresh Phase 2 identities/artifacts exist. `initialize_launch` requires the exact compiled cluster-tag hash and a nonzero approved metadata root. Non-debug mainnet builds fail compilation while either placeholder remains.
+2. **Tests:** cross-cluster vectors pin devnet/mainnet claim divergence; Rust tests cover the feature-gated allocation domain. Full x86 SBPF/Bankrun validation remains an artifact-acceptance gate after Phase 2 fills the program ID, authority, and metadata root—it is not executable on this ARM host.
+3. **Scripts:** mainnet variants use mainnet RPC/tag, require the Phase 0 authority, consume a generated mainnet manifest, reject devnet roots, require the manifest-bound collection keypair, verify allocation hash/counts before send, and decode all immutable roots/hash after setup. They remain dormant until Phase 3.
 4. **Site config:** add `dist/config/site.mainnet.js` (network `mainnet-beta`, public RPC `https://api.mainnet-beta.solana.com`, placeholder collection until setup runs). Build script picks config by env var; default stays devnet until flip day.
 5. Verify: `npm test` green; `node --check` on every changed script; commit.
 
-Gate G1: tests + review pass, diff reviewed line-by-line for no accidental devnet behavior change.
+Gate G1: Phase 1 source-policy/JS/Rust host tests pass and devnet artifacts remain unchanged. Final mainnet placeholder fill + fresh x86 SBPF artifact validation is the first step of Phase 2 prep and does not authorize deployment.
 
 ## Phase 2 — Build & deploy the program (CI)
 

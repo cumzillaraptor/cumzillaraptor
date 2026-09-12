@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[cfg(not(feature = "mainnet"))]
-#[test]
+    #[test]
     fn approved_360_claim_proof_and_leaf_match_v1_artifact() {
         let program = Pubkey::from_str("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY").unwrap();
         let leaf = claim_leaf_v1(&program, DEVNET_CLUSTER, &ETH_360, 360, &NONCE_360).unwrap();

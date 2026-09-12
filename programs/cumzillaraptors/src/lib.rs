@@ -15,9 +15,63 @@ use state::{
     launch_authority, ClaimReceipt, CollectionConfig, SaleState, CLAIM_COUNT, PUBLIC_COUNT,
 };
 
+pub const DEVNET_PROGRAM_ID_BYTES: [u8; 32] = [
+    0x8d, 0xb8, 0xf5, 0x7a, 0x21, 0x6a, 0x7a, 0x98, 0xb4, 0x4e, 0x33, 0x10, 0xa4, 0x21, 0xc2, 0x86,
+    0x23, 0x62, 0x3a, 0x6f, 0x1e, 0x5c, 0x04, 0x54, 0x4b, 0xe9, 0xf8, 0x03, 0xe2, 0xff, 0x49, 0xe7,
+];
+
+#[cfg(feature = "mainnet")]
+declare_id!("11111111111111111111111111111111"); // TODO(mainnet): replace with fresh Phase-2 program ID.
+#[cfg(not(feature = "mainnet"))]
 declare_id!("AYE4iC2gp81H8jvMjk4EGxWP2sJFzuDptUwxqwTZYTMY");
 
 pub const PUBLIC_MINT_PRICE_LAMPORTS: u64 = 1_000_000_000;
+
+#[cfg(feature = "mainnet")]
+const EXPECTED_CLUSTER_TAG_HASH: [u8; 32] = [
+    0x28, 0x2a, 0x3e, 0xbb, 0xd2, 0x3b, 0x7c, 0xca, 0x09, 0x29, 0x44, 0x1e, 0x66, 0x72, 0xe0, 0xc1,
+    0x02, 0x3d, 0x9e, 0x30, 0xc9, 0x6a, 0xae, 0x7c, 0xd4, 0x58, 0xce, 0xc3, 0x50, 0x8d, 0xbf, 0xb6,
+];
+#[cfg(not(feature = "mainnet"))]
+const EXPECTED_CLUSTER_TAG_HASH: [u8; 32] = [
+    0xdb, 0x9c, 0x2f, 0x3d, 0x94, 0x31, 0x27, 0xdd, 0x16, 0x59, 0xb2, 0x76, 0xff, 0xc3, 0xb3, 0xa8,
+    0xf0, 0x82, 0xf0, 0x4f, 0x85, 0x0a, 0xcf, 0xbb, 0x00, 0x8f, 0x49, 0x84, 0xcc, 0x00, 0x12, 0xf2,
+];
+
+// Phase-1 hard stop: the `mainnet` feature may be host-checked while the Phase-2
+// identities/roots are still placeholders, but it must not produce a deployable
+// release artifact until both values are explicitly filled.
+#[cfg(all(
+    feature = "mainnet",
+    not(debug_assertions),
+    not(feature = "test-validation")
+))]
+const _: () = {
+    const fn any_nonzero(bytes: &[u8; 32]) -> bool {
+        let mut i = 0;
+        while i < 32 {
+            if bytes[i] != 0 {
+                return true;
+            }
+            i += 1;
+        }
+        false
+    }
+    assert!(any_nonzero(&state::LAUNCH_AUTHORITY_BYTES));
+    assert!(any_nonzero(&APPROVED_METADATA_ROOT));
+    assert!(any_nonzero(&ID.to_bytes()));
+    const fn differs(a: &[u8; 32], b: &[u8; 32]) -> bool {
+        let mut i = 0;
+        while i < 32 {
+            if a[i] != b[i] {
+                return true;
+            }
+            i += 1;
+        }
+        false
+    }
+    assert!(differs(&ID.to_bytes(), &DEVNET_PROGRAM_ID_BYTES));
+};
 
 #[program]
 pub mod cumzillaraptors {
@@ -916,11 +970,11 @@ fn validate_launch_parameters(
         CumzillaraptorsError::InvalidClaimRoot
     );
     require!(
-        metadata_root == APPROVED_METADATA_ROOT,
+        metadata_root != [0; 32] && metadata_root == APPROVED_METADATA_ROOT,
         CumzillaraptorsError::InvalidMetadataRoot
     );
     require!(
-        cluster_tag_hash != [0; 32],
+        cluster_tag_hash == EXPECTED_CLUSTER_TAG_HASH,
         CumzillaraptorsError::InvalidClusterTagHash
     );
     Ok(())
@@ -966,9 +1020,17 @@ pub struct InitializeLaunch<'info> {
 mod tests {
     use super::*;
 
+    #[cfg(not(feature = "mainnet"))]
     #[test]
     fn configured_authority_is_not_default() {
         assert_ne!(launch_authority(), Pubkey::default());
+    }
+
+    #[cfg(all(feature = "mainnet", not(feature = "test-validation")))]
+    #[test]
+    fn mainnet_authority_placeholder_fails_closed_until_phase_2_fill() {
+        assert_eq!(launch_authority(), Pubkey::default());
+        assert!(validate_launch_authority(Pubkey::new_unique()).is_err());
     }
 
     #[cfg(not(feature = "test-validation"))]
@@ -1100,6 +1162,7 @@ mod tests {
             (valid, [0; 32], APPROVED_METADATA_ROOT, valid),
             (valid, valid, [0; 32], valid),
             (valid, valid, valid, [0; 32]),
+            (valid, valid, valid, [9; 32]),
         ] {
             assert!(validate_launch_parameters(
                 launch_authority(),
@@ -1136,7 +1199,7 @@ mod tests {
             valid,
             valid,
             APPROVED_METADATA_ROOT,
-            valid,
+            EXPECTED_CLUSTER_TAG_HASH,
             PUBLIC_COUNT,
             CLAIM_COUNT,
         )

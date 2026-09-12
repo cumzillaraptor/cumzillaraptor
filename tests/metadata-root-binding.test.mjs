@@ -15,7 +15,7 @@ test('all immutable launch and validator bindings use the reviewed receipt-deriv
     readFile(path.join(root, 'tests/local-ephemeral-claim-root.test.mjs'), 'utf8'),
   ]);
   assert.equal(artifact.merkleRoot, `0x${rootHex}`);
-  assert.match(rust, /pub const APPROVED_METADATA_ROOT: \[u8; 32\] = \[\s*0x68, 0x9a, 0xb7, 0x1d/s);
+  assert.match(rust, /#\[cfg\(not\(feature = "mainnet"\)\)\]\s*pub const APPROVED_METADATA_ROOT: \[u8; 32\] = \[\s*0x68, 0x9a, 0xb7, 0x1d/s);
   assert.match(rust, /const ROOT: \[u8; 32\] = \[\s*0x68, 0x9a, 0xb7, 0x1d/s);
   assert.match(rust, /const URI_360: &str = "ar:\/\/z-1hTTF1-FK80VkPw6yiO_d1y2_qdZ4Cjm37y-eW-cI"/);
   assert.match(rust, /0xe6, 0x53, 0xa6, 0xca, 0x3f, 0x83, 0x99, 0x52/s);

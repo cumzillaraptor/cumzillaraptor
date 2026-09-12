@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[cfg(not(feature = "mainnet"))]
-#[test]
+    #[test]
     fn allocation_hash_matches_independent_js_v1_known_answer() {
         let (public, _) = partition();
         let mut config = config();

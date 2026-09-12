@@ -5,13 +5,20 @@ pub const CLAIM_COUNT: u16 = 174;
 
 // Generated from the user-approved public address in config/devnet-launch.json.
 // No private key, seed phrase, or keypair file is embedded in program source.
-pub const DEVNET_LAUNCH_AUTHORITY_BYTES: [u8; 32] = [
+#[cfg(not(feature = "mainnet"))]
+pub const LAUNCH_AUTHORITY_BYTES: [u8; 32] = [
     89, 71, 31, 157, 100, 56, 159, 24, 65, 145, 55, 9, 62, 38, 66, 48, 245, 115, 74, 45, 245, 140,
     92, 146, 18, 176, 38, 222, 202, 170, 215, 239,
 ];
 
+// Phase-2 fill point. A Solana signer can never be the all-zero/default pubkey,
+// so a mainnet build compiles for CI inspection but initialize_launch fails closed
+// until the owner-generated mainnet launch-authority pubkey is inserted here.
+#[cfg(feature = "mainnet")]
+pub const LAUNCH_AUTHORITY_BYTES: [u8; 32] = [0; 32];
+
 pub fn launch_authority() -> Pubkey {
-    Pubkey::new_from_array(DEVNET_LAUNCH_AUTHORITY_BYTES)
+    Pubkey::new_from_array(LAUNCH_AUTHORITY_BYTES)
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]

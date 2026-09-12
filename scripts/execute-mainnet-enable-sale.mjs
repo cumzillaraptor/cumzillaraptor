@@ -6,13 +6,13 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction, sendAndConfirmTransaction } from '@solana/web3.js';
 
-const PROGRAM_ID = new PublicKey(process.env.CUMZ_MAINNET_PROGRAM_ID || '');
-const EXPECTED_AUTHORITY = new PublicKey(process.env.CUMZ_MAINNET_AUTHORITY || '');
-
-if (!PROGRAM_ID || !EXPECTED_AUTHORITY) {
+if (!process.env.CUMZ_MAINNET_PROGRAM_ID || !process.env.CUMZ_MAINNET_AUTHORITY) {
   console.error('usage: CUMZ_MAINNET_PROGRAM_ID=<deployed mainnet program id> \\\n  CUMZ_MAINNET_AUTHORITY=<expected authority pubkey> \\\n  node execute-mainnet-enable-sale.mjs <authority-keypair.json>');
   process.exit(1);
 }
+const PROGRAM_ID = new PublicKey(process.env.CUMZ_MAINNET_PROGRAM_ID);
+const EXPECTED_AUTHORITY = new PublicKey(process.env.CUMZ_MAINNET_AUTHORITY);
+const EXPECTED_PAYER = new PublicKey('8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d');
 
 const [authorityPath] = process.argv.slice(2);
 if (!authorityPath) { console.error('missing <authority-keypair.json> path'); process.exit(1); }
@@ -21,6 +21,7 @@ if (!authority.publicKey.equals(EXPECTED_AUTHORITY)) {
   console.error(`authority mismatch: ${authority.publicKey.toBase58()} != expected ${EXPECTED_AUTHORITY.toBase58()}`);
   process.exit(1);
 }
+if (authority.publicKey.equals(EXPECTED_PAYER)) throw new Error('launch authority must remain distinct from the D6 payer');
 
 const disc = (name) => createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);
 // Borsh enum: Setup=0, Paused=1, Live=2 (source of truth: state.rs)

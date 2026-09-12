@@ -12,7 +12,23 @@ pub const DEVNET_CLUSTER: &[u8] = b"devnet";
 pub const MAX_METADATA_PROOF_LEN: usize = 9;
 pub const MAX_NAME_BYTES: usize = 64;
 pub const MAX_URI_BYTES: usize = 128;
-/// Immutable devnet commitment generated from the reviewed 420-URI artifact.
+/// Metadata merkle root commitment, bound to (program_id, cluster, uris).
+///
+/// CLUSTER-GATED: leaves (`metadata_leaf_v1`) hash the cluster tag, so the approved
+/// root differs per cluster. The devnet value below is the reviewed 420-URI
+/// commitment. A `--features mainnet` build MUST use the mainnet-computed root
+/// (generated with `generate-metadata-merkle-tree.js --cluster mainnet` against the
+/// Phase-2 mainnet program ID); leaving the devnet root here would make a mainnet
+/// launch silently bind every metadata proof to the wrong commitment.
+#[cfg(feature = "mainnet")]
+pub const APPROVED_METADATA_ROOT: [u8; 32] = [
+    // TODO(mainnet): set after Phase 2 generates the mainnet program keypair — this zero
+    // placeholder makes initialize_launch reject a mainnet launch until the real root is
+    // placed here. It MUST NOT ship to mainnet.
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
+#[cfg(not(feature = "mainnet"))]
 pub const APPROVED_METADATA_ROOT: [u8; 32] = [
     0x68, 0x9a, 0xb7, 0x1d, 0x32, 0xef, 0xff, 0x27, 0x6d, 0xf2, 0xa0, 0xe1, 0x4f, 0x72, 0xee, 0x9e,
     0xb1, 0x59, 0xda, 0x35, 0x08, 0xcf, 0xe9, 0xd3, 0x37, 0xa9, 0xfc, 0xc3, 0xc2, 0x22, 0x02, 0x11,
@@ -151,7 +167,7 @@ mod tests {
     const URI_360: &str = "ar://z-1hTTF1-FK80VkPw6yiO_d1y2_qdZ4Cjm37y-eW-cI";
 
     #[cfg(not(feature = "mainnet"))]
-#[test]
+    #[test]
     fn approved_360_metadata_leaf_and_proof_match_v1_artifact() {
         let leaf = metadata_leaf_v1(&crate::ID, 360, "cumzillaraptor #360", URI_360).unwrap();
         assert_eq!(

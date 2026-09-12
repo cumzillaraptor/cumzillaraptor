@@ -16,8 +16,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = process.env.CUMZ_SOURCE_DIR || path.join(ROOT, 'nft-data', 'allocation-source');
 const MINT_CSV = process.env.CUMZ_MINT_CSV || path.join(SOURCE_DIR, 'mint_list.csv');
 const RESERVE_CSV = process.env.CUMZ_RESERVE_CSV || path.join(SOURCE_DIR, 'reserve_list.csv');
-const CLAIMS_V1 = process.env.CUMZ_CLAIMS_V1 || path.join(ROOT, 'nft-data', 'claims-v1.devnet.json');
-const METADATA_MERKLE = process.env.CUMZ_METADATA_MERKLE || path.join(ROOT, 'nft-data', 'metadata-merkle-v1.devnet.json');
+
 const PUBLIC_COUNT = 246;
 const CLAIM_COUNT = 174;
 const NFT_COUNT = 420;
@@ -147,15 +146,17 @@ function allocationHash({ cluster, programBytes, collectionBytes, publicIds, cla
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  const claimsV1 = process.env.CUMZ_CLAIMS_V1 || path.join(ROOT, 'nft-data', `claims-v1.${args.cluster}.json`);
+  const metadataMerkle = process.env.CUMZ_METADATA_MERKLE || path.join(ROOT, 'nft-data', `metadata-merkle-v1.${args.cluster}.json`);
   const programBytes = publicKeyBytes(args['program-id'], 'program ID');
   const collectionBytes = publicKeyBytes(args.collection, 'collection');
   const publicIds = parseCsvRows(MINT_CSV, PUBLIC_COUNT, 'Mint').map((row) => row.id);
   const reserveRows = parseCsvRows(RESERVE_CSV, CLAIM_COUNT, 'Reserve', true);
   verifyPartition(publicIds, reserveRows);
-  const claims = JSON.parse(fs.readFileSync(CLAIMS_V1, 'utf8'));
+  const claims = JSON.parse(fs.readFileSync(claimsV1, 'utf8'));
   const claimRoot = verifyV1Claims(claims, reserveRows, args);
   const uriMap = JSON.parse(fs.readFileSync(args['uri-map'], 'utf8'));
-  const metadata = JSON.parse(fs.readFileSync(METADATA_MERKLE, 'utf8'));
+  const metadata = JSON.parse(fs.readFileSync(metadataMerkle, 'utf8'));
   const metadataRoot = verifyMetadata(metadata, uriMap, args);
   const result = {
     version: VERSION,
@@ -164,6 +165,7 @@ function main() {
     collection: args.collection,
     publicCount: publicIds.length,
     claimCount: reserveRows.length,
+    collectionUri: uriMap.collectionUri,
     publicIds,
     claimIds: reserveRows.map((row) => row.id),
     claimRoot: claims.merkleRoot,

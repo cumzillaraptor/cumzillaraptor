@@ -11,6 +11,7 @@ The manifest commits one collection to:
 - an approved claim Merkle root;
 - an approved metadata-URI map;
 - a specific Solana program, cluster, and Metaplex Core collection.
+- the exact collection metadata URI compiled into the collection-creation CPI.
 
 The program must store the resulting `allocationHash` at initialization and reject any initialization data that does not match the reviewed manifest.
 
@@ -71,10 +72,11 @@ claim_root (32 raw bytes) ||
 metadataRoot (32 raw bytes)
 ```
 
-The cluster tag is currently the literal UTF-8 string `devnet`.
+The cluster tag is `devnet` for the deployed rehearsal and `mainnet` for the mainnet-feature artifact. The generated manifest also emits `collectionUri`; setup refuses a value that differs from the program's compiled collection URI.
 
 ## Required invariants
 
+0. `collectionUri` exactly matches the collection metadata URI compiled into the reviewed program artifact.
 1. Public count is exactly 246.
 2. Claim count is exactly 174.
 3. Each ID is an integer in `1..=420`.

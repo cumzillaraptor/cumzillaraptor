@@ -9,30 +9,46 @@
 //   - balance preflight: refuses to run with < 2 SOL on the authority
 // Prints public keys and signatures only; never prints key material.
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { keccak256 } from '@ethersproject/keccak256';
 
-if (!process.env.CUMZ_MAINNET_PROGRAM_ID || !process.env.CUMZ_MAINNET_AUTHORITY) {
-  console.error('usage: CUMZ_MAINNET_PROGRAM_ID=<deployed mainnet program id> \\\n  CUMZ_MAINNET_AUTHORITY=<expected authority pubkey> \\\n  node execute-mainnet-launch-setup.mjs <authority-keypair.json>');
+if (!process.env.CUMZ_MAINNET_PROGRAM_ID || !process.env.CUMZ_MAINNET_AUTHORITY || !process.env.CUMZ_MAINNET_MANIFEST) {
+  console.error('usage: CUMZ_MAINNET_PROGRAM_ID=<deployed mainnet program id>\n  CUMZ_MAINNET_AUTHORITY=<expected authority pubkey>\n  CUMZ_MAINNET_MANIFEST=<generate-launch-manifest.js --cluster mainnet output>\n  node execute-mainnet-launch-setup.mjs <authority-keypair.json> <collection-keypair.json>');
   process.exit(1);
 }
+const MANIFEST_PATH = process.env.CUMZ_MAINNET_MANIFEST;
+if (!existsSync(MANIFEST_PATH)) { console.error('manifest not found: ' + MANIFEST_PATH); process.exit(1); }
+const MANIFEST = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+if (MANIFEST.cluster !== 'mainnet') { console.error('manifest is for cluster "' + MANIFEST.cluster + '", expected "mainnet"'); process.exit(1); }
+if (MANIFEST.programId !== process.env.CUMZ_MAINNET_PROGRAM_ID) { console.error('manifest program id does not match CUMZ_MAINNET_PROGRAM_ID'); process.exit(1); }
 const PROGRAM_ID = new PublicKey(process.env.CUMZ_MAINNET_PROGRAM_ID);
 const CORE_PROGRAM = new PublicKey('CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d');
 const TREASURY = new PublicKey('FiHKQhwq2ZKkD2ZbBf3mPYgyw2Y9QDzNYykpMGErovU6');
 const EXPECTED_AUTHORITY = new PublicKey(process.env.CUMZ_MAINNET_AUTHORITY);
-const METADATA_ROOT = Buffer.from('689ab71d32efff276df2a0e14f72ee9eb159da3508cfe9d337a9fcc3c2220211', 'hex');
-const CLAIM_ROOT = Buffer.from('8443ba0a33024e5edbbf59ecc82a30e27255c2774884d190fb1f0ae11b9ebdef', 'hex');
+const EXPECTED_PAYER = new PublicKey('8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d');
+const COLLECTION_METADATA_URI = 'ar://oGxXHkoQKnsq47U4KESzurJ0-qk0dJa2FWofHQc_-SQ';
+if (MANIFEST.collectionUri !== COLLECTION_METADATA_URI) {
+  console.error('manifest collection URI does not match the program collection URI'); process.exit(1);
+}
+// Cluster-bound roots come from a generated MAINNET manifest (generate-launch-manifest.js
+// --cluster mainnet). The claim and metadata leaves hash the cluster tag, so they are NOT
+// the devnet roots; hardcoding devnet values here is what silently broke a mainnet launch.
+const DEVNET_CLAIM_ROOT = '0x8443ba0a33024e5edbbf59ecc82a30e27255c2774884d190fb1f0ae11b9ebdef';
+const DEVNET_METADATA_ROOT = '0x689ab71d32efff276df2a0e14f72ee9eb159da3508cfe9d337a9fcc3c2220211';
+const CLAIM_ROOT = Buffer.from(MANIFEST.claimRoot.slice(2), 'hex');
+const METADATA_ROOT = Buffer.from(MANIFEST.metadataRoot.slice(2), 'hex');
+{
+  for (const [label, hexRoot, devnetRoot] of [
+    ['claim', MANIFEST.claimRoot, DEVNET_CLAIM_ROOT],
+    ['metadata', MANIFEST.metadataRoot, DEVNET_METADATA_ROOT],
+  ]) {
+    if (typeof hexRoot !== 'string' || !/^0x[0-9a-f]{64}$/.test(hexRoot)) { console.error('invalid ' + label + ' root in manifest'); process.exit(1); }
+    if (hexRoot === devnetRoot) { console.error('refusing devnet ' + label + ' root (' + hexRoot + ') for a mainnet launch'); process.exit(1); }
+  }
+}
 // Recomputed below for the "mainnet" tag; kept as a computed constant so a mismatch is loud.
 const CLUSTER = 'mainnet';
-
-const [authorityPath] = process.argv.slice(2);
-if (!authorityPath) { console.error('missing <authority-keypair.json> path'); process.exit(1); }
-const authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(authorityPath, 'utf8'))));
-if (!authority.publicKey.equals(EXPECTED_AUTHORITY)) {
-  console.error(`authority mismatch: ${authority.publicKey.toBase58()} != expected ${EXPECTED_AUTHORITY.toBase58()}`);
-  process.exit(1);
-}
 
 function csvIds(relative, expectedCount) {
   const lines = readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8').trim().split(/\r?\n/);
@@ -41,6 +57,11 @@ function csvIds(relative, expectedCount) {
 }
 const publicIds = csvIds('nft-data/allocation-source/mint_list.csv', 246);
 const claimIds = csvIds('nft-data/allocation-source/reserve_list.csv', 174);
+if (!Array.isArray(MANIFEST.publicIds) || !Array.isArray(MANIFEST.claimIds) ||
+    JSON.stringify(publicIds) !== JSON.stringify(MANIFEST.publicIds) ||
+    JSON.stringify(claimIds) !== JSON.stringify(MANIFEST.claimIds)) {
+  console.error('repository allocation CSVs do not match the reviewed manifest order'); process.exit(1);
+}
 {
   const all = [...publicIds, ...claimIds].sort((a, b) => a - b);
   if (all.length !== 420 || all.some((id, i) => id !== i + 1)) throw new Error('allocation partition is not an exact cover of 1..420');
@@ -49,18 +70,45 @@ const u16be = (v) => { const b = Buffer.alloc(2); b.writeUInt16BE(v); return b; 
 const u16le = (v) => { const b = Buffer.alloc(2); b.writeUInt16LE(v); return b; };
 const u32le = (v) => { const b = Buffer.alloc(4); b.writeUInt32LE(v); return b; };
 
-const collection = Keypair.generate();
+const [authorityPath, collectionPath] = process.argv.slice(2);
+if (!authorityPath) { console.error('missing <authority-keypair.json> path'); process.exit(1); }
+const authority = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(authorityPath, 'utf8'))));
+if (!authority.publicKey.equals(EXPECTED_AUTHORITY)) {
+  console.error(`authority mismatch: ${authority.publicKey.toBase58()} != expected ${EXPECTED_AUTHORITY.toBase58()}`);
+  process.exit(1);
+}
+
+// The manifest already commits to this exact collection public key. Its private
+// key stays outside git/chat and is supplied only at Phase 3 after Phase 2 is
+// funded/authorized. Never generate a replacement here: that would make the
+// manifest allocation hash and the created collection disagree.
+if (!collectionPath) { console.error('missing <collection-keypair.json> path'); process.exit(1); }
+const collection = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(collectionPath, 'utf8'))));
+if (collection.publicKey.toBase58() !== MANIFEST.collection) {
+  console.error('collection keypair does not match manifest collection'); process.exit(1);
+}
 const allocationHash = Buffer.from(keccak256(Buffer.concat([
   Buffer.from('CUMZILLARAPTORS_ALLOCATION_V1'), PROGRAM_ID.toBuffer(), Buffer.from([6]), Buffer.from(CLUSTER),
   collection.publicKey.toBuffer(), u16be(publicIds.length), ...publicIds.map(u16be),
   CLAIM_ROOT, METADATA_ROOT,
 ])).slice(2), 'hex');
+if (MANIFEST.allocationHash !== '0x' + allocationHash.toString('hex')) {
+  console.error('manifest allocation hash does not match the collection/roots/public IDs'); process.exit(1);
+}
+if (MANIFEST.publicCount !== 246 || MANIFEST.claimCount !== 174 ||
+    MANIFEST.auditSummary?.partitionValid !== true || MANIFEST.auditSummary?.totalCount !== 420) {
+  console.error('manifest allocation counts/partition are not canonical'); process.exit(1);
+}
 
 const disc = (name) => createHash('sha256').update(`global:${name}`).digest().subarray(0, 8);
 const [config] = PublicKey.findProgramAddressSync([Buffer.from('config')], PROGRAM_ID);
 const [registry] = PublicKey.findProgramAddressSync([Buffer.from('allocation')], PROGRAM_ID);
 
 const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+// Phase 0 chose a mobile payer, not a locally exported key. This setup script is
+// therefore authority-funded at Phase 3; D6 remains the separate Phase-2 deploy
+// payer. Assert the roles are distinct so nobody mistakes this for a payer-key path.
+if (authority.publicKey.equals(EXPECTED_PAYER)) throw new Error('launch authority must remain distinct from the D6 payer');
 const balance = await connection.getBalance(authority.publicKey);
 console.log(`authority ${authority.publicKey.toBase58()} balance ${(balance / 1e9).toFixed(4)} SOL`);
 if (balance < 2e9) throw new Error(`preflight: authority needs >= 2 SOL (has ${(balance / 1e9).toFixed(4)})`);
@@ -135,6 +183,9 @@ const checks = {
   coreProgram: new PublicKey(d.subarray(72, 104)).toBase58() === CORE_PROGRAM.toBase58(),
   collection: new PublicKey(d.subarray(104, 136)).equals(collection.publicKey),
   allocationHashMatches: d.subarray(136, 168).equals(allocationHash),
+  claimRootMatches: d.subarray(168, 200).equals(CLAIM_ROOT),
+  metadataRootMatches: d.subarray(200, 232).equals(METADATA_ROOT),
+  clusterTagHashMatches: d.subarray(232, 264).equals(createHash('sha256').update(CLUSTER).digest()),
   saleStateSetup: d[264] === 0,
 };
 console.log('config PDA:', JSON.stringify(checks));

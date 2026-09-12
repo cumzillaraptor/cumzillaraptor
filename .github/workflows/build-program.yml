@@ -2,6 +2,14 @@ name: Build Solana Program
 
 on:
   workflow_dispatch:
+    inputs:
+      cluster:
+        description: "Artifact cluster (build only; never deploys)"
+        required: true
+        type: choice
+        options:
+          - devnet
+          - mainnet
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,11 +44,16 @@ jobs:
           test -d "$HOME/.cache/solana"
           # v1.54 parses edition2024 manifests; the program enables its documented
           # custom-panic feature to avoid the older default entrypoint panic macro.
+          FEATURES=()
+          if [ "${{ inputs.cluster }}" = "mainnet" ]; then
+            FEATURES=(--features mainnet)
+          fi
           RUST_BACKTRACE=1 cargo-build-sbf \
             --manifest-path programs/cumzillaraptors/Cargo.toml \
             --tools-version v1.54 \
             --force-tools-install \
             --arch sbfv2 \
+            "${FEATURES[@]}" \
             --verbose
 
       - name: Verify binary
@@ -61,6 +74,7 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" > "$(dirname "$PROGRAM_SO")/cumzillaraptors.build-revision"
 
       - name: Build isolated test-validation SBPF artifact for private localhost only
+        if: ${{ inputs.cluster == 'devnet' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -91,6 +105,7 @@ jobs:
         run: npm ci
 
       - name: Run Task 5 Bankrun initialization gate
+        if: ${{ inputs.cluster == 'devnet' }}
         shell: bash
         env:
           CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
@@ -102,6 +117,7 @@ jobs:
             SBF_OUT_DIR="$PROGRAM_DIR" node --test tests/bankrun-initialize.test.mjs
 
       - name: Run Task 7 Bankrun collection-creation gate
+        if: ${{ inputs.cluster == 'devnet' }}
         shell: bash
         env:
           CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
@@ -115,6 +131,7 @@ jobs:
       # This is a mandatory private localhost gate: the script executes the real
       # atomic secp→claim_nft path and its Metaplex Core CPI, not only a loader check.
       - name: Run mandatory x86 atomic Core-CPI claim gate
+        if: ${{ inputs.cluster == 'devnet' }}
         shell: bash
         env:
           CUMZ_EXPECTED_BUILD_REVISION: ${{ github.sha }}
@@ -127,7 +144,7 @@ jobs:
           bash scripts/run-x86-core-claim-gate.sh 2>&1 | tee local-x86-atomic-core-claim.log
 
       - name: Upload mandatory x86 atomic Core-CPI claim log
-        if: ${{ always() }}
+        if: ${{ always() && inputs.cluster == 'devnet' }}
         uses: actions/upload-artifact@v4
         with:
           name: local-x86-atomic-core-claim-log
@@ -136,7 +153,7 @@ jobs:
           retention-days: 90
 
       - name: Upload test-validation SBPF artifact and revision marker
-        if: ${{ always() }}
+        if: ${{ always() && inputs.cluster == 'devnet' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-validation-sbpf-artifact-and-revision
@@ -149,7 +166,7 @@ jobs:
       - name: Upload program artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cumzillaraptors-devnet-sbpf
+          name: cumzillaraptors-${{ inputs.cluster }}-sbpf
           path: |
             **/target/deploy/cumzillaraptors.so
             **/target/deploy/cumzillaraptors.build-revision
