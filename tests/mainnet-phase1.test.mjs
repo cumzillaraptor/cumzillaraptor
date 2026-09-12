@@ -219,10 +219,9 @@ test('Phase 1: mainnet SBPF build feature is explicit and cannot silently build 
     'mainnet artifact path must compile with the mainnet feature');
   assert.match(workflow, /cumzillaraptors-\$\{\{ inputs\.cluster \}\}-sbpf/,
     'artifact name must identify its cluster');
+  assert.match(workflow, /Block mainnet artifact acceptance until matched x86 gates exist/,
+    'Phase 1 must refuse to accept or upload an unvalidated mainnet artifact');
+  assert.match(workflow, /mainnet artifact acceptance blocked: Phase 2 must add cluster-matched x86 Bankrun\/Core-CPI gates/);
   assert.match(workflow, /Build isolated test-validation SBPF artifact[\s\S]*?if: \$\{\{ inputs\.cluster == 'devnet' \}\}/,
-    'devnet-only validation artifacts must not be mixed into the mainnet build');
-  assert.match(workflow, /Run Task 5 Bankrun initialization gate[\s\S]*?if: \$\{\{ inputs\.cluster == 'devnet' \}\}/,
-    'mainnet must not claim devnet Bankrun coverage');
-  assert.match(workflow, /Run mandatory x86 atomic Core-CPI claim gate[\s\S]*?if: \$\{\{ inputs\.cluster == 'devnet' \}\}/,
-    'mainnet must not claim a devnet Core-CPI gate');
+    'existing devnet fixtures must remain explicitly devnet-only');
 });

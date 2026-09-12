@@ -1191,6 +1191,7 @@ mod tests {
             CLAIM_COUNT,
         )
         .is_err());
+        #[cfg(not(feature = "mainnet"))]
         assert!(validate_launch_parameters(
             launch_authority(),
             core::PRIMARY_TREASURY,
@@ -1204,6 +1205,23 @@ mod tests {
             CLAIM_COUNT,
         )
         .is_ok());
+        #[cfg(feature = "mainnet")]
+        assert!(
+            validate_launch_parameters(
+                launch_authority(),
+                core::PRIMARY_TREASURY,
+                mpl_core::ID,
+                collection,
+                valid,
+                valid,
+                APPROVED_METADATA_ROOT,
+                EXPECTED_CLUSTER_TAG_HASH,
+                PUBLIC_COUNT,
+                CLAIM_COUNT,
+            )
+            .is_err(),
+            "Phase-1 mainnet placeholders must remain fail-closed"
+        );
     }
 
     #[cfg(not(feature = "test-validation"))]

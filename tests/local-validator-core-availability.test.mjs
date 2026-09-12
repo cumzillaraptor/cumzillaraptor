@@ -93,11 +93,11 @@ test('mandatory local x86 atomic Core-CPI claim gate is localhost-only and uses 
   );
   assert.match(
     workflow,
-    /name: Upload mandatory x86 atomic Core-CPI claim log[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*name: local-x86-atomic-core-claim-log[\s\S]*path: local-x86-atomic-core-claim\.log/,
+    /name: Upload mandatory x86 atomic Core-CPI claim log[\s\S]*if: \$\{\{ always\(\) && inputs\.cluster == 'devnet' \}\}[\s\S]*name: local-x86-atomic-core-claim-log[\s\S]*path: local-x86-atomic-core-claim\.log/,
   );
   assert.match(
     workflow,
-    /name: Upload test-validation SBPF artifact and revision marker[\s\S]*if: \$\{\{ always\(\) \}\}[\s\S]*name: test-validation-sbpf-artifact-and-revision[\s\S]*cumzillaraptors\.test-validation\.so[\s\S]*cumzillaraptors\.test-validation\.build-revision/,
+    /name: Upload test-validation SBPF artifact and revision marker[\s\S]*if: \$\{\{ always\(\) && inputs\.cluster == 'devnet' \}\}[\s\S]*name: test-validation-sbpf-artifact-and-revision[\s\S]*cumzillaraptors\.test-validation\.so[\s\S]*cumzillaraptors\.test-validation\.build-revision/,
   );
   assert.doesNotMatch(workflow, /https?:\/\/(?:api\.)?devnet\.solana\.com/i);
   assert.doesNotMatch(workflow, /solana\s+program\s+deploy/i);

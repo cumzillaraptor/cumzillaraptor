@@ -65,6 +65,16 @@ jobs:
           ls -lh "$PROGRAM_SO"
           sha256sum "$PROGRAM_SO"
 
+      # Phase-1 fail-closed boundary. A mainnet production artifact must never be
+      # accepted/uploaded while the only executable x86 gates use devnet fixtures.
+      # Phase 2 must replace this stop with cluster-matched mainnet Bankrun/Core-CPI
+      # fixtures after the final program ID, authority and metadata root exist.
+      - name: Block mainnet artifact acceptance until matched x86 gates exist
+        if: ${{ inputs.cluster == 'mainnet' }}
+        run: |
+          echo "mainnet artifact acceptance blocked: Phase 2 must add cluster-matched x86 Bankrun/Core-CPI gates" >&2
+          exit 1
+
       - name: Record exact SBPF source revision
         shell: bash
         run: |
