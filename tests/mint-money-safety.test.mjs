@@ -72,9 +72,8 @@ test('C2: pending signatures clear on success and on user rejection only', () =>
   assert.match(mint, /function isUserRejection\(e\)/);
 });
 
-test('H1: desktop uses native wallet sign-and-send, per-platform', () => {
-  assert.match(mint, /const isMobile = isMobileWalletBrowser\(\)/);
-  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, isMobile\)/);
+test('H1: every platform uses page submission so signed bytes can be rebroadcast', () => {
+  assert.match(mint, /sendWithRetry\(tx, 3, signingBlockhash, true\)/);
   assert.match(mint, /preferSignOnly,/);
 });
 

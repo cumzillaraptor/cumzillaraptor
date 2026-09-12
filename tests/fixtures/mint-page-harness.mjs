@@ -414,12 +414,11 @@ export async function bootMintPage(opts = {}) {
   const file = join(mkdtempSync(join(tmpdir(), 'mintpage-')), 'page.mjs');
   // Route the page's connector import through our wrapper.
   const moduleSrc = extractModule().replace(
-    /import \{ createWalletConnector, isMobileWalletBrowser \} from ("[^"]+");/,
-    'const { createWalletConnector, isMobileWalletBrowser } = globalThis.__mintHarnessWallet;',
+    /import \{ createWalletConnector \} from ("[^"]+");/,
+    'const { createWalletConnector } = globalThis.__mintHarnessWallet;',
   );
   globalThis.__mintHarnessWallet = {
     createWalletConnector: wrapCreate,
-    isMobileWalletBrowser: () => mobile,
   };
   writeFileSync(file, moduleSrc);
 

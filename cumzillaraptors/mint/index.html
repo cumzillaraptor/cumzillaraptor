@@ -227,7 +227,7 @@
       getAssetPda, buildMintInstruction, fetchRaptorImageUrl,
       confirmSignatureFast,
     } from "/cumzillaraptors/mint/chain.js";
-    import { createWalletConnector, isMobileWalletBrowser } from "/cumzillaraptors/mint/wallet.js";
+    import { createWalletConnector } from "/cumzillaraptors/mint/wallet.js";
     import web3 from "/cumzillaraptors/mint/web3-shim.js";
 
     const cfg = window.CUMZ_CONFIG;
@@ -245,7 +245,6 @@
 
     let provider = null, walletPubkey = null, launch = null;
     let poolOrder = null, metaCache = null, spinning = false;
-    const isMobile = isMobileWalletBrowser();
     let pageActive = true;
     // Every signature this page has handed to the wallet for the CURRENT roll.
     // A blockhash-expiry retry re-opens the wallet, and the earlier request is
@@ -534,11 +533,11 @@
           mplCore: MPL_CORE,
           nftId, name, uri: meta.u, metadataProof: meta.p,
         });
-        // Use a normal recent-blockhash transaction for mint approvals. Phantom
-        // deliberately warns on durable nonces because a signed transaction can
-        // be retained and submitted later. Desktop therefore uses Phantom's
-        // sign-and-send API so approval and broadcast are one immediate action;
-        // mobile keeps page-side submission to stay on the configured cluster.
+        // Use a normal recent-blockhash transaction for mint approvals. Every
+        // wallet signs only; the page immediately submits through its configured
+        // RPC and retains the signed bytes for idempotent rebroadcast. This avoids
+        // wallet-owned delivery that the page cannot rescue when a node drops it.
+        // The short-lived blockhash also means this is never a durable approval.
         tx = new Transaction().add(ix);
         tx.feePayer = walletPubkey;
         setMsg('checking transaction…');
@@ -548,7 +547,7 @@
         ]);
         if (sim.value.err) throw new Error('simulation failed: ' + JSON.stringify(sim.value.err));
         setMsg('approve the 1 SOL payment in your wallet…');
-        result = await sendWithRetry(tx, 3, signingBlockhash, isMobile);
+        result = await sendWithRetry(tx, 3, signingBlockhash, true);
         const sig = result.sig;
 
         // Animation starts only after Phantom returns a signature. This avoids a
@@ -693,9 +692,8 @@
           let sig;
           try {
             sig = await wc.signAndSend(tx, {
-              // Desktop: preferSignOnly:false -> Phantom's native
-              // signAndSendTransaction (the flow that worked). Mobile: true ->
-              // page signs then submits through its RPC.
+              // All platforms sign only; the page submits through one known RPC
+              // and retains the exact bytes for safe rebroadcast.
               preferSignOnly,
               skipPreflight: false,
               onSigned: (s, raw) => {
@@ -910,9 +908,8 @@
       // non-existent misconfiguration (reported 2026-08-30 with devnet correctly
       // selected). Report what actually happened and what to do about it.
       if (/blockhash|block height|blockheight|not confirmed in/i.test(msg))
-        return 'the network did not pick up your transaction in time. it was not confirmed, ' +
-               'so no raptor was minted — reload the page before rolling again, and check ' +
-               'your wallet history first if you were asked to approve.';
+        return 'we could not verify your transaction in time. if you approved it, do not roll again yet — ' +
+               'check your wallet history, then reload the page.';
       return msg;
     }
 

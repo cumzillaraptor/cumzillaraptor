@@ -16,12 +16,10 @@ test('mint gets a confirmed blockhash immediately before wallet approval', () =>
   assert.doesNotMatch(mintSource, /getLatestBlockhash\(['"]finalized['"]\)/);
 });
 
-test('desktop uses native wallet send; mobile keeps page-side submission', () => {
-  // Desktop extension (2026-08-30, final resolution): restore the desktop path
-  // that worked for the user — build + simulate, then PREFFER native Phantom
-  // sign-and-send (preferSignOnly:false set per-platform, not hardcoded). Mobile
-  // keeps page-side submission. Both must coexist: desktop -> native, mobile ->
-  // sign-only.
+test('desktop and mobile both keep signed bytes for page-side submission', () => {
+  // Uniform sign-only avoids wallet-owned delivery that the page cannot rescue.
+  // The transaction still uses a short-lived recent blockhash, never a durable
+  // authorization, and preflight rejects an approval that expires in the wallet.
   assert.match(mintSource, /sendWithRetry\(tx, 3, signingBlockhash, true\)/);
   assert.match(mintSource, /preferSignOnly,/);
   // multi-line call: assert the option and the money-safety hook, not one line

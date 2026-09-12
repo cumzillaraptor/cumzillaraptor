@@ -35,11 +35,10 @@ function prePopupRpc(r) {
   );
 }
 
-domTest('desktop: mint approval uses a normal wallet-submitted transaction', async () => {
-  // Phantom labels durable-nonce approvals as transactions that can be retained
-  // and submitted later, with a frightening "could steal your funds" warning.
-  // A public mint must use a normal recent blockhash and ask Phantom to submit it
-  // immediately, so no durable authorization survives the approval.
+domTest('desktop: mint approval is sign-only and page-submitted', async () => {
+  // A normal recent-blockhash transaction is safe to sign-only: it expires and
+  // cannot be retained indefinitely. Page submission gives us the signed bytes
+  // needed to rebroadcast through the configured RPC when delivery is dropped.
   const r = await boot({ mobile: false, rpcLatencyMs: 250, fetchLatencyMs: 250 });
   assert.equal(r.error, null);
   const pre = prePopupRpc(r);
@@ -49,8 +48,8 @@ domTest('desktop: mint approval uses a normal wallet-submitted transaction', asy
     'normal mint must obtain a recent blockhash: ' + labels.join(', '));
   assert.ok(!labels.some((l) => l.includes('getAccountInfo(nonce)')),
     'mint must not use a durable nonce: ' + labels.join(', '));
-  assert.ok(r.trace.some((t) => t.label.includes('POPUP_OPEN(signAndSendTransaction)')),
-    'Phantom must sign and immediately submit the normal transaction');
+  assert.ok(r.trace.some((t) => t.label.includes('POPUP_OPEN(signTransaction)')),
+    'Phantom must sign while the page owns immediate submission');
   assert.ok(!r.trace.some((t) => t.label === 'SIGN_TX(v0-versioned)'),
     'mint approval must not be a retained durable v0 transaction');
   assert.equal(r.trace.filter((t) => t.label === 'POPUP_APPROVED').length, 1,
@@ -64,13 +63,13 @@ domTest('desktop: the registry is warmed before the roll click', async () => {
   assert.ok(warm.at < r.rollAt, 'registry read must happen before the click');
 });
 
-domTest('desktop delegates immediate submission to Phantom', async () => {
+domTest('desktop submits through the configured page RPC', async () => {
   const r = await boot({ mobile: false, rpcLatencyMs: 120 });
   const labels = r.trace.map((t) => t.label);
-  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signAndSendTransaction)')),
-    'desktop must use Phantom sign-and-send so the approval cannot be retained');
-  assert.ok(!labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
-    'desktop must not request a sign-only approval');
+  assert.ok(labels.some((l) => l.includes('POPUP_OPEN(signTransaction)')),
+    'desktop must request one normal recent-blockhash signature');
+  assert.ok(labels.some((l) => l.includes('sendRawTransaction')),
+    'desktop must immediately submit through the configured RPC');
 });
 
 domTest('desktop: the raptor is revealed and no error is shown', async () => {
@@ -171,6 +170,19 @@ domTest('a dropped transaction is rebroadcast until it lands', async () => {
   assert.equal(r.isError, false, 'no error expected, got: ' + r.finalMsg);
 });
 
+domTest('desktop also rebroadcasts a dropped transaction until it lands', async () => {
+  const r = await boot({
+    mobile: false,
+    rpcLatencyMs: 100,
+    landsAfterSends: 2,
+    confirmThrows: 'blockheight',
+  });
+  const sends = r.trace.filter((t) => t.label.includes('sendRawTransaction')).length;
+  assert.ok(sends >= 2, 'desktop must retain and rebroadcast the signed bytes');
+  assert.equal(r.revealed, true, 'desktop must reveal after the rebroadcast lands: ' + r.finalMsg);
+  assert.equal(r.isError, false, 'no timeout error expected, got: ' + r.finalMsg);
+});
+
 domTest('rebroadcast uses a ~2s cadence, not a busy loop', async () => {
   const r = await boot({
     mobile: true, rpcLatencyMs: 100, landsAfterSends: 3, confirmThrows: 'blockheight',
@@ -209,8 +221,10 @@ domTest('the timeout message never blames the network setting', async () => {
   const all = r.msgs.join(' | ') + ' | ' + r.finalMsg;
   assert.doesNotMatch(all, /DEVNET \(not testnet\/mainnet\)/i,
     'must not blame the wallet network for a delivery failure');
-  assert.match(r.finalMsg, /did not pick up your transaction/i,
-    'should explain the real cause, got: ' + r.finalMsg);
+  assert.match(r.finalMsg, /could not verify your transaction/i,
+    'should describe uncertainty without claiming the mint failed, got: ' + r.finalMsg);
+  assert.doesNotMatch(r.finalMsg, /no raptor was minted/i,
+    'a timeout alone must never claim that no mint occurred');
 });
 
 domTest('a blockhash that expires during approval recovers by re-signing', async () => {
