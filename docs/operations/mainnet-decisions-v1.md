@@ -7,6 +7,7 @@
 | D3 | Price | **1 SOL** (unchanged) | `priceLamports = 1000000000` |
 | D4 | Program ID | **Fresh keypair → fresh program ID** at deploy time | Devnet ID stays test-only |
 | D5 | Upgrade authority | **Cold key, distinct from payer** | Generated before Phase 2, stored offline |
+| D6 | Payer wallet | `8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d` | Owner's mobile wallet key (same key as the ETH claim recipient). Fund ~8–10 SOL here for deploy + setup. Prefer wallet-dapp flows; never export its key material |
 
 ## Concentration note (resolved 2026-08-25)
 
@@ -16,6 +17,6 @@ Earlier draft had D2 = treasury key. **Superseded:** launch authority is now a f
 
 - Mainnet setup/enable scripts take the NEW authority keypair path; no hardcoded reuse of `71WBrLf…` (devnet) or `FiHKQhwq…`.
 - Cluster tag `'mainnet'` in allocation hash (Phase 1 task).
-- Payer wallet: still to be chosen/funded (~8–10 SOL) — separate from all of the above.
+- Payer wallet: `8eCKWEHZ525kBLnh4mQBnhpkk4nmde5jSeQC7FGR8t3d` (D6) — fund ~8–10 SOL before Phase 2.
 
 **Phase 0 complete. Next: Phase 1 (cluster parameterization) — code-only, no spend.**
