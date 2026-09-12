@@ -84,6 +84,7 @@ export async function bootMintPage(opts = {}) {
     landsAfterSends = null,
     dropRebroadcast = false,
     expirePreflightAttempts = 0,
+    expiryStatus = null,
     signDelayMs = 0,
     allocatedIds = [1, 2, 3, 4, 5, 6, 7],
     signatureOfNull = false,   // model Phantom sign that returns no extractable sig
@@ -263,6 +264,7 @@ export async function bootMintPage(opts = {}) {
 
   let sendCount = 0;
   let preflightRejections = 0;
+  let expiryStatusReads = 0;
   patch('sendRawTransaction', async function (raw, opts) {
     sendCount++;
     // First submission in a nonceExists:false run is the one-time nonce setup tx.
@@ -299,7 +301,15 @@ export async function bootMintPage(opts = {}) {
     // A transaction rejected at PREFLIGHT was never forwarded to the cluster, so
     // it can never have a status. Without this the page's money-safety
     // reconciliation reads the default mock status and "rescues" a dead tx.
-    if (deadTx || preflightRejections > 0) return { value: sigs.map(() => null) };
+    if (deadTx || preflightRejections > 0) {
+      expiryStatusReads++;
+      const st = expiryStatus === 'processed-then-confirmed'
+        ? (expiryStatusReads === 1 ? 'processed' : 'confirmed')
+        : expiryStatus;
+      return { value: sigs.map(() => st
+        ? { err: null, confirmationStatus: st, slot: 1 }
+        : null) };
+    }
     // when landsAfterSends is used, the tx only becomes visible once rebroadcast
     // has actually delivered it
     const st = landsAfterSends ? (landed ? 'confirmed' : null) : statusOf;

@@ -41,7 +41,7 @@ test('C1: an unverifiable status check refuses to re-prompt', () => {
 });
 
 test('C1: a landed signature short-circuits confirmation instead of re-charging', () => {
-  assert.match(mint, /landedEarly: true/);
+  assert.match(mint, /landedEarly: s\.confirmationStatus !== 'processed'/);
   // The guard was inverted when the reveal moved off the full-confirm path
   // (2026-08-30 RPC WebSocket fix): the roll handler now asks "if NOT already
   // landed, confirm it", which is the same short-circuit. Assert the semantics,

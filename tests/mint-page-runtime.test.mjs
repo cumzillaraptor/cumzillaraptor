@@ -251,6 +251,20 @@ domTest('a blockhash that expires during approval recovers by re-signing', async
   assert.equal(r.isError, false);
 });
 
+domTest('a processed first signature blocks an expiry re-sign and second charge', async () => {
+  const r = await boot({
+    mobile: false,
+    rpcLatencyMs: 90,
+    expirePreflightAttempts: 1,
+    expiryStatus: 'processed-then-confirmed',
+  });
+  const popups = r.trace.filter((t) => t.label.startsWith('POPUP_OPEN')).length;
+  assert.equal(popups, 1,
+    'a transaction already seen at processed must never trigger a second approval');
+  assert.equal(r.revealed, true,
+    'the original processed transaction should continue through normal reveal reconciliation');
+});
+
 domTest('an expired approval says plainly that no payment was taken', async () => {
   const r = await boot({ mobile: true, rpcLatencyMs: 90, expirePreflightAttempts: 1 });
   const all = r.msgs.join(' | ');

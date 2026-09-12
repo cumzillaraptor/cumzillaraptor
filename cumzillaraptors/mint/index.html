@@ -847,8 +847,9 @@
       return () => { stopped = true; clearTimeout(timer); };
     }
 
-    // Check every signature produced for the current roll. Returns the first one
-    // that is confirmed/finalized without error, or null if none landed.
+    // Check every signature produced for the current roll. Any non-error status,
+    // including processed, proves the cluster has accepted it and therefore blocks
+    // a second paid approval. Full confirmation continues in the normal flow.
     async function findLandedSignature() {
       if (!pendingSignatures.length) return null;
       let statuses;
@@ -867,8 +868,12 @@
       for (let i = 0; i < statuses.length; i++) {
         const s = statuses[i];
         if (!s || s.err) continue;
-        if (s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized') {
-          return { sig: pendingSignatures[i], landedEarly: true };
+        if (s.confirmationStatus === 'processed' || s.confirmationStatus === 'confirmed' ||
+            s.confirmationStatus === 'finalized') {
+          return {
+            sig: pendingSignatures[i],
+            landedEarly: s.confirmationStatus !== 'processed',
+          };
         }
       }
       return null;
