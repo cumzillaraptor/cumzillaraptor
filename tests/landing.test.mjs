@@ -16,40 +16,39 @@ test('uses the verified vector mascot without raster fallbacks', async () => {
   assert.doesNotMatch(svg, /<image[\s>]|data:image|<script[\s>]/i);
 });
 
-test('uses the approved palette and exact launch copy', async () => {
-  const source = await readHtml();
-  assert.match(source, /--green:\s*#6dfe41/i);
-  assert.match(source, /--charcoal:\s*#000000/i);
-  assert.match(source, /@font-face[\s\S]*font-family:\s*"Chewy"[\s\S]*Chewy-Regular\.ttf/);
-  assert.match(source, /body\s*\{[\s\S]*font-family:\s*"Chewy"/);
-  assert.doesNotMatch(source, /body::before/);
-  assert.match(source, /💦ing[\s\S]*soon/);
+test('uses the approved palette, local font, and launch copy', async () => {
+  const [source, css] = await Promise.all([readHtml(), readFile(new URL('assets/cumz.css', root), 'utf8')]);
+  assert.match(css, /--green:\s*#6dfe41/i);
+  assert.match(css, /--charcoal:\s*#000000/i);
+  assert.match(css, /@font-face[\s\S]*font-family:\s*"Chewy"[\s\S]*Chewy-Regular\.ttf/);
+  assert.match(css, /body\s*\{[\s\S]*font-family:\s*"Chewy"/);
+  assert.match(source, /mint a[\s\S]*cumzillaraptor/);
   assert.doesNotMatch(source, /internet creature approaches/i);
 });
 
 test('contains the complete requested navigation contract', async () => {
   const source = await readHtml();
   assert.match(source, /https:\/\/pump\.fun\/coin\/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds/);
-  assert.match(source, /href="\/cumzillaraptors\/"/);
+  assert.match(source, /https:\/\/cumzillaraptor\.com\//);
+  assert.match(source, /https:\/\/mint\.cumzillaraptor\.com\//);
   assert.match(source, /\$CUM 💦/);
-  assert.match(source, /cumzillaraptors 🦖/);
+  assert.match(source, /Mint 🦖/);
   assert.match(source, /aria-disabled="true"/);
   assert.match(source, /cumzillaraptor live \(18\+\)/);
-  assert.doesNotMatch(source, /<span class="soon">/);
   assert.match(source, /<span class="menu-link disabled" aria-disabled="true">merch/);
 });
 
-test('has green splash and staggered entrance motion', async () => {
+test('has green splash and staggered motion while the mascot appears immediately', async () => {
   const source = await readHtml();
   assert.match(source, /class="splash"[^>]*[\s\S]*<svg/);
   assert.match(source, /<path[^>]+fill="var\(--green\)"/);
   assert.match(source, /@keyframes splash-enter/);
-  assert.match(source, /@keyframes mascot-enter/);
   assert.match(source, /@keyframes caption-enter/);
   assert.match(source, /@keyframes credit-enter/);
   assert.match(source, /animation:\s*splash-enter/);
-  assert.match(source, /animation:\s*mascot-enter/);
   assert.match(source, /animation:\s*caption-enter/);
+  const mascotRule = source.match(/\.mascot-wrap\s*\{([\s\S]*?)\}/)?.[1] || '';
+  assert.doesNotMatch(mascotRule, /opacity\s*:\s*0|animation\s*:/);
 });
 
 test('menu and motion are accessible', async () => {
@@ -57,5 +56,5 @@ test('menu and motion are accessible', async () => {
   assert.match(source, /aria-expanded="false"/);
   assert.match(source, /aria-controls="site-menu"/);
   assert.match(source, /prefers-reduced-motion/);
-  assert.match(source, /event\.key === 'Escape'/);
+  assert.match(source, /(?:event|e)\.key === 'Escape'/);
 });

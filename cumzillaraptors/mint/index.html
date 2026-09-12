@@ -14,21 +14,21 @@
       min-height: 100svh;
       display: grid;
       place-items: center;
-      padding: clamp(40px, 6vh, 72px) 22px;
+      padding: clamp(88px, 11vh, 120px) 22px clamp(42px, 7vh, 76px);
     }
     @media (max-width: 480px) {
       main { padding-top: clamp(96px, 13vh, 124px); }
     }
-    .wrap { width: min(100%, 560px); display: grid; justify-items: center; text-align: center; }
+    .wrap { width: min(100%, 620px); display: grid; justify-items: center; text-align: center; }
     h1 {
-      margin: 0 0 4px;
+      margin: 0 0 8px;
       color: var(--green);
-      font-size: clamp(38px, 7vw, 60px);
+      font-size: clamp(44px, 7vw, 68px);
       font-weight: 400; line-height: .95; letter-spacing: -.04em;
       text-transform: lowercase;
       text-shadow: 0 2px 0 rgba(0,0,0,.55);
     }
-    .tagline { color: var(--muted); font-size: clamp(15px, 2.2vw, 19px); margin: 0 0 22px; }
+    .tagline { color: var(--muted); font-family: system-ui, sans-serif; font-size: clamp(14px, 2vw, 17px); line-height: 1.5; margin: 0 0 22px; }
     .panel { width: 100%; text-align: center; font-family: system-ui, sans-serif; }
 
     /* ---- progress bar ---- */
@@ -39,7 +39,7 @@
     }
     .progress-label strong { color: var(--green); font-weight: 500; }
     .progress-track {
-      height: 16px; border-radius: 50px; overflow: hidden;
+      height: 10px; border-radius: 50px; overflow: hidden;
       background: var(--charcoal);
       border: 1px solid var(--line);
     }
@@ -53,8 +53,8 @@
 
     /* ---- minted raptor portrait ---- */
     .raptor-stage {
-      width: 168px; margin: 0 auto 8px;
-      border-radius: 16px;
+      width: min(210px, 58vw); margin: 0 auto 12px;
+      border-radius: 18px;
       border: 1px solid var(--line);
       overflow: hidden;
     }
@@ -64,11 +64,11 @@
     /* ---- slot machine reveal ---- */
     .reveal {
       position: relative;
-      min-height: 118px;
-      margin: 10px 0 6px;
+      min-height: 170px;
+      margin: 16px 0 8px;
       border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--charcoal);
+      border-radius: 18px;
+      background: radial-gradient(circle at 50% 20%, rgba(109,254,65,.08), transparent 55%), var(--charcoal);
       overflow: hidden;
       display: grid;
       place-items: center;
@@ -151,12 +151,13 @@
   <button class="scrim" type="button" aria-label="Close menu" tabindex="-1" data-open="false"></button>
 
   <main>
-    <div class="wrap">
+    <div class="wrap page-shell">
+      <p class="eyebrow">Random mint · Solana Devnet</p>
       <h1>mint a cumzillaraptor</h1>
       <p class="tagline">roll for a raptor · 1 sol a roll · 246 in the pool</p>
       <div class="beta-banner">devnet beta — test SOL only, no real-value purchase</div>
 
-      <section class="panel panel-box">
+      <section class="panel panel-box dapp-card">
         <!-- progress -->
         <div class="progress-wrap">
           <div class="progress-label">

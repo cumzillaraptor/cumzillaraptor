@@ -16,6 +16,7 @@
       padding: clamp(40px, 5vh, 64px) 22px clamp(32px, 5vh, 56px);
     }
     .hero { width: min(100%, 860px); display: grid; justify-items: center; text-align: center; }
+    .hero .eyebrow { margin-top: clamp(-8px, -1vh, 0px); animation: credit-enter 620ms ease 760ms both; }
     .art-stage {
       position: relative;
       width: min(48vw, 360px);
@@ -33,10 +34,8 @@
     }
     .splash svg { display: block; width: 100%; height: 100%; overflow: visible; }
     .mascot-wrap {
-      width: 42%; opacity: 0;
-      will-change: transform, opacity; backface-visibility: hidden;
-      transform: translateY(40px) scale(.88);
-      animation: mascot-enter 1000ms cubic-bezier(.16, 1, .3, 1) 500ms forwards;
+      width: 42%;
+      backface-visibility: hidden;
     }
     .mascot {
       display: block; width: 100%; height: auto;
@@ -65,7 +64,8 @@
       max-width: min(100%, 560px); opacity: .85;
       color: var(--green);
       font-size: clamp(15px, 2.4vw, 22px);
-      letter-spacing: .12em; text-transform: lowercase;
+      letter-spacing: .14em; text-transform: uppercase;
+      font-family: system-ui, sans-serif; font-size: clamp(10px, 1.5vw, 12px); font-weight: 800;
       text-shadow: 0 0 12px rgba(109, 254, 65, .55);
       mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
       animation: credit-enter 620ms ease 1250ms forwards; opacity: 0;
@@ -83,8 +83,8 @@
       font-size: clamp(30px, 5.6vw, 56px);
       line-height: 1; letter-spacing: -.02em; text-transform: uppercase;
       text-decoration: none;
-      border-radius: 50px;
-      border: 3px solid rgba(255,255,255,.85);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.7);
       box-shadow:
         0 0 0 6px rgba(109, 254, 65, .18),
         0 0 34px rgba(109, 254, 65, .55),
@@ -264,7 +264,7 @@
   </a>
 
   <main>
-    <section class="hero" aria-labelledby="hero-title">
+    <section class="hero page-shell" aria-labelledby="hero-title">
       <div class="art-stage">
         <div class="splash" aria-hidden="true">
           <svg viewBox="0 0 600 600" role="presentation">
@@ -278,6 +278,7 @@
           <img class="mascot" src="assets/cumzillaraptor116.svg" width="569" height="577" alt="Pixel-art cumzillaraptor">
         </div>
       </div>
+      <p class="eyebrow">Solana Core collection · 420 total</p>
       <h1 class="caption" id="hero-title">mint a <span style="color: var(--green); text-shadow: 0 2px 0 rgba(0,0,0,.72);">cumzillaraptor</span> 🦖💦</h1>
 
       <div class="casino">
