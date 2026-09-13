@@ -28,15 +28,8 @@ const RPC_HOST = "rpc.cumzillaraptor.com";
 // basic abuse guard: only POST JSON-RPC bodies of sane size
 const MAX_RPC_BODY = 1_000_000; // 1 MB — getAccountInfo responses fit easily
 
-// TEMPORARY pre-launch gate: until the owner says the mint/claim contracts are
-// live, the apex cumzillaraptor.com (homepage) redirects visitors to the
-// pump.fun join page instead of serving the finished site. Subdomains
-// (mint/claim/rpc) are untouched and keep serving as-is.
-//
-// To go live: set SITE_LIVE = true and redeploy (or delete this block entirely —
-// a live worker without the gate serves the homepage normally). A 302 (temporary)
-// is deliberate: browsers must NOT cache the redirect so nothing sticks after go-live.
-const SITE_LIVE = false;
+// Homepage is public now; the page itself counts down to the announced launch.
+const SITE_LIVE = true;
 const APEX_JOIN_URL = "https://join.pump.fun/HSag/16wo9zf5";
 const APEX_HOST = "cumzillaraptor.com";
 
