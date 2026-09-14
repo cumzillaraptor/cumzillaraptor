@@ -64,6 +64,7 @@ for (const [name, path] of pages) {
 test('countdown pages use the requested launch copy', async () => {
   const mint = await readFile(new URL('cumzillaraptors/mint/index.html', root), 'utf8');
   const claim = await readFile(new URL('cumzillaraptors/claim/index.html', root), 'utf8');
+  assert.match(mint, /<p class="eyebrow">live on solana<\/p>/);
   assert.doesNotMatch(mint, /own a raptor/);
   assert.match(claim, /<p class="eyebrow">for ethereum raptor holders<\/p>/);
   assert.match(claim, /<p class="snapshot-note">📸 taken Aug 31, 2026<\/p>/);
