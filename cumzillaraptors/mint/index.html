@@ -155,18 +155,7 @@
       text-shadow: 0 0 28px rgba(109,254,65,.3);
       white-space: nowrap;
     }
-    .launch-units {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      margin: 9px auto 20px;
-      color: var(--green);
-      font-family: system-ui, sans-serif;
-      font-size: clamp(9px, 1.8vw, 12px);
-      font-weight: 800;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-    }
-    .launch-time { margin: 0; color: var(--muted); font-family: system-ui, sans-serif; font-size: clamp(13px, 2vw, 16px); line-height: 1.5; }
+
     @media (prefers-reduced-motion: reduce) {
       .reveal.spinning .slot-name { filter: none; }
       .reveal.revealed { animation: none; }
@@ -193,8 +182,6 @@
       <p class="eyebrow">the mint opens in</p>
       <h1 id="launch-title">mint a cumzillaraptor</h1>
       <div class="launch-countdown" id="launch-countdown" role="timer" aria-live="off">00:00:00:00</div>
-      <div class="launch-units" aria-hidden="true"><span>days</span><span>hours</span><span>mins</span><span>secs</span></div>
-      <p class="launch-time">Friday, September 25, 2026 · 11:59:59 PM EST</p>
     </div>
   </section>
 

@@ -37,7 +37,7 @@ for (const [name, path] of pages) {
     const source = await readFile(path, 'utf8');
     assert.match(source, /id="launch-gate"/);
     assert.match(source, /id="real-page" hidden inert/);
-    assert.match(source, /Friday, September 25, 2026 · 11:59:59 PM EST/);
+    assert.doesNotMatch(source, /class="launch-units"|class="launch-time"|Friday, September 25/);
     assert.match(source, /var LAUNCH_AT = 1790398799000/);
 
     const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
