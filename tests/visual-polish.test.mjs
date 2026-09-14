@@ -33,6 +33,11 @@ test('home keeps one clear primary mint action and a secondary claim action', ()
   assert.equal((home.match(/class="link-claim"/g) || []).length, 1);
 });
 
+test('home hides mint and claim progress until launch', () => {
+  assert.doesNotMatch(home, /status-wrap|id="status-bar"|stat-minted|stat-claimed/);
+  assert.doesNotMatch(home, /devnet beta|devnet status unavailable/i);
+});
+
 test('home mascot is visible immediately with no delayed entrance', () => {
   const mascotRule = home.match(/\.mascot-wrap\s*\{([\s\S]*?)\}/)?.[1] || '';
   assert.doesNotMatch(mascotRule, /opacity\s*:\s*0/);
