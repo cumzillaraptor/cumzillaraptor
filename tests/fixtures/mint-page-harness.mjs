@@ -154,6 +154,9 @@ export async function bootMintPage(opts = {}) {
     },
   };
 
+  // The mint page ships with the splash gate closed (no RPC while gated); these
+  // harnesses exercise the post-launch page, so stub the flag explicitly.
+  window.LAUNCH_READY = true;
   window.CUMZ_CONFIG = {
     network: 'devnet',
     rpcUrl: 'https://rpc.test.invalid',

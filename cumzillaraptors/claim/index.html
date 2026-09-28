@@ -90,8 +90,7 @@
       background: radial-gradient(circle at 50% 0%, rgba(109,254,65,.12), transparent 48%), var(--panel);
       box-shadow: var(--shadow), 0 0 44px rgba(109,254,65,.1), inset 0 1px 0 rgba(255,255,255,.05);
     }
-    .launch-card h1 { margin-bottom: 18px; }
-    .launch-countdown {
+    .launch-soon {
       color: var(--ink);
       font-family: "Chewy", system-ui, sans-serif;
       font-size: clamp(38px, 9vw, 76px);
@@ -100,13 +99,6 @@
       font-variant-numeric: tabular-nums;
       text-shadow: 0 0 28px rgba(109,254,65,.3);
       white-space: nowrap;
-    }
-    .snapshot-note {
-      margin: 18px 0 0;
-      color: var(--muted);
-      font-family: system-ui, sans-serif;
-      font-size: clamp(13px, 2vw, 16px);
-      line-height: 1.5;
     }
 
   </style>
@@ -119,19 +111,13 @@
       <li><a class="menu-link" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">$CUM 💦</a></li>
       <li><a class="menu-link" href="https://mint.cumzillaraptor.com/">Mint 🦖</a></li>
       <li><a class="menu-link" href="https://claim.cumzillaraptor.com/" aria-current="page">Claim</a></li>
-      <li><span class="menu-link disabled" aria-disabled="true">cumzillaraptor live (18+) ▶️</span></li>
-      <li><span class="menu-link disabled" aria-disabled="true">auction ⚡</span></li>
-      <li><span class="menu-link disabled" aria-disabled="true">merch ☕️</span></li>
     </ul>
   </nav>
   <button class="scrim" type="button" aria-label="Close menu" tabindex="-1" data-open="false"></button>
 
   <section class="launch-gate" id="launch-gate" aria-labelledby="launch-title">
     <div class="launch-card page-shell">
-      <p class="eyebrow">for ethereum raptor holders</p>
-      <h1 id="launch-title">claim your cumzillaraptor</h1>
-      <div class="launch-countdown" id="launch-countdown" role="timer" aria-live="off">00:00:00:00</div>
-      <p class="snapshot-note">📸 taken Aug 31, 2026</p>
+      <h1 class="launch-soon" id="launch-title">💦ing Soon</h1>
     </div>
   </section>
 
@@ -188,29 +174,19 @@
 
   <script>
     (function () {
-      // Literal EST (UTC-5), as announced: Sep 25 2026 11:59:59 PM EST.
-      var LAUNCH_AT = 1790398799000;
+      // Pre-mainnet splash gate — fail-closed. The real claim page ships in the
+      // markup below but stays hidden until LAUNCH_READY is flipped deliberately.
+      // No timer: nothing opens this gate on its own.
+      var LAUNCH_READY = false;
       var gate = document.getElementById('launch-gate');
       var realPage = document.getElementById('real-page');
-      var countdown = document.getElementById('launch-countdown');
-      var timer = null;
-      function pad(n) { return String(n).padStart(2, '0'); }
-      function update() {
-        var remaining = Math.max(0, LAUNCH_AT - Date.now());
-        if (remaining <= 0) {
-          gate.hidden = true;
-          realPage.hidden = false;
-          realPage.removeAttribute('inert');
-          if (timer) clearInterval(timer);
-          return;
-        }
-        var total = Math.ceil(remaining / 1000);
-        countdown.textContent = pad(Math.floor(total / 86400)) + ':' +
-          pad(Math.floor((total % 86400) / 3600)) + ':' +
-          pad(Math.floor((total % 3600) / 60)) + ':' + pad(total % 60);
+      if (LAUNCH_READY) {
+        gate.hidden = true;
+        realPage.hidden = false;
+        realPage.removeAttribute('inert');
       }
-      update();
-      timer = setInterval(update, 250);
+      // Read by the dapp boot block at the end of this page (no RPC while gated).
+      window.LAUNCH_READY = LAUNCH_READY;
     })();
   </script>
   <script src="/config/site.js"></script>
@@ -1024,9 +1000,12 @@
       return e?.shortMessage || msg;
     }
 
-    refreshStatus();
-    // pause background status refresh while claiming (RPC budget goes to claims)
-    setInterval(() => { if (!claiming) refreshStatus(); }, 60000);
+    // No RPC traffic while the splash gate is closed.
+    if (window.LAUNCH_READY) {
+      refreshStatus();
+      // pause background status refresh while claiming (RPC budget goes to claims)
+      setInterval(() => { if (!claiming) refreshStatus(); }, 60000);
+    }
   </script>
 </body>
 </html>

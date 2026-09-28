@@ -14,12 +14,12 @@ test('launch instant is literal EST (UTC-5)', () => {
   assert.equal(new Date(target).toISOString(), '2026-09-26T04:59:59.000Z');
 });
 
-test('homepage button counts down and switches to exact MINT NOW copy', async () => {
+test('homepage mint button shows the literal 💦ing Soon label, not a countdown', async () => {
   const source = await readFile(new URL('index.html', root), 'utf8');
-  assert.match(source, /const LAUNCH_AT = 1790398799000/);
-  assert.match(source, /id="mint-countdown">00:00:00:00/);
-  assert.match(source, /mintCountdown\.textContent = 'MINT NOW'/);
-  assert.match(source, /font-variant-numeric:\s*tabular-nums/);
+  assert.match(source, /<span id="mint-status">💦ing Soon<\/span>/);
+  assert.doesNotMatch(source, /LAUNCH_AT|mintCountdown|MINT NOW|id="mint-countdown"/);
+  const buttonRule = source.match(/\.btn-mint-now\s*\{([\s\S]*?)\}/)?.[1] || '';
+  assert.doesNotMatch(buttonRule, /text-transform/, 'the label must render as written (💦ing Soon)');
 });
 
 test('worker serves the countdown homepage instead of redirecting apex', async () => {
@@ -33,42 +33,63 @@ test('hidden launch content stays hidden despite author display rules', async ()
 });
 
 for (const [name, path] of pages) {
-  test(`${name} page hides the real page before launch and opens it at launch`, async () => {
+  test(`${name} page is a fail-closed 💦ing soon splash until mainnet-ready`, async () => {
     const source = await readFile(path, 'utf8');
     assert.match(source, /id="launch-gate"/);
     assert.match(source, /id="real-page" hidden inert/);
     assert.doesNotMatch(source, /class="launch-units"|class="launch-time"|Friday, September 25/);
-    assert.match(source, /var LAUNCH_AT = 1790398799000/);
+    assert.doesNotMatch(source, /var LAUNCH_AT|id="launch-countdown"|role="timer"/);
+    assert.match(source, /var LAUNCH_READY = false/);
 
     const scripts = [...source.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-    const gateScript = scripts.find((s) => s.includes('var LAUNCH_AT = 1790398799000'));
-    assert.ok(gateScript, 'countdown gate script missing');
+    const gateScript = scripts.find((s) => s.includes('var LAUNCH_READY'));
+    assert.ok(gateScript, 'splash gate script missing');
 
-    let now = target - (((2 * 86400 + 3 * 3600 + 4 * 60 + 5) * 1000));
+    // Closed gate: the real page stays hidden and no timer ever opens it.
     const dom = new JSDOM(source, { runScripts: 'outside-only' });
-    dom.window.Date.now = () => now;
     dom.window.eval(gateScript);
-    assert.equal(dom.window.document.getElementById('launch-countdown').textContent, '02:03:04:05');
+    assert.equal(dom.window.LAUNCH_READY, false);
+    await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(dom.window.document.getElementById('launch-gate').hidden, false);
     assert.equal(dom.window.document.getElementById('real-page').hidden, true);
-
-    now = target;
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    assert.equal(dom.window.document.getElementById('launch-gate').hidden, true);
-    assert.equal(dom.window.document.getElementById('real-page').hidden, false);
-    assert.equal(dom.window.document.getElementById('real-page').hasAttribute('inert'), false);
+    assert.equal(dom.window.document.getElementById('real-page').hasAttribute('inert'), true);
+    assert.equal(dom.window.document.getElementById('launch-title').textContent, '💦ing Soon');
     dom.window.close();
+
+    // Flipped flag: the preserved real page is revealed by one deliberate edit.
+    const opened = new JSDOM(source.replace('var LAUNCH_READY = false', 'var LAUNCH_READY = true'), {
+      runScripts: 'outside-only',
+    });
+    const openedScript = [...opened.window.document.querySelectorAll('script')]
+      .map((s) => s.textContent)
+      .find((s) => s.includes('var LAUNCH_READY = true'));
+    opened.window.eval(openedScript);
+    assert.equal(opened.window.document.getElementById('launch-gate').hidden, true);
+    assert.equal(opened.window.document.getElementById('real-page').hidden, false);
+    assert.equal(opened.window.document.getElementById('real-page').hasAttribute('inert'), false);
+    opened.window.close();
+  });
+
+  test(`${name} page makes no RPC calls while gated`, async () => {
+    const source = await readFile(path, 'utf8');
+    assert.match(source, /if \(window\.LAUNCH_READY\)/);
+    assert.doesNotMatch(source, /^\s{4}(?:refreshStatus\(\);|prefetchMintData\(\);)/m);
   });
 }
 
-test('countdown pages use the requested launch copy', async () => {
+test('splash pages say only 💦ing Soon', async () => {
   const mint = await readFile(new URL('cumzillaraptors/mint/index.html', root), 'utf8');
   const claim = await readFile(new URL('cumzillaraptors/claim/index.html', root), 'utf8');
-  assert.match(mint, /<p class="eyebrow">coming to solana<\/p>/);
-  assert.doesNotMatch(mint, /live on solana/);
-  assert.doesNotMatch(mint, /own a raptor/);
-  assert.match(claim, /<p class="eyebrow">for ethereum raptor holders<\/p>/);
-  assert.match(claim, /<p class="snapshot-note">📸 taken Aug 31, 2026<\/p>/);
-  assert.doesNotMatch(mint, /the mint opens in/);
-  assert.doesNotMatch(claim, /claiming opens in/);
+  for (const [name, page] of [['mint', mint], ['claim', claim]]) {
+    assert.match(page, /<h1 class="launch-soon" id="launch-title">💦ing Soon<\/h1>/, `${name} splash copy`);
+    assert.doesNotMatch(page, /the mint opens in|claiming opens in|live on solana|own a raptor/, name);
+    const gate = page.match(/<section class="launch-gate"[\s\S]*?<\/section>/)?.[0] || '';
+    assert.ok(gate, `${name} splash gate missing`);
+    assert.equal(gate.replace(/<[^>]+>/g, '').trim(), '💦ing Soon', `${name} visible splash copy`);
+  }
+  // the parked headlines/notes are gone from the splash (they remain only inside
+  // the hidden #real-page, which is untouched)
+  assert.doesNotMatch(mint, /<p class="eyebrow">coming to solana<\/p>/);
+  assert.doesNotMatch(claim, /<p class="eyebrow">for ethereum raptor holders<\/p>/);
+  assert.doesNotMatch(claim, /class="snapshot-note"|📸 taken Aug 31, 2026/);
 });

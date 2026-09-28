@@ -81,7 +81,7 @@
       color: var(--charcoal);
       font-family: "Chewy", system-ui, sans-serif;
       font-size: clamp(30px, 5.6vw, 56px);
-      line-height: 1; letter-spacing: -.02em; text-transform: uppercase;
+      line-height: 1; letter-spacing: -.02em;
       text-decoration: none;
       border-radius: 18px;
       border: 1px solid rgba(255,255,255,.7);
@@ -243,9 +243,6 @@
       <li><a class="menu-link" href="https://pump.fun/coin/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds" target="_blank" rel="noopener noreferrer">$CUM 💦</a></li>
       <li><a class="menu-link" href="https://mint.cumzillaraptor.com/">Mint 🦖</a></li>
       <li><a class="menu-link" href="https://claim.cumzillaraptor.com/">Claim</a></li>
-      <li><span class="menu-link disabled" aria-disabled="true">cumzillaraptor live (18+) ▶️</span></li>
-      <li><span class="menu-link disabled" aria-disabled="true">auction ⚡</span></li>
-      <li><span class="menu-link disabled" aria-disabled="true">merch ☕️</span></li>
     </ul>
   </nav>
   <button class="scrim" type="button" aria-label="Close menu" tabindex="-1" data-open="false"></button>
@@ -285,7 +282,7 @@
         <div class="marquee" aria-hidden="true"><span>🎰 mint lottery · every raptor is a random roll · 420 in the vault · spin to win 🎰 mint lottery · every raptor is a random roll · 420 in the vault · spin to win&nbsp;</span></div>
 
 
-        <a class="btn-mint-now" id="btn-mint-now" href="https://mint.cumzillaraptor.com/" aria-label="Mint opens September 25, 2026 at 11:59:59 PM EST"><span id="mint-countdown">00:00:00:00</span></a>
+        <a class="btn-mint-now" id="btn-mint-now" href="https://mint.cumzillaraptor.com/" aria-label="mint opens soon"><span id="mint-status">💦ing Soon</span></a>
         <p class="lottery-sub">1 sol a roll · every pull is a mystery raptor 🦖</p>
 
         <a class="link-claim" href="https://claim.cumzillaraptor.com/">claim my cumzillaraptor (eth holders)</a>
@@ -295,28 +292,6 @@
   </main>
 
   <script>
-    // Literal EST (UTC-5), as announced: Sep 25 2026 11:59:59 PM EST.
-    const LAUNCH_AT = 1790398799000;
-    const mintButton = document.getElementById('btn-mint-now');
-    const mintCountdown = document.getElementById('mint-countdown');
-    const padCountdown = (n) => String(n).padStart(2, '0');
-    function updateMintCountdown() {
-      const remaining = Math.max(0, LAUNCH_AT - Date.now());
-      if (remaining <= 0) {
-        mintCountdown.textContent = 'MINT NOW';
-        mintButton.setAttribute('aria-label', 'MINT NOW');
-        return;
-      }
-      const total = Math.ceil(remaining / 1000);
-      const days = Math.floor(total / 86400);
-      const hours = Math.floor((total % 86400) / 3600);
-      const minutes = Math.floor((total % 3600) / 60);
-      const seconds = total % 60;
-      mintCountdown.textContent = `${padCountdown(days)}:${padCountdown(hours)}:${padCountdown(minutes)}:${padCountdown(seconds)}`;
-    }
-    updateMintCountdown();
-    setInterval(updateMintCountdown, 250);
-
     // menu
     const menuButton = document.querySelector('.menu-button');
     const menu = document.querySelector('.menu-panel');

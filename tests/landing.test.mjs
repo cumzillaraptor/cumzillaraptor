@@ -31,11 +31,12 @@ test('contains the complete requested navigation contract', async () => {
   assert.match(source, /https:\/\/pump\.fun\/coin\/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds/);
   assert.match(source, /https:\/\/cumzillaraptor\.com\//);
   assert.match(source, /https:\/\/mint\.cumzillaraptor\.com\//);
+  assert.match(source, /https:\/\/claim\.cumzillaraptor\.com\//);
   assert.match(source, /\$CUM 💦/);
   assert.match(source, /Mint 🦖/);
-  assert.match(source, /aria-disabled="true"/);
-  assert.match(source, /cumzillaraptor live \(18\+\)/);
-  assert.match(source, /<span class="menu-link disabled" aria-disabled="true">merch/);
+  assert.doesNotMatch(source, /cumzillaraptor live \(18\+\)/);
+  assert.doesNotMatch(source, />auction ⚡</);
+  assert.doesNotMatch(source, />merch ☕️</);
 });
 
 test('has green splash and staggered motion while the mascot appears immediately', async () => {
