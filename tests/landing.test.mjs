@@ -28,7 +28,7 @@ test('uses the approved palette, local font, and launch copy', async () => {
 
 test('contains the complete requested navigation contract', async () => {
   const source = await readHtml();
-  assert.match(source, /https:\/\/pump\.fun\/coin\/9p3NuCz29u7KUsjfrZcBPNGB2pryDpACggjSjYWbkpds/);
+  assert.match(source, /https:\/\/pump\.fun\/coin\/AA1hANzAbftBU32KQCYfbsYnyMqA3uGCBeek1ZE5pump/);
   assert.match(source, /https:\/\/cumzillaraptor\.com\//);
   assert.match(source, /https:\/\/mint\.cumzillaraptor\.com\//);
   assert.match(source, /https:\/\/claim\.cumzillaraptor\.com\//);
